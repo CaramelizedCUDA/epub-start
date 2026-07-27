@@ -1,0 +1,52 @@
+# Harness work records
+.reasonix/
+.workbuddy/
+.agents/
+.codex/
+.claude/
+.cursor/
+.continue/
+.windsurf/
+.roo/
+.cline/
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v*/
+.serena/memories/
+.specstory/
+.taskmaster/
+
+# JavaScript dependencies and build output
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Rust and Tauri build output
+target/
+src-tauri/target/
+
+# Local logs and runtime artifacts
+*.log
+*.pid
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local reading/test corpus
+这里是终末停滞委员会/

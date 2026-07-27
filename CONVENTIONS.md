@@ -1,0 +1,86 @@
+# 代码规范与 AI 行为准则
+
+本文件是实现时的强制规则。依赖清单的唯一权威来源为 [README.md](README.md)，数据与 IPC 的具体定义分别以 [DATABASE.md](DATABASE.md) 和 [IPC.md](IPC.md) 为准。
+
+## Rust
+
+- 业务逻辑、数据库访问、解析器和 Tauri Command 中严禁 `.unwrap()` 与 `.expect()`；使用 `?`、明确的错误映射或返回 `Result`。
+- 所有 IPC 入参和返回模型必须 `#[derive(Serialize, Deserialize)]`。所有 Command 必须返回 `Result<T, String>`。
+- Command 保持薄；文件 I/O、ZIP/XML、SQLite 和平台代码必须归入其职责模块。
+- `platform/`、`source/`、`formats/`、`protocol/`、`services/` 必须遵守 ARCHITECTURE 的单向职责；`protocol/` 禁止引用 `formats::epub::*`。
+- 格式能力不得以 `Option` 默认空结果、`panic!`、`todo!` 或 `unimplemented!()` 伪装支持；不支持的格式或能力返回稳定错误。
+- 任何来源读取前必须校验文件存在性/可读性或 Android URI 权限。失效时持久化 `missing` 状态并返回 `BOOK_SOURCE_UNAVAILABLE:`。
+- 编写 Rust 后先在心中检查所有权、借用与生命周期，再使用 README 规定的 `cargo check` 验证。
+
+## React 与样式
+
+- 只使用函数式组件和 Hooks。
+- 全局客户端状态只使用 Zustand；禁止引入 Redux，禁止以 Context API 承载可由 props、局部状态或 Zustand 管理的全局业务状态。
+- 样式必须使用 TailwindCSS 工具类。禁止新建独立 CSS 文件；仅 EPUB.js iframe 的内容样式允许注入全局 CSS。
+- React 通过 `src/lib/tauri.ts` 调用后端，必须处理成功、加载和错误状态；不得直接访问主机文件系统、SQLite 或 ZIP。
+
+## IPC 同步铁律
+
+修改 Tauri Command 的参数、返回值、共享模型或错误前缀时，必须在同一个变更中同步更新：
+
+1. Rust `#[tauri::command]` 和 serde 模型；
+2. [IPC.md](IPC.md) 的契约；
+3. `src/types/models.ts` 与 `src/types/ipc.ts`；
+4. `src/lib/tauri.ts` 及每个调用点；
+5. 必要的测试和 [TODO.md](TODO.md) 状态。
+
+## 平台代码规范
+
+`src-tauri/src/platform/` 承载跨平台差异。所有平台特定代码必须通过 `#[cfg]` 条件编译隔离，禁止在 command 或 protocol 层内联平台条件逻辑。
+
+### 目录结构
+
+- `platform/mod.rs` — `#[cfg]` 条件导出统一平台 API（`FileMetadata`、`select_epub_sources`、`validate_epub_source`、`open_source_file`、`release_source_permission`、平台插件初始化）。整本 EPUB 不再通过 `Vec<u8>` 公共 API 传递。
+- `platform/desktop.rs` — `#[cfg(not(target_os = "android"))]` 桌面实现：`std::fs::read`、路径校验、no-op 权限持久化。
+- `platform/android.rs` — `#[cfg(target_os = "android")]` Android 实现：注册并调用项目自有 Tauri 移动插件。
+- `gen/android/.../EpubSafPlugin.kt` — 持有 Activity 上下文，封装 `ACTION_OPEN_DOCUMENT`、持久权限、元数据查询和只读文件描述符。
+
+### 公共接口签名
+
+平台函数对桌面和 Android 保持同名，并显式接收 `AppHandle`，不得依赖全局 JNI 状态：
+
+- `select_epub_sources(app: &AppHandle) → Future<Output = Result<Vec<SelectedSource>, String>>` — 桌面使用官方 Dialog；Android 通过异步移动插件调用等待 Activity 回调，选择、持久授权成功后才返回 URI。
+- `validate_selected_source(source: &SelectedSource) → Result<(), String>` — 不信任前端回传的 `source_kind`，验证它与当前平台及 locator 类型一致。
+- `validate_epub_source(app: &AppHandle, source_locator: &str) → Result<FileMetadata, String>` — 校验来源可访问并返回可获得的元数据。
+- `open_source_file(app: &AppHandle, source_locator: &str) → Result<File, String>` — 桌面打开受校验路径；Android 从插件取得已转移所有权的只读文件描述符并由 Rust `File` 负责关闭。`source/` 在其上提供受控 Reader 和租约。
+- `release_source_permission(app: &AppHandle, source_locator: &str) → Result<(), String>` — 桌面 no-op；Android 用于拒绝重新定位候选等不再需要授权的场景。
+- `epub_root_url(book_id: &str) → String` — 平台层处理 Windows WebView2 的 localhost 映射与其他平台的自定义协议 URL，Command 不得内联平台分支。
+
+### Android 移动插件规则
+
+- 禁止 command 或 protocol 层直接调用 Kotlin、JNI 或 Android API；所有调用经 `platform/android.rs` 的 Tauri 移动插件句柄完成。
+- `content://` URI 只作为 `source_locator` 存入 DB，不作为文件路径传递给 `std::fs` 或 `Path`。
+- 文件选择与 `takePersistableUriPermission` 必须在同一个 Android Activity 结果回调中完成。授权成功前不得向 Rust 返回 URI；用户取消返回空选择。
+- Kotlin 不得通过 JSON 返回整本 EPUB 字节。插件返回 `ParcelFileDescriptor.detachFd()` 得到的只读 FD 后，FD 所有权转移给 Rust；Rust 必须用拥有所有权的 `File` 包装并依靠 drop 关闭。
+- SAF Provider 缺失的 size/mtime 返回 `0`，不得伪造。重启后必须重新查询持久权限；权限失效映射为 `BOOK_SOURCE_UNAVAILABLE:`。
+- 修改生成 Android 工程前必须保留 `EpubSafPlugin.kt`；重新运行 Tauri Android 初始化时检查其是否被覆盖。
+
+## 依赖管理与白名单控制（最高优先级）
+
+### 当前允许使用的库
+
+- 前端运行时：`react`、`react-dom`、`@tauri-apps/api`、`@tauri-apps/plugin-dialog`、`epubjs`、`zustand`。
+- 前端构建与样式：`@tauri-apps/cli`、`vite`、`@vitejs/plugin-react`、TypeScript、`@types/react`、`@types/react-dom`、`tailwindcss`、`postcss`、`autoprefixer`。
+- Rust：`tauri` v2、`tauri-build`、`tauri-plugin-dialog`、`serde`、`serde_json`、`rusqlite`、`zip`、`quick-xml`、`tokio`、`uuid`。项目不得直接添加 `jni`；Tauri 自身的传递依赖不视为项目白名单项。
+
+### 严格引入协议
+
+1. 禁止擅自引入：上述白名单外的任何 npm 包或 Rust crate 均不得加入、安装或在代码中引用。
+2. 遇到能力瓶颈：若白名单无法实现功能（例如 PDF、RAR、复杂富文本），必须停止编码，不能以临时代码绕过限制。
+3. 提案流程：向人类说明“我需要一个库来实现 [功能]”、“推荐 [库 A] 或 [库 B] 及理由”，等待确认将其加入 README 白名单后才可继续。
+4. 冻结区：`ROADMAP.md` 标记为冻结区的 PDF、TXT、CBZ、CBR 实现，在当前 Phase 禁止触碰，禁止提前引入任何相关依赖。
+
+### Phase 3/4 留存规则
+
+Phase 2 无法可靠评估的页面渲染 trait、PDF/图像归档接口、Cargo Feature 拆包、新格式依赖、Android/Linux WebView 性能和跨端触控专项必须记录到 ROADMAP 对应冻结区。记录建议不代表批准实现；进入对应 Phase 后仍须重新评估并获得人类确认。
+
+## Agent 工作流
+
+- 每次开始实现前读取 [TODO.md](TODO.md)，只处理按顺序第一个未完成且无阻塞的任务，并先阅读其完成标准。
+- 完成且验证通过后，才将该任务改为 `[x]`；不得提前勾选或声称未实现模块已完成。
+- 不在任务范围内重构，不复制现有模块，不跳过阶段。发现冲突、缺少批准依赖或安全/权限风险时，记录阻塞并请求人类决策。
