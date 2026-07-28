@@ -10,6 +10,7 @@ pub struct SourceFingerprint {
     pub head_sample: Vec<u8>,
 }
 
+#[allow(dead_code)]
 impl SourceFingerprint {
     pub fn cache_matches(&self, current: &Self) -> bool {
         if self.source_locator != current.source_locator || self.head_sample != current.head_sample
