@@ -349,33 +349,6 @@ fn is_image_path(path: &str) -> bool {
 
 /// Open an EPUB file, parse its metadata, and extract cover image
 /// to the given cache directory. Returns parsed metadata.
-pub fn parse_epub(
-    file_path: &str,
-    cover_cache_dir: &Path,
-    book_id: &str,
-) -> Result<EpubMetadata, EpubError> {
-    let file = std::fs::File::open(file_path).map_err(|e| EpubError::Zip(e.to_string()))?;
-    parse_epub_reader(file, Some((cover_cache_dir, book_id)))
-}
-
-pub fn parse_epub_bytes(
-    bytes: &[u8],
-    cover_cache_dir: &Path,
-    book_id: &str,
-) -> Result<EpubMetadata, EpubError> {
-    parse_epub_reader(
-        std::io::Cursor::new(bytes),
-        Some((cover_cache_dir, book_id)),
-    )
-}
-
-pub fn inspect_epub_bytes(bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
-    parse_epub_reader(std::io::Cursor::new(bytes), None)
-}
-
-pub fn inspect_epub_reader<R: Read + Seek>(reader: R) -> Result<EpubMetadata, EpubError> {
-    parse_epub_reader(reader, None)
-}
 
 pub fn parse_epub_reader<R: Read + Seek>(
     reader: R,
@@ -616,7 +589,7 @@ mod tests {
     #[test]
     fn test_inspect_epub_bytes() {
         let bytes = build_test_epub();
-        let metadata = inspect_epub_bytes(&bytes).unwrap();
+        let metadata = parse_epub_reader(std::io::Cursor::new(bytes), None).unwrap();
         assert_eq!(metadata.title, "Byte Book");
         assert_eq!(metadata.authors, vec!["Byte Author"]);
         assert_eq!(metadata.package_identifier.as_deref(), Some("byte-id"));
@@ -624,7 +597,7 @@ mod tests {
 
     #[test]
     fn test_parse_epub_bytes_rejects_invalid_zip() {
-        let error = inspect_epub_bytes(b"not a zip").unwrap_err();
+        let error = parse_epub_reader(std::io::Cursor::new(b"not a zip"), None).unwrap_err();
         assert!(matches!(error, EpubError::Zip(_)));
     }
 
