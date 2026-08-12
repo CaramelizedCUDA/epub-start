@@ -74,11 +74,57 @@ export function installImageInteractions(
     if (view?.contents) attach(view.contents, section?.href || view.section?.href);
   };
 
+  const onRelocated = () => attachCurrentViews();
   rendition.on('rendered', rendered);
+  rendition.on('relocated', onRelocated);
+
+  // MutationObserver：监听 viewport 内 iframe 的创建/移除，确保 spread 右 View 也能被 attach。
+  // 不依赖 relocated/rendered 事件时机——DOM 变化必然触发，rAF 去抖避免频繁 attach。
+  let rafId: number | null = null;
+  const debouncedAttach = () => {
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      attachCurrentViews();
+      // 双 rAF：处理 view.contents 懒初始化（content 在 iframe 加载后才完整绑定）
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        attachCurrentViews();
+      });
+    });
+  };
+  const viewport = window.document.getElementById('epub-reader-viewport');
+  const viewportClick = (event: MouseEvent) => {
+    // When the paginated rendition is narrower than the host viewport, clicks
+    // land on the host's side gutters rather than inside an iframe document.
+    // Handle only those gutter clicks here; iframe clicks remain authoritative.
+    if (event.target !== viewport || !handlers.isPaginated() || hasActiveSelection(window.document)) return;
+    const rect = viewport?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const ratio = (event.clientX - rect.left) / rect.width;
+    if (ratio <= PAGE_TURN_EDGE_RATIO) {
+      event.preventDefault();
+      turnPage('previous');
+    } else if (ratio >= 1 - PAGE_TURN_EDGE_RATIO) {
+      event.preventDefault();
+      turnPage('next');
+    }
+  };
+  viewport?.addEventListener('click', viewportClick);
+  let observer: MutationObserver | null = null;
+  if (viewport) {
+    observer = new MutationObserver(debouncedAttach);
+    observer.observe(viewport, { childList: true, subtree: true });
+  }
+
   attachCurrentViews();
 
   return () => {
+    observer?.disconnect();
+    viewport?.removeEventListener('click', viewportClick);
     rendition.off('rendered', rendered);
+    rendition.off('relocated', onRelocated);
+    if (rafId !== null) cancelAnimationFrame(rafId);
     for (const cleanup of cleanups.values()) cleanup();
     cleanups.clear();
   };
@@ -101,6 +147,10 @@ function attachDocument(
     image.style.cursor = 'zoom-in';
     image.setAttribute('title', image.getAttribute('title') || 'Click to enlarge; right-click for tools');
   }
+  for (const svgImage of Array.from(document.querySelectorAll('svg image'))) {
+    (svgImage as SVGElement).style.cursor = 'zoom-in';
+    svgImage.setAttribute('data-reader-image', 'true');
+  }
 
   const clearLongPress = () => {
     if (longPressTimer !== null) content.window.clearTimeout(longPressTimer);
@@ -112,11 +162,19 @@ function attachDocument(
     const rect = frame?.getBoundingClientRect();
     return { x: (rect?.left ?? 0) + event.clientX, y: (rect?.top ?? 0) + event.clientY };
   };
-  const imageElementFromEvent = (event: Event) => {
-    const candidate = event.target as { tagName?: string } | null;
-    return candidate?.tagName?.toUpperCase() === 'IMG'
-      ? event.target as HTMLImageElement
-      : null;
+  const imageElementFromEvent = (event: Event): HTMLImageElement | SVGImageElement | null => {
+    const target = event.target as Element | null;
+    if (!target) return null;
+    const tag = target.tagName?.toUpperCase();
+    if (tag === 'IMG') return target as HTMLImageElement;
+    if (tag === 'IMAGE') {
+      // SVG <image>（SVGImageElement）的 tagName 是 'IMAGE'，用 namespaceURI 与 HTML 区分
+      const ns = target.namespaceURI ?? '';
+      if (ns === 'http://www.w3.org/2000/svg') {
+        return target as unknown as SVGImageElement;
+      }
+    }
+    return null;
   };
   const reportUnresolvedImage = () => handlers.onError(
     '\u65e0\u6cd5\u8bfb\u53d6\u8fd9\u5f20\u56fe\u7247\u7684\u663e\u793a\u5730\u5740\u3002',
@@ -214,27 +272,49 @@ function attachDocument(
 }
 
 function resolveImageTarget(
-  image: HTMLImageElement,
+  image: HTMLImageElement | SVGImageElement,
   sectionHref: string,
   epubRootUrl: string,
   bookId: string,
 ): ReaderImageTarget | null {
-  const rawSource = image.getAttribute('src') || image.getAttribute('xlink:href') || '';
-  const displayUrl = image.currentSrc || image.src || rawSource;
-  if (!displayUrl || /^javascript:/i.test(displayUrl)) return null;
+  const rawSource =
+    image.getAttribute('src')
+    || image.getAttribute('href')        // SVG2 标准属性
+    || image.getAttribute('xlink:href')  // SVG1 旧属性
+    || '';
+  if (!rawSource || /^javascript:/i.test(rawSource)) return null;
 
-  const candidates = [rawSource, image.currentSrc, image.src].filter(Boolean);
+  // 收集候选 base：优先用 image 所在 document 的 baseURI（含完整 OPF 目录前缀，
+  // 如 OEBPS/），再用传入的 sectionHref（spine 相对 href，可能丢前缀）作为 fallback。
+  const docBaseUri = image.ownerDocument?.baseURI ?? '';
+  const docEntryPath = docBaseUri
+    ? entryPathFromProtocolUrl(docBaseUri, epubRootUrl, bookId)
+    : null;
+  const bases = [docEntryPath, sectionHref].filter(
+    (value): value is string => Boolean(value),
+  );
+
   let entryPath: string | null = null;
-  for (const candidate of candidates) {
-    entryPath = entryPathFromProtocolUrl(candidate, epubRootUrl, bookId)
-      || resolveRelativeEntryPath(sectionHref, candidate);
-    if (entryPath) break;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rawSource) && !rawSource.startsWith('blob:')) {
+    entryPath = entryPathFromProtocolUrl(rawSource, epubRootUrl, bookId);
   }
+  if (!entryPath) {
+    for (const base of bases) {
+      entryPath = resolveRelativeEntryPath(base, rawSource);
+      if (entryPath) break;
+    }
+  }
+  if (!entryPath) return null;
+
+  // 用平台层抽象的 epubRootUrl 构造 displayUrl（Windows: http://epub.localhost/...;
+  // Android: epub://localhost/...），确保外层 React <img> 能被 webview 正确加载。
+  // 硬编码 epub:// 在 Windows WebView2 对 <img> 资源加载有 edge case。
+  const displayUrl = `${epubRootUrl}${entryPath}`;
 
   return {
     url: displayUrl,
     entryPath,
-    alt: image.alt || entryPath?.split('/').pop() || 'EPUB image',
+    alt: (image as HTMLImageElement).alt || entryPath.split('/').pop() || 'EPUB image',
   };
 }
 

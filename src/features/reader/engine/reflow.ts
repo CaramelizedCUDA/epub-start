@@ -234,15 +234,15 @@ export function readerViewportGeometry(
   if (width <= 0 || height <= 0) return null;
 
   const availableWidth = Math.floor(width);
-  const maxColumnWidth = settings?.max_column_width_px ?? availableWidth;
   const spread = resolveSpread(settings, availableWidth);
   const gap = spread === 'both' ? PAGINATED_GAP_PX : 0;
-  const widthLimit = spread === 'both'
-    ? maxColumnWidth * 2 + gap
-    : maxColumnWidth;
+  const maxColumnWidth = settings?.max_column_width_px ?? availableWidth;
+  const layoutWidth = spread === 'both'
+    ? Math.min(availableWidth, maxColumnWidth * 2 + gap)
+    : Math.min(availableWidth, maxColumnWidth);
 
   return {
-    width: Math.max(1, Math.min(availableWidth, widthLimit)),
+    width: Math.max(1, Math.floor(layoutWidth)),
     height: Math.max(1, Math.floor(height)),
     spread,
     gap,
@@ -378,6 +378,13 @@ export function readingBackground(settings: ReadingSettings | null): string {
   if (settings?.theme === 'light') return '#f8fafc';
   if (settings?.theme === 'sepia') return '#f4ecd8';
   return '#111827';
+}
+
+export async function waitForRenditionReady(rendition: Rendition): Promise<void> {
+  // `display()` may emit `relocated` before this helper is called; wait for
+  // iframe assets and two layout frames instead of waiting for a missed event.
+  await waitForRenderedAssets(rendition);
+  await waitForViewportLayout();
 }
 
 function readCurrentCfi(rendition: Rendition): Promise<string | null> {

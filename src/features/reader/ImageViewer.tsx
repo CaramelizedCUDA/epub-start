@@ -27,6 +27,7 @@ export function ImageViewer({
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [menuPoint, setMenuPoint] = useState(initialMenuPoint);
+  const [showInteractionHint, setShowInteractionHint] = useState(true);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     distance: number;
@@ -43,6 +44,12 @@ export function ImageViewer({
     setOffset({ x: 0, y: 0 });
     setMenuPoint(initialMenuPoint);
   }, [target, initialMenuPoint]);
+
+  useEffect(() => {
+    setShowInteractionHint(true);
+    const timer = window.setTimeout(() => setShowInteractionHint(false), 800);
+    return () => window.clearTimeout(timer);
+  }, [target.url]);
 
   useEffect(() => () => {
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
@@ -147,6 +154,7 @@ export function ImageViewer({
           className="max-h-full max-w-full select-none object-contain"
           style={{
             transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+            transformOrigin: 'center center',
             cursor: scale > 1 ? 'grab' : 'zoom-in',
           }}
           onWheel={(event) => {
@@ -169,15 +177,20 @@ export function ImageViewer({
             setMenuPoint({ x: event.clientX, y: event.clientY });
           }}
         />
-        <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded bg-black/60 px-3 py-1 text-xs text-gray-300">
-          滚轮或双指缩放；放大后拖动；单击空白或图片返回正文
-        </p>
+        {showInteractionHint && (
+          <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded bg-black/60 px-3 py-1 text-xs text-gray-300">
+            滚轮或双指缩放；放大后拖动；单击空白或图片返回正文
+          </p>
+        )}
       </div>
 
       {menuPoint && (
         <div
           className="fixed z-50 min-w-44 rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
-          style={{ left: Math.min(menuPoint.x, window.innerWidth - 190), top: Math.min(menuPoint.y, window.innerHeight - 110) }}
+          style={{
+            left: Math.max(8, Math.min(menuPoint.x, window.innerWidth - 190)),
+            top: Math.max(8, Math.min(menuPoint.y, window.innerHeight - 110)),
+          }}
           onClick={(event) => event.stopPropagation()}
         >
           <p className="px-3 py-1 text-xs text-gray-400">更多工具</p>
@@ -186,8 +199,8 @@ export function ImageViewer({
             className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-700"
             onClick={() => {
               setMenuPoint(null);
-              setScale((current) => current > 1 ? 1 : 2);
-              if (scale > 1) setOffset({ x: 0, y: 0 });
+              setScale((current) => (current === 1 ? 2 : 1));
+              setOffset({ x: 0, y: 0 });
             }}
           >
             {scale > 1 ? '恢复原始大小' : '放大图像'}

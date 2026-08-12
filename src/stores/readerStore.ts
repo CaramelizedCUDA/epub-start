@@ -14,6 +14,7 @@ import {
   resizeToViewport,
   restoreFirstVisibleLine,
   settleInitialPagination,
+  waitForRenditionReady,
   toggleWindowFullscreen,
 } from '../features/reader/engine/reflow';
 
@@ -26,6 +27,7 @@ const SAVE_THROTTLE_MS = 3000;
 let relocatedHandler: ((...args: unknown[]) => void) | null = null;
 let continuousScrollCleanup: (() => void) | null = null;
 let readerSession = 0;
+let settingsApplyQueue: Promise<void> = Promise.resolve();
 
 type ReaderLocationUpdate = Pick<
   ReaderState,
@@ -417,64 +419,71 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     set({ searchResults: results });
   },
 
-  applyReadingSettings: async (settings: ReadingSettings) => {
-    const {
-      rendition,
-      book,
-      bookId,
-      currentCfi,
-      currentPage,
-      totalPages,
-      readingSettings,
-    } = get();
-    set({ readingSettings: settings });
-    if (!rendition) return;
+  applyReadingSettings: (settings: ReadingSettings) => {
+    const run = settingsApplyQueue
+      .catch(() => undefined)
+      .then(async () => {
+        const {
+          rendition,
+          book,
+          bookId,
+          currentCfi,
+          currentPage,
+          totalPages,
+          readingSettings,
+        } = get();
+        set({ readingSettings: settings });
+        if (!rendition) return;
 
-    if (bookId && currentCfi) {
-      await saveReadingProgress({
-        bookId,
-        locationCfi: currentCfi,
-        progression: totalPages > 0 ? currentPage / totalPages : 0,
+        if (bookId && currentCfi) {
+          await saveReadingProgress({
+            bookId,
+            locationCfi: currentCfi,
+            progression: totalPages > 0 ? currentPage / totalPages : 0,
+          });
+        }
+
+        const previousFlow = readingSettings?.flow ?? 'paginated';
+        if (book && previousFlow !== settings.flow) {
+          const firstVisibleLine = captureFirstVisibleLine(rendition);
+          clearFirstLineOffset(rendition);
+          continuousScrollCleanup?.();
+          continuousScrollCleanup = null;
+          if (relocatedHandler) rendition.off('relocated', relocatedHandler);
+          rendition.destroy();
+
+          const replacement = createRendition(book, settings);
+          relocatedHandler = createRelocatedHandler(
+            bookId ?? '',
+            () => get().toc,
+            (location) => set(location),
+          );
+          replacement.on('relocated', relocatedHandler);
+          set({ rendition: replacement });
+          await replacement.display(firstVisibleLine?.cfi ?? currentCfi ?? undefined);
+          await waitForRenditionReady(replacement);
+          if (firstVisibleLine) {
+            await waitForReaderLayout();
+            restoreFirstVisibleLine(replacement, firstVisibleLine);
+          }
+          if (settings.flow === 'scrolled') {
+            continuousScrollCleanup = installContinuousScrollStabilizer(replacement);
+          }
+          return;
+        }
+
+        await preserveAndReflow(
+          rendition,
+          () => resizeToViewport(rendition, settings),
+          {
+            restoreTheme: true,
+            settings,
+            preserveTextAnchor: settings.flow === 'paginated',
+          },
+        );
       });
-    }
-
-    const previousFlow = readingSettings?.flow ?? 'paginated';
-    if (book && previousFlow !== settings.flow) {
-      const firstVisibleLine = captureFirstVisibleLine(rendition);
-      clearFirstLineOffset(rendition);
-      continuousScrollCleanup?.();
-      continuousScrollCleanup = null;
-      if (relocatedHandler) rendition.off('relocated', relocatedHandler);
-      rendition.destroy();
-
-      const replacement = createRendition(book, settings);
-      relocatedHandler = createRelocatedHandler(
-        bookId ?? '',
-        () => get().toc,
-        (location) => set(location),
-      );
-      replacement.on('relocated', relocatedHandler);
-      set({ rendition: replacement });
-      await replacement.display(firstVisibleLine?.cfi ?? currentCfi ?? undefined);
-      if (firstVisibleLine) {
-        await waitForReaderLayout();
-        restoreFirstVisibleLine(replacement, firstVisibleLine);
-      }
-      if (settings.flow === 'scrolled') {
-        continuousScrollCleanup = installContinuousScrollStabilizer(replacement);
-      }
-      return;
-    }
-
-    await preserveAndReflow(
-      rendition,
-      () => resizeToViewport(rendition, settings),
-      {
-        restoreTheme: true,
-        settings,
-        preserveTextAnchor: settings.flow === 'paginated',
-      },
-    );
+    settingsApplyQueue = run;
+    return run;
   },
 
   reflowViewport: async () => {

@@ -48,6 +48,23 @@ npm run tauri build
 
 需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。Android 设备验收还需要已配置的 Android SDK/NDK、模拟器或真实设备；桌面构建通过不能替代 Android 重启后的持久权限验收。
 
+## 测试 EPUB
+
+`这里是终末停滞委员会/` 是本地功能验收用的 EPUB 样本目录，仅保留在工作区、不纳入版本库（已在 `.gitignore` 排除），作为功能回归测试的固定样本。以下两本是当前主要验收文档：
+
+### `这里是终末停滞委员会 - 04.epub`（TODO #5 主要验收文档）
+
+- OPF 位于 `OEBPS/content.opf`（非根目录），spine href 相对 OPF 目录，用于验证 entryPath 解析是否保留 OPF 所在目录前缀。
+- 全页插图使用 `<svg><image xlink:href="../Images/204617.jpg"/></svg>`，用于验证 SVG `<image>` 检测、边缘翻页与图片查看器联动。
+- `rendition:spread-none` 属性的封面/前页章节用于验证 spread 模式下边缘翻页与 image 优先原则的交互。
+
+### `6（x）=.epub` / `epub/6.epub`（Phase 1 基线验收文档）
+
+- Phase 1 的导入、封面提取、删除、EPUB 阅读、可见翻页与应用重启后的 CFI 恢复均以此书验收。
+- OPF 位于 `item/standard.opf`（根目录下的子目录），与 vol04 的 `OEBPS/` 结构不同，用于验证不同 OPF 路径布局的兼容性。
+- 全页插图使用 `<svg><image xlink:href="../image/i-071.jpg"/></svg>`（单数 `image/` 目录），用于验证 SVG `<image>` 检测在另一种路径布局下的行为。
+- 正文章节含 `page-spread-left` / `page-spread-right` 属性，用于验证 spread 双页模式下左右 View 的 click handler attach 及边缘翻页稳定性。
+
 ## 开发原则
 
 - React 负责 UI 与 EPUB.js iframe 渲染；Rust 负责文件、ZIP/XML、SQLite、权限和自定义协议。
