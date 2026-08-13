@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager, Runtime};
 use super::FileMetadata;
 use crate::db::models::{SelectedSource, SourceKind};
 
-const PLUGIN_IDENTIFIER: &str = "com.epubstart.app";
+const PLUGIN_IDENTIFIER: &str = "com.epubstart.reader";
 const PLUGIN_CLASS: &str = "EpubSafPlugin";
 
 struct EpubSaf<R: Runtime>(PluginHandle<R>);

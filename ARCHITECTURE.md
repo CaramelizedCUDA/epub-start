@@ -25,7 +25,7 @@ src-tauri/src/
   protocol/                   # 资源 URI 路由与受控响应，不解析格式
   services/                   # 导入、打开、删除、批注、设置、目录管理与索引等用例编排
   lib.rs                      # 应用状态、插件和 Command 注册
-src-tauri/gen/android/app/src/main/java/com/epubstart/app/
+src-tauri/gen/android/app/src/main/java/com/epubstart/reader/
   EpubSafPlugin.kt            # 项目自有 Tauri Android SAF 插件
 ```
 
@@ -93,7 +93,7 @@ CFI 的 DOM 解析、高亮 range 生成和渲染继续属于前端 EPUB.js 适�
 
 ## 前端 Phase 2 结构
 
-分页正文点击由 EPUB iframe 捕获事件，但判定方向时必须换算为阅读器视口坐标，并按整个视口左右各 25% 命中；一个用户点击只允许触发一次翻页，滚动模式不得启用该命中区。图片、链接、表单控件和活动文本选区必须优先。
+分页正文点击由 EPUB iframe 捕获事件，但判定方向时必须换算为阅读器视口坐标，并按整个视口左右各 25% 命中；一个用户点击只允许触发一次翻页，滚动模式不得启用该命中区。图片、链接、表单控件、活动文本选区和已渲染的高亮标记必须优先。
 
 图片查看与图片导出是独立能力。事件绑定优先使用 Rendition `rendered(section, view)` 的章节 href 与 view contents；查看器可使用当前已加载的 `currentSrc/src`，导出则仍必须解析并校验受控 EPUB 条目路径。图片左键和右键事件必须先阻止 WebView 原生菜单与正文导航；导出路径无法解析时仍允许查看，但导出必须返回受控错误。
 
@@ -105,5 +105,7 @@ src/stores/                  # Zustand 业务状态
 ```
 
 上一页、下一页、目录、搜索、批注和阅读设置必须有屏幕上可发现的控件；键盘、触摸区和悬停只能作为补充。分页正文左右各 25% 的点击翻页在 EPUB iframe 内判定，图片、链接、表单控件和活动文本选区必须优先，不得用主页面透明元素覆盖 iframe 图片命中。书架页提供全局阅读设置与全屏/退出全屏入口；书架设置只读取/保存全局默认值，不修改单书覆盖。目录由 EPUB.js 的 NCX/NAV 统一导航模型递归渲染，当前位置仅从 `relocated` 事件的章节 href 推导，不在 Rust 重复解析目录。分页使用 default manager；滚动阅读必须使用 continuous manager 预载相邻 spine 项并支持自然双向跨章滚动，向上预载或裁剪章节时必须以首个可见文本行校正滚动位置。排版切换通过重建 Rendition 保持 CFI。阅读设置由 Rust 持久化；数值项使用可键入的 `- / 输入框 / + / 单位` 控件，输入过程立即预览，按钮变化 300ms 防抖保存，失焦/Enter 提交键入值，保存失败重试一次且不回滚预览。设置、全屏、ESC 退出全屏和窗口尺寸变化都必须经 `reader/engine/reflow.ts` 串行执行“捕获视口第一条可见文本行的起始 CFI → 重排/resize → 等待 relocated → 重注入主题 → 恢复该 CFI”，禁止只恢复章节/页级 CFI 冒充目光锚点，也禁止调用点直接触发 `rendition.resize()`。连续滚动可再按原 `viewportY` 校正像素位置；分页模式不得通过 `top/transform` 平移 iframe 文档根元素，以免破坏 EPUB.js 多列坐标。样式仍只使用 TailwindCSS，EPUB iframe 内容样式通过 EPUB.js 注入。分页布局宽度由 `reader/engine/reflow.ts` 的 `readerViewportGeometry` 在 `renderTo`/`resize` 前统一计算：单页不超过 `max_column_width_px`，双页不超过 `2 * max_column_width_px + gap`；正文 body 不再注入 `max-width`，避免破坏 EPUB.js 的列宽与分页坐标。iframe 外侧点击由 reader engine 处理，保证缩窄布局时左右区域仍可翻页。自动跨页在桌面可用宽度达到 1000px 时采用双页，否则采用单页；首次展示在字体与图片稳定后以相同几何做一次锚定重排。
+
+高亮与批注由 `reader/engine/highlights.ts` 适配：Rendition `selected` 事件给出选区 CFI range，前端据此生成可独立定位的起止 CFI 与纯文本选中内容，经既有 notes 命令保存；`cfi_range` 通过 `rendition.annotations.highlight` 渲染为可点击标记，标记点击打开改色/编辑/删除菜单，批注列表点击按 `cfi_start` 定位并恢复。渲染、列表与正文输入只按纯文本处理。EPUB.js 在每次 view 渲染时自动重注入已注册标记，因此翻页与重启后只需重新注册一次；主题、排版切换或重建 Rendition 后必须重新注册全部标记。标记点击不得触发边缘翻页。
 
 EPUB 正文图片事件由 `reader/engine/imageInteractions.ts` 适配各 Rendition iframe；条目路径从 Rendition `rendered` 事件的章节 href 与图片原始相对 `src` 解析，或校验当前 `epub_root_url` 与 `book_id` 下的绝对资源 URL，不得依赖 WebView 最终生成的 `blob:` 地址反推来源。单击/触屏进入 React 图片查看器，并阻止事件继续触发正文导航。正文图片右键/长按菜单显示“更多工具”，至少包含“放大图像”和“另存为”；查看器负责有限倍率缩放、拖动、双指手势、返回正文、设置和全屏控件。图片导出不得把资源字节或来源路径交给前端：`save_book_image` 必须按 `book_id -> SourceLease -> ActiveFormat -> ResourceProvider -> 平台保存` 流转，复用协议层相同的 ZIP 单条目预算与路径规范化，只允许 `image/*` MIME。桌面通过系统保存对话框写入用户选择的文件；Android 在私有 SAF 插件加入 `ACTION_CREATE_DOCUMENT` 与设备验收前返回稳定的未支持错误，不得以 WebView 下载或普通主机路径绕过 SAF。

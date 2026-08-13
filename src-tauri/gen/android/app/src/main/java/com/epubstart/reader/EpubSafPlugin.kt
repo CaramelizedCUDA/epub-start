@@ -1,4 +1,4 @@
-package com.epubstart.app
+package com.epubstart.reader
 
 import android.app.Activity
 import android.content.Intent

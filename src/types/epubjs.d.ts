@@ -36,6 +36,32 @@ declare module 'epubjs' {
     };
   }
 
+  class Annotations {
+    add(
+      type: string,
+      cfiRange: string,
+      data?: object,
+      cb?: (...args: unknown[]) => void,
+      className?: string,
+      styles?: object,
+    ): unknown;
+    remove(cfiRange: string, type: string): void;
+    highlight(
+      cfiRange: string,
+      data?: object,
+      cb?: (...args: unknown[]) => void,
+      className?: string,
+      styles?: object,
+    ): unknown;
+  }
+
+  class EpubCFI {
+    constructor(cfiFrom?: string);
+    parse(cfiStr: string): EpubCFI;
+    collapse(toStart?: boolean): void;
+    toString(): string;
+  }
+
   class Rendition {
     settings: RenditionOptions;
     on(event: string, callback: (...args: unknown[]) => void): void;
@@ -47,8 +73,10 @@ declare module 'epubjs' {
     destroy(): void;
     resize(width: number, height: number, epubCfi?: string): void;
     themes: Themes;
+    annotations: Annotations;
     getContents(): Content[];
     views(): RenditionViews;
+    getRange(cfi: string, ignoreClass?: string): Range;
     flow(flow: string): void;
     spread(spread: string, min?: number): void;
   }
@@ -103,6 +131,6 @@ declare module 'epubjs' {
     Book: typeof Book;
   };
 
-  export { Book, Content, Rendition, Location };
+  export { Book, Content, Rendition, Location, EpubCFI };
   export default ePub;
 }

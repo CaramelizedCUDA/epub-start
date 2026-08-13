@@ -7,7 +7,7 @@ import {
   saveBookReadingSettings,
   saveGlobalReadingSettings,
 } from '../../lib/tauri';
-import type { ReadingSettings, ReadingSettingsResult } from '../../types/models';
+import type { Note, ReadingSettings, ReadingSettingsResult } from '../../types/models';
 import type { TocItem } from 'epubjs';
 import { readingBackground } from './engine/reflow';
 import {
@@ -15,7 +15,15 @@ import {
   type ReaderImageMenuRequest,
   type ReaderImageTarget,
 } from './engine/imageInteractions';
+import {
+  clearActiveSelection,
+  installHighlightEngine,
+  NOTE_COLORS,
+  type SelectionInfo,
+} from './engine/highlights';
 import { ImageViewer } from './ImageViewer';
+import { NotesPanel } from './NotesPanel';
+import { NoteEditorModal, NoteMenu, SelectionMenu } from './AnnotationMenu';
 
 const RESIZE_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 300;
@@ -25,6 +33,10 @@ interface EpubReaderProps {
   epubRootUrl: string;
   onClose: () => void;
 }
+
+type EditorDraft =
+  | { kind: 'new'; selection: SelectionInfo; color: string }
+  | { kind: 'edit'; note: Note };
 
 export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const {
@@ -46,6 +58,16 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     reflowViewport,
     toggleFullscreen,
     exitFullscreen,
+    notes,
+    pendingSelection,
+    clickedNote,
+    loadNotes,
+    setPendingSelection,
+    setClickedNote,
+    addNote,
+    editNote,
+    removeNote,
+    jumpToNote,
   } = useReaderStore();
 
   const openedRef = useRef(false);
@@ -63,6 +85,9 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const [imageTarget, setImageTarget] = useState<ReaderImageTarget | null>(null);
   const [imageMenu, setImageMenu] = useState<ReaderImageMenuRequest | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [editorDraft, setEditorDraft] = useState<EditorDraft | null>(null);
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const settingsDraftRef = useRef<ReadingSettings | null>(null);
   const settingsResultRef = useRef<ReadingSettingsResult | null>(null);
   const settingsScopeRef = useRef<'global' | 'book'>('global');
@@ -212,6 +237,17 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (editorDraft) {
+          setEditorDraft(null);
+          clearActiveSelection();
+          return;
+        }
+        if (pendingSelection || clickedNote) {
+          setPendingSelection(null);
+          setClickedNote(null);
+          clearActiveSelection();
+          return;
+        }
         exitFullscreen()
           .then((exited) => { if (exited) setIsFullscreen(false); })
           .catch((err: unknown) => setSettingsError(err instanceof Error ? err.message : String(err)));
@@ -229,7 +265,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [nextPage, prevPage, exitFullscreen]);
+  }, [nextPage, prevPage, exitFullscreen, editorDraft, pendingSelection, clickedNote, setPendingSelection, setClickedNote]);
 
   useEffect(() => {
     if (!rendition || isLoading) return;
@@ -270,6 +306,128 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       isPaginated: () => settingsDraftRef.current?.flow !== 'scrolled',
     });
   }, [rendition, isLoading, epubRootUrl, bookId, prevPage, nextPage]);
+
+  // 打开完成后加载批注并恢复高亮标记。
+  useEffect(() => {
+    if (isLoading || !openedRef.current) return;
+    loadNotes().catch((err: unknown) => {
+      setNotesError(err instanceof Error ? err.message : String(err));
+    });
+  }, [isLoading, loadNotes]);
+
+  // 选区与高亮标记点击的引擎适配：selection → 浮动菜单，标记点击 → 批注菜单。
+  useEffect(() => {
+    if (!rendition || isLoading) return;
+    return installHighlightEngine(rendition, {
+      onSelect: (selection) => {
+        setClickedNote(null);
+        setPendingSelection(selection);
+      },
+      onMarkClick: (click) => {
+        setPendingSelection(null);
+        setClickedNote(click);
+      },
+      onSelectionCleared: () => setPendingSelection(null),
+      onDocumentInteraction: () => setClickedNote(null),
+    });
+  }, [rendition, isLoading, setPendingSelection, setClickedNote]);
+
+  const handleHighlight = (color: string) => {
+    const selection = pendingSelection;
+    if (!selection) return;
+    setPendingSelection(null);
+    clearActiveSelection();
+    setNotesError(null);
+    setIsSavingNote(true);
+    addNote({
+      book_id: bookId,
+      cfi_start: selection.cfiStart,
+      cfi_end: selection.cfiEnd,
+      cfi_range: selection.cfiRange,
+      selected_text: selection.selectedText,
+      content: '',
+      color,
+    })
+      .catch((err: unknown) => setNotesError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setIsSavingNote(false));
+  };
+
+  const openNoteEditorForSelection = () => {
+    const selection = pendingSelection;
+    if (!selection) return;
+    setPendingSelection(null);
+    setEditorDraft({ kind: 'new', selection, color: NOTE_COLORS[0] });
+  };
+
+  const openNoteEditorForNote = (note: Note) => {
+    setClickedNote(null);
+    setNotesError(null);
+    setEditorDraft({ kind: 'edit', note });
+  };
+
+  const saveEditorDraft = (content: string, color: string) => {
+    if (!editorDraft) return;
+    setNotesError(null);
+    setIsSavingNote(true);
+    const run =
+      editorDraft.kind === 'new'
+        ? addNote({
+            book_id: bookId,
+            cfi_start: editorDraft.selection.cfiStart,
+            cfi_end: editorDraft.selection.cfiEnd,
+            cfi_range: editorDraft.selection.cfiRange,
+            selected_text: editorDraft.selection.selectedText,
+            content: content.trim(),
+            color,
+          })
+        : editNote({
+            id: editorDraft.note.id,
+            cfi_start: editorDraft.note.cfi_start,
+            cfi_end: editorDraft.note.cfi_end,
+            cfi_range: editorDraft.note.cfi_range,
+            selected_text: editorDraft.note.selected_text,
+            content: content.trim(),
+            color,
+          });
+    run
+      .then(() => {
+        clearActiveSelection();
+        setEditorDraft(null);
+      })
+      .catch((err: unknown) => setNotesError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setIsSavingNote(false));
+  };
+
+  const handleDeleteNote = (noteId: string) => {
+    setNotesError(null);
+    setIsSavingNote(true);
+    removeNote(noteId)
+      .then(() => {
+        setEditorDraft(null);
+        setClickedNote(null);
+      })
+      .catch((err: unknown) => setNotesError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setIsSavingNote(false));
+  };
+
+  const handleNoteColor = (note: Note, color: string) => {
+    if (note.color === color) return;
+    setNotesError(null);
+    editNote({
+      id: note.id,
+      cfi_start: note.cfi_start,
+      cfi_end: note.cfi_end,
+      cfi_range: note.cfi_range,
+      selected_text: note.selected_text,
+      content: note.content,
+      color,
+    }).catch((err: unknown) => setNotesError(err instanceof Error ? err.message : String(err)));
+  };
+
+  const handleJumpToNote = (noteId: string) => {
+    jumpToNote(noteId);
+    setShowNotes(false);
+  };
 
   const handleFullscreen = async () => {
     setSettingsError(null);
@@ -324,6 +482,10 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     );
   }
 
+  const clickedNoteNote = clickedNote
+    ? notes.find((note) => note.id === clickedNote.noteId)
+    : undefined;
+
   return (
     <div
       className="h-screen flex flex-col text-white"
@@ -367,7 +529,13 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
             </div>
           )}
           {showSearch && <div><h2 className="font-semibold mb-2">搜索当前书籍</h2><div className="flex gap-2"><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="搜索当前书籍" className="min-w-0 flex-1 rounded bg-gray-700 px-3 py-2" placeholder="输入关键词" /><button onClick={() => searchCurrentBook(query)} className="reader-control">查找</button></div><div className="mt-3 max-h-72 space-y-2 overflow-y-auto">{searchResults.map((result, index) => <button key={`${result.href}-${index}`} onClick={() => goToHref(result.href)} className="block w-full rounded bg-gray-700/60 p-2 text-left text-xs">{result.excerpt}</button>)}</div></div>}
-          {showNotes && <div><h2 className="font-semibold mb-2">批注</h2><p className="text-sm text-gray-400">选择正文后可创建高亮或批注。</p></div>}
+          {showNotes && (
+            <NotesPanel
+              onJump={handleJumpToNote}
+              onEdit={openNoteEditorForNote}
+              onDelete={(noteId) => void handleDeleteNote(noteId)}
+            />
+          )}
           {showSettings && settingsDraft && (
             <div>
               <h2 className="mb-3 font-semibold">阅读设置</h2>
@@ -462,6 +630,63 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       {imageError && (
         <div className="fixed bottom-4 left-1/2 z-[60] max-w-xl -translate-x-1/2 rounded border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-100 shadow-xl">
           {imageError}
+        </div>
+      )}
+
+      {pendingSelection && !editorDraft && (
+        <SelectionMenu
+          selection={pendingSelection}
+          onHighlight={handleHighlight}
+          onAddNote={openNoteEditorForSelection}
+          onClose={() => {
+            setPendingSelection(null);
+            clearActiveSelection();
+          }}
+        />
+      )}
+      {clickedNoteNote && clickedNote && !editorDraft && (
+        <NoteMenu
+          note={clickedNoteNote}
+          point={clickedNote.point}
+          onColor={(color) => handleNoteColor(clickedNoteNote, color)}
+          onEdit={() => openNoteEditorForNote(clickedNoteNote)}
+          onDelete={() => void handleDeleteNote(clickedNoteNote.id)}
+          onClose={() => setClickedNote(null)}
+        />
+      )}
+      {editorDraft && (
+        <NoteEditorModal
+          title={editorDraft.kind === 'new' ? '添加批注' : '编辑批注'}
+          excerpt={
+            editorDraft.kind === 'new'
+              ? editorDraft.selection.selectedText
+              : editorDraft.note.selected_text
+          }
+          initialContent={editorDraft.kind === 'new' ? '' : editorDraft.note.content}
+          initialColor={editorDraft.kind === 'new' ? editorDraft.color : editorDraft.note.color}
+          canDelete={editorDraft.kind === 'edit'}
+          saving={isSavingNote}
+          error={notesError}
+          onSave={saveEditorDraft}
+          onDelete={() => {
+            if (editorDraft.kind === 'edit') void handleDeleteNote(editorDraft.note.id);
+          }}
+          onCancel={() => {
+            setEditorDraft(null);
+            clearActiveSelection();
+          }}
+        />
+      )}
+      {notesError && !editorDraft && (
+        <div className="fixed bottom-4 left-1/2 z-[60] flex max-w-xl -translate-x-1/2 items-center gap-3 rounded border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-100 shadow-xl">
+          <span>{notesError}</span>
+          <button
+            type="button"
+            onClick={() => setNotesError(null)}
+            className="text-xs text-red-300 underline hover:text-red-100"
+          >
+            关闭
+          </button>
         </div>
       )}
     </div>

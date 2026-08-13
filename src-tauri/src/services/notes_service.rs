@@ -138,3 +138,238 @@ fn lock_db(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connectio
     db.lock()
         .map_err(|_| "INTERNAL_ERROR: database is unavailable".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::migrations::run_migrations;
+
+    fn test_db() -> Mutex<Connection> {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO books VALUES ('b','Title','[]','epub',NULL,'/book.epub','desktop_path',1,2,NULL,'available',NULL,3,4)",
+            [],
+        )
+        .unwrap();
+        Mutex::new(conn)
+    }
+
+    fn valid_input() -> CreateNoteInput {
+        CreateNoteInput {
+            book_id: "b".into(),
+            cfi_start: "epubcfi(/6/4[chap01]!/4[body01]/10[para05]/3:10)".into(),
+            cfi_end: "epubcfi(/6/4[chap01]!/4[body01]/10[para05]/5:2)".into(),
+            cfi_range: Some(
+                "epubcfi(/6/4[chap01]!/4[body01]/10[para05]/3:10,/6/4[chap01]!/4[body01]/10[para05]/5:2)"
+                    .into(),
+            ),
+            selected_text: "selected words".into(),
+            content: "".into(),
+            color: "#AABBCC".into(),
+        }
+    }
+
+    #[test]
+    fn create_note_normalizes_color_and_generates_audit_fields() {
+        let db = test_db();
+        let note = create_note(&db, valid_input()).unwrap();
+        assert!(!note.id.is_empty());
+        assert_eq!(note.color, "#aabbcc");
+        assert_eq!(note.book_id, "b");
+        assert!(note.created_at > 0);
+        assert_eq!(note.updated_at, note.created_at);
+        let listed = list_notes(&db, "b").unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, note.id);
+    }
+
+    #[test]
+    fn cfi_round_trips_through_database_exactly() {
+        let db = test_db();
+        let input = valid_input();
+        let created = create_note(&db, input.clone()).unwrap();
+        let listed = list_notes(&db, "b").unwrap();
+        assert_eq!(listed.len(), 1);
+        let stored = &listed[0];
+        assert_eq!(stored.id, created.id);
+        assert_eq!(stored.cfi_start, input.cfi_start);
+        assert_eq!(stored.cfi_end, input.cfi_end);
+        assert_eq!(stored.cfi_range, input.cfi_range);
+        assert_eq!(stored.selected_text, input.selected_text);
+    }
+
+    #[test]
+    fn create_note_rejects_empty_cfi() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.cfi_start = String::new();
+        let err = create_note(&db, input).unwrap_err();
+        assert!(
+            err.starts_with("VALIDATION_ERROR:"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn create_note_rejects_overlong_cfi() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.cfi_start = "x".repeat(4_097);
+        let err = create_note(&db, input).unwrap_err();
+        assert!(err.contains("CFI is too long"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn create_note_rejects_overlong_range_cfi() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.cfi_range = Some("x".repeat(4_097));
+        let err = create_note(&db, input).unwrap_err();
+        assert!(err.contains("CFI is too long"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn create_note_rejects_overlong_selected_text() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.selected_text = "x".repeat(10_001);
+        let err = create_note(&db, input).unwrap_err();
+        assert!(
+            err.contains("selected text is too long"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn create_note_rejects_overlong_content() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.content = "x".repeat(20_001);
+        let err = create_note(&db, input).unwrap_err();
+        assert!(
+            err.contains("note content is too long"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn create_note_rejects_invalid_color() {
+        let db = test_db();
+        for bad in ["red", "#12345", "#12345g", "112233", "##112233"] {
+            let mut input = valid_input();
+            input.color = bad.into();
+            let err = create_note(&db, input).unwrap_err();
+            assert!(
+                err.contains("color must be #RRGGBB"),
+                "color {bad:?} produced: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn create_note_trims_and_normalizes_whitespace_padded_color() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.color = " #112233 ".into();
+        let note = create_note(&db, input).unwrap();
+        assert_eq!(note.color, "#112233");
+    }
+
+    #[test]
+    fn create_note_rejects_unknown_book() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.book_id = "missing".into();
+        let err = create_note(&db, input).unwrap_err();
+        assert!(
+            err.starts_with("BOOK_NOT_FOUND:"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn list_notes_rejects_unknown_book() {
+        let db = test_db();
+        let err = list_notes(&db, "missing").unwrap_err();
+        assert!(
+            err.starts_with("BOOK_NOT_FOUND:"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn update_note_preserves_book_id_and_created_at() {
+        let db = test_db();
+        let created = create_note(&db, valid_input()).unwrap();
+        let update = UpdateNoteInput {
+            id: created.id.clone(),
+            cfi_start: created.cfi_start.clone(),
+            cfi_end: created.cfi_end.clone(),
+            cfi_range: created.cfi_range.clone(),
+            selected_text: created.selected_text.clone(),
+            content: "new annotation text".into(),
+            color: "#00FF00".into(),
+        };
+        let updated = update_note(&db, update).unwrap();
+        assert_eq!(updated.book_id, created.book_id);
+        assert_eq!(updated.created_at, created.created_at);
+        assert_eq!(updated.color, "#00ff00");
+        assert_eq!(updated.content, "new annotation text");
+        assert!(updated.updated_at >= created.updated_at);
+    }
+
+    #[test]
+    fn update_note_rejects_overlong_content() {
+        let db = test_db();
+        let created = create_note(&db, valid_input()).unwrap();
+        let update = UpdateNoteInput {
+            id: created.id.clone(),
+            cfi_start: created.cfi_start,
+            cfi_end: created.cfi_end,
+            cfi_range: created.cfi_range,
+            selected_text: created.selected_text,
+            content: "x".repeat(20_001),
+            color: created.color,
+        };
+        let err = update_note(&db, update).unwrap_err();
+        assert!(
+            err.contains("note content is too long"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn update_missing_note_returns_not_found() {
+        let db = test_db();
+        let mut input = valid_input();
+        input.content = "text".into();
+        let update = UpdateNoteInput {
+            id: "nope".into(),
+            cfi_start: input.cfi_start,
+            cfi_end: input.cfi_end,
+            cfi_range: input.cfi_range,
+            selected_text: input.selected_text,
+            content: input.content,
+            color: input.color,
+        };
+        let err = update_note(&db, update).unwrap_err();
+        assert!(
+            err.starts_with("NOTE_NOT_FOUND:"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn delete_note_removes_row_and_second_delete_fails() {
+        let db = test_db();
+        let created = create_note(&db, valid_input()).unwrap();
+        delete_note(&db, &created.id).unwrap();
+        assert!(list_notes(&db, "b").unwrap().is_empty());
+        let err = delete_note(&db, &created.id).unwrap_err();
+        assert!(
+            err.starts_with("NOTE_NOT_FOUND:"),
+            "unexpected error: {err}"
+        );
+    }
+}

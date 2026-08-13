@@ -6,7 +6,7 @@
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复已验收。Phase 1 功能开发已经结束；Android SAF 的 Rust/Kotlin 构建与设备验收因缺少 SDK/NDK 和设备环境列为外部阻塞，不得据此宣称全平台验收完成。当前开发阶段为 Phase 2；来源指纹、受控 Reader、ZIP 安全预算、格式注册表、V2/V3 迁移、基础图形工具栏、嵌套目录、数字步进阅读设置，以及批注/系列/标签的基础 IPC 已经落地；完整高亮批注、搜索和书架管理仍按 TODO 推进。
+仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复已验收。Phase 1 功能开发已经结束；Android SAF 的 Rust/Kotlin 构建与设备验收因缺少 SDK/NDK 和设备环境列为外部阻塞，不得据此宣称全平台验收完成。当前开发阶段为 Phase 2；来源指纹、受控 Reader、ZIP 安全预算、格式注册表、V2/V3 迁移、基础图形工具栏、嵌套目录、数字步进阅读设置、批注/系列/标签的基础 IPC，以及图形化高亮批注（选区浮动菜单、纯高亮、批注文字、改色、编辑、删除、列表与点击跳转、重启恢复）已经落地；完整搜索和书架管理仍按 TODO 推进。
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块职责、目录边界与资源访问原则。
 - [DATABASE.md](DATABASE.md)：SQLite 的唯一 Schema 定义与迁移规则。

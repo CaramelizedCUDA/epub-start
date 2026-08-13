@@ -1,3 +1,7 @@
+// MSVC 链接器构建 cdylib 时向 stdout 打印 "Creating library ..."，
+// cargo 将其作为 linker_messages 警告上抛；该输出无害，按项目惯例静默。
+#![allow(linker_messages)]
+
 mod commands;
 mod db;
 mod formats;

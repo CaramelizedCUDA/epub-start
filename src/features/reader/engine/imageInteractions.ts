@@ -1,4 +1,5 @@
 import type { Content, Rendition } from 'epubjs';
+import { isPointOnHighlightMark } from './highlights';
 
 export interface ReaderImageTarget {
   url: string;
@@ -198,6 +199,12 @@ function attachDocument(
     }
 
     if (!handlers.isPaginated() || hasActiveSelection(document) || isInteractiveElement(event.target)) return;
+    // 已渲染的高亮标记优先于边缘翻页：点击高亮区域只打开批注菜单，不翻页。
+    if (isPointOnHighlightMark(document, event.clientX, event.clientY)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const viewport = window.document.getElementById('epub-reader-viewport');
     const viewportRect = viewport?.getBoundingClientRect();
     if (!viewportRect || viewportRect.width <= 0) return;

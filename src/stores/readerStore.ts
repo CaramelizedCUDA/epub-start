@@ -1,8 +1,26 @@
 import { create } from 'zustand';
 import ePub from 'epubjs';
 import type { Book, Rendition, TocItem } from 'epubjs';
-import { getReadingProgress, saveReadingProgress } from '../lib/tauri';
-import type { ReadingSettings } from '../types/models';
+import {
+  createNote as createNoteIpc,
+  deleteNote as deleteNoteIpc,
+  getReadingProgress,
+  listNotes,
+  saveReadingProgress,
+  updateNote as updateNoteIpc,
+} from '../lib/tauri';
+import type {
+  CreateNoteInput,
+  Note,
+  ReadingSettings,
+  UpdateNoteInput,
+} from '../types/models';
+import {
+  renderHighlight,
+  removeHighlight,
+  type HighlightMarkClick,
+  type SelectionInfo,
+} from '../features/reader/engine/highlights';
 import {
   captureFirstVisibleLine,
   clearFirstLineOffset,
@@ -144,6 +162,9 @@ interface ReaderState {
   isLoading: boolean;
   error: string | null;
   readingSettings: ReadingSettings | null;
+  notes: Note[];
+  pendingSelection: SelectionInfo | null;
+  clickedNote: HighlightMarkClick | null;
 
   open: (
     bookId: string,
@@ -160,6 +181,13 @@ interface ReaderState {
   reflowViewport: () => Promise<void>;
   toggleFullscreen: () => Promise<boolean>;
   exitFullscreen: () => Promise<boolean>;
+  loadNotes: () => Promise<void>;
+  setPendingSelection: (selection: SelectionInfo | null) => void;
+  setClickedNote: (click: HighlightMarkClick | null) => void;
+  addNote: (input: CreateNoteInput) => Promise<Note>;
+  editNote: (input: UpdateNoteInput) => Promise<Note>;
+  removeNote: (noteId: string) => Promise<void>;
+  jumpToNote: (noteId: string) => void;
 }
 
 export const useReaderStore = create<ReaderState>((set, get) => ({
@@ -176,6 +204,9 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   isLoading: false,
   error: null,
   readingSettings: null,
+  notes: [],
+  pendingSelection: null,
+  clickedNote: null,
 
   open: async (
     bookId: string,
@@ -362,6 +393,9 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       isLoading: false,
       error: null,
       readingSettings: null,
+      notes: [],
+      pendingSelection: null,
+      clickedNote: null,
     });
   },
 
@@ -469,6 +503,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           if (settings.flow === 'scrolled') {
             continuousScrollCleanup = installContinuousScrollStabilizer(replacement);
           }
+          renderNotesIn(replacement, get().notes, settings.theme, (click) => set({ clickedNote: click }));
           return;
         }
 
@@ -481,6 +516,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
             preserveTextAnchor: settings.flow === 'paginated',
           },
         );
+        renderNotesIn(rendition, get().notes, settings.theme, (click) => set({ clickedNote: click }));
       });
     settingsApplyQueue = run;
     return run;
@@ -511,6 +547,72 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     if (!rendition) return false;
     return exitWindowFullscreen(rendition, readingSettings);
   },
+
+  loadNotes: async () => {
+    const { bookId, rendition } = get();
+    if (!bookId) return;
+    const notes = await listNotes({ bookId });
+    set({ notes });
+    const theme = get().readingSettings?.theme ?? null;
+    if (rendition) {
+      renderNotesIn(rendition, notes, theme, (click) => set({ clickedNote: click }));
+    }
+  },
+
+  setPendingSelection: (selection) => set({ pendingSelection: selection }),
+
+  setClickedNote: (click) => set({ clickedNote: click }),
+
+  addNote: async (input) => {
+    const note = await createNoteIpc({ note: input });
+    set((state) => ({ notes: [...state.notes, note] }));
+    const rendition = get().rendition;
+    if (rendition) {
+      renderHighlight(
+        rendition,
+        note,
+        get().readingSettings?.theme ?? null,
+        (click) => set({ clickedNote: click }),
+      );
+    }
+    return note;
+  },
+
+  editNote: async (input) => {
+    const note = await updateNoteIpc({ note: input });
+    set((state) => ({
+      notes: state.notes.map((existing) => (existing.id === note.id ? note : existing)),
+    }));
+    const rendition = get().rendition;
+    if (rendition) {
+      renderHighlight(
+        rendition,
+        note,
+        get().readingSettings?.theme ?? null,
+        (click) => set({ clickedNote: click }),
+      );
+    }
+    return note;
+  },
+
+  removeNote: async (noteId) => {
+    const existing = get().notes.find((note) => note.id === noteId);
+    await deleteNoteIpc(noteId);
+    if (existing?.cfi_range && get().rendition) {
+      removeHighlight(get().rendition as Rendition, existing.cfi_range);
+    }
+    set((state) => ({ notes: state.notes.filter((note) => note.id !== noteId) }));
+  },
+
+  jumpToNote: (noteId) => {
+    const { rendition, notes } = get();
+    const note = notes.find((item) => item.id === noteId);
+    if (!rendition || !note) return;
+    clearFirstLineOffset(rendition);
+    rendition.display(note.cfi_start).catch((err: unknown) => {
+      console.error('Failed to jump to note:', noteId, err);
+    });
+  },
 }));
 
 function normalizeHref(href: string): string {
@@ -532,6 +634,22 @@ function waitForReaderLayout(): Promise<void> {
 
 function flattenToc(items: TocItem[]): TocItem[] {
   return items.flatMap((item) => [item, ...flattenToc(item.subitems ?? [])]);
+}
+
+/** 把当前批注列表渲染到指定 Rendition；单个标记失败不影响其余批注。 */
+function renderNotesIn(
+  rendition: Rendition,
+  notes: Note[],
+  theme: ReadingSettings['theme'] | null,
+  onMarkClick: (click: HighlightMarkClick) => void,
+): void {
+  for (const note of notes) {
+    try {
+      renderHighlight(rendition, note, theme, onMarkClick);
+    } catch (err) {
+      console.error('Failed to render highlight for note:', note.id, err);
+    }
+  }
 }
 
 function resolveCurrentChapterHref(toc: TocItem[], locationHref: string): string | null {
