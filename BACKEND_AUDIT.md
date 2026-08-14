@@ -44,7 +44,7 @@
 ### 0.2.1 panic/unwrap/expect 与锁生命周期 — 通过
 
 - `panic!`、`todo!`、`unimplemented!`、`unreachable!`：生产代码 0 处（grep 全量确认）。
-- `.unwrap()`：按“包含调用的源码行”统计为 202 行（共 209 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径。测试中的 unwrap 按 TODO 规则允许保留。
+- `.unwrap()`：按“包含调用的源码行”统计为 205 行（共 212 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径。测试中的 unwrap 按 TODO 规则允许保留。
 - `.expect()`：生产代码仅 1 处，`lib.rs:93` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B1 前保留现状即可。
 - 安全 unwrap 变体（`unwrap_or`/`unwrap_or_else`/`unwrap_or_default`）：43 处，均为带默认值的非 panic 形式，合格。
 - 锁与生命周期：`AppState.db: Mutex<Connection>`，服务层统一经 `lock_db` 辅助函数获取并把 poisoning 映射为错误；`source/cache.rs` 的 `active: Mutex<HashMap<String, Weak<()>>>` 同样映射 poisoning，租约由 `Arc<()>` 守护。未发现手动 `spawn` 线程或生命周期漏洞。
