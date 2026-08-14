@@ -59,11 +59,24 @@ fn plugin<R: Runtime>(app: &AppHandle<R>) -> tauri::State<'_, EpubSaf<R>> {
 pub async fn select_epub_sources<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<Vec<SelectedSource>, String> {
+    eprintln!("[EPUB-IMPORT] select_epub_sources: opening picker");
     let response = plugin(app)
         .0
         .run_mobile_plugin_async::<PickResponse>("pickEpub", ())
         .await
         .map_err(|error| format!("SAF_PERMISSION_DENIED: Android picker failed: {error}"))?;
+    eprintln!(
+        "[EPUB-IMPORT] select_epub_sources: picker returned cancelled={}",
+        response.cancelled
+    );
+    // Workaround for tauri#14994 / plugins-workspace#1741: after returning from
+    // ACTION_OPEN_DOCUMENT the wry MainPipe may not wake until the next IPC write,
+    // so the frontend promise can hang indefinitely (observed as a stuck
+    // "importing…" state that only a process restart clears). A short sleep
+    // gives the event loop a chance to flush the response to the renderer.
+    // Upstream fix is merged but not yet released (crates.io tauri 2.11.5 is
+    // the newest as of 2026-08-14); remove this sleep after upgrading.
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     if response.cancelled {
         return Ok(Vec::new());
@@ -88,12 +101,15 @@ pub fn validate_epub_source<R: Runtime>(
     source_locator: &str,
 ) -> Result<FileMetadata, String> {
     validate_content_uri(source_locator)?;
+    eprintln!("[EPUB-IMPORT] validate_epub_source: inspectUri start");
     let response = plugin(app)
         .0
         .run_mobile_plugin::<InspectResponse>("inspectUri", UriPayload { source_locator })
         .map_err(|error| {
+            eprintln!("[EPUB-IMPORT] validate_epub_source: inspectUri FAILED: {error}");
             format!("BOOK_SOURCE_UNAVAILABLE: persisted URI is unavailable: {error}")
         })?;
+    eprintln!("[EPUB-IMPORT] validate_epub_source: inspectUri ok");
 
     Ok(FileMetadata {
         file_size_bytes: response.file_size_bytes.max(0),
@@ -114,12 +130,15 @@ pub fn open_source_file<R: Runtime>(
     source_locator: &str,
 ) -> Result<std::fs::File, String> {
     validate_content_uri(source_locator)?;
+    eprintln!("[EPUB-IMPORT] open_source_file: openReadFd start");
     let response = plugin(app)
         .0
         .run_mobile_plugin::<FdResponse>("openReadFd", UriPayload { source_locator })
         .map_err(|error| {
+            eprintln!("[EPUB-IMPORT] open_source_file: openReadFd FAILED: {error}");
             format!("BOOK_SOURCE_UNAVAILABLE: persisted URI cannot be opened: {error}")
         })?;
+    eprintln!("[EPUB-IMPORT] open_source_file: fd={}", response.fd);
     if response.fd < 0 {
         return Err("BOOK_SOURCE_UNAVAILABLE: Android returned an invalid file descriptor".into());
     }

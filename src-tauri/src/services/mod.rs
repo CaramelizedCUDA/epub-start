@@ -8,7 +8,10 @@ mod settings_service;
 pub use catalog_service::*;
 pub use format_service::{normalize_entry_path, parse_book_metadata, read_book_resource};
 pub use image_service::save_book_image;
-pub use library_service::{delete_book, import_book, open_book, relocate_book};
+pub use library_service::{
+    delete_book, get_reading_progress, import_book, list_books, open_book, relocate_book,
+    save_reading_progress,
+};
 pub use notes_service::{create_note, delete_note, list_notes, update_note};
 pub use settings_service::{
     clear_book_reading_settings, get_global_reading_settings, get_reading_settings,

@@ -37,7 +37,7 @@ pub struct SourceManager {
 impl SourceManager {
     pub fn new(cache_dir: PathBuf) -> Result<Self, String> {
         fs::create_dir_all(&cache_dir)
-            .map_err(|_| "internal error: source cache directory cannot be created".to_string())?;
+            .map_err(|_| "INTERNAL_ERROR: source cache directory cannot be created".to_string())?;
         cleanup_temporary_files(&cache_dir);
         Ok(Self {
             cache_dir,
@@ -74,7 +74,7 @@ impl SourceManager {
         let mut active = self
             .active
             .lock()
-            .map_err(|_| "internal error: source lease lock poisoned".to_string())?;
+            .map_err(|_| "INTERNAL_ERROR: source lease lock poisoned".to_string())?;
         if let Some(existing) = active.get(book_id).and_then(Weak::upgrade) {
             return Ok(existing);
         }
@@ -90,7 +90,9 @@ impl SourceManager {
         book_id: &str,
         source_locator: &str,
     ) -> Result<(SourceLease, SourceFingerprint), String> {
+        eprintln!("[EPUB-IMPORT] acquire_android: open_checked_source start");
         let (mut source, before) = open_checked_source(app, source_locator)?;
+        eprintln!("[EPUB-IMPORT] acquire_android: open_checked_source ok");
         let cache_path = self.cache_dir.join(format!("{book_id}.source"));
         let fingerprint_path = self.cache_dir.join(format!("{book_id}.fingerprint.json"));
 
@@ -112,9 +114,12 @@ impl SourceManager {
 
         remove_if_exists(&cache_path);
         remove_if_exists(&fingerprint_path);
+        eprintln!("[EPUB-IMPORT] acquire_android: copy_source_atomically start");
         self.copy_source_atomically(book_id, &mut source, &cache_path)?;
+        eprintln!("[EPUB-IMPORT] acquire_android: copy done, re-verify start");
 
         let (_after_file, after) = open_checked_source(app, source_locator)?;
+        eprintln!("[EPUB-IMPORT] acquire_android: re-verify done");
         if !before.cache_matches(&after) {
             remove_if_exists(&cache_path);
             return Err("BOOK_SOURCE_UNAVAILABLE: source changed while being cached".into());
@@ -163,7 +168,7 @@ impl SourceManager {
     #[cfg(target_os = "android")]
     fn evict_if_needed(&self, current_book_id: &str) -> Result<(), String> {
         let mut entries = fs::read_dir(&self.cache_dir)
-            .map_err(|_| "internal error: source cache cannot be enumerated".to_string())?
+            .map_err(|_| "INTERNAL_ERROR: source cache cannot be enumerated".to_string())?
             .filter_map(Result::ok)
             .filter_map(|entry| {
                 let path = entry.path();
@@ -201,7 +206,7 @@ impl SourceManager {
         self.active
             .lock()
             .map(|active| active.get(book_id).and_then(Weak::upgrade).is_some())
-            .map_err(|_| "internal error: source lease lock poisoned".to_string())
+            .map_err(|_| "INTERNAL_ERROR: source lease lock poisoned".to_string())
     }
 
     pub fn invalidate(&self, book_id: &str) {
@@ -234,7 +239,88 @@ fn read_fingerprint(path: &Path) -> Option<SourceFingerprint> {
 #[cfg(target_os = "android")]
 fn write_fingerprint(path: &Path, fingerprint: &SourceFingerprint) -> Result<(), String> {
     let bytes = serde_json::to_vec(fingerprint)
-        .map_err(|_| "internal error: source fingerprint cannot be encoded".to_string())?;
+        .map_err(|_| "INTERNAL_ERROR: source fingerprint cannot be encoded".to_string())?;
     fs::write(path, bytes)
-        .map_err(|_| "internal error: source fingerprint cannot be persisted".to_string())
+        .map_err(|_| "INTERNAL_ERROR: source fingerprint cannot be persisted".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manager() -> SourceManager {
+        SourceManager {
+            cache_dir: std::env::temp_dir()
+                .join(format!("epub-cache-test-{}", uuid::Uuid::new_v4())),
+            active: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[test]
+    fn concurrent_guards_for_same_book_share_one_arc() {
+        let manager = std::sync::Arc::new(manager());
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let manager = manager.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..100 {
+                        let guard = manager.guard_for("book-a").unwrap();
+                        std::thread::yield_now();
+                        drop(guard);
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        // 锁未中毒、未死锁：并发结束后仍可正常获取租约。
+        let guard = manager.guard_for("book-a").unwrap();
+        assert_eq!(Arc::strong_count(&guard), 1);
+    }
+
+    #[test]
+    fn guard_is_shared_while_any_lease_is_alive() {
+        let manager = manager();
+        let first = manager.guard_for("book-b").unwrap();
+        let second = manager.guard_for("book-b").unwrap();
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "concurrent leases for one book must share the same guard"
+        );
+    }
+
+    #[test]
+    fn guard_is_recreated_after_all_leases_drop() {
+        let manager = manager();
+        let first = manager.guard_for("book-c").unwrap();
+        drop(first);
+        let second = manager.guard_for("book-c").unwrap();
+        assert_eq!(Arc::strong_count(&second), 1);
+        let third = manager.guard_for("book-c").unwrap();
+        assert!(
+            Arc::ptr_eq(&second, &third),
+            "recreated guard must be shared by subsequent leases"
+        );
+    }
+
+    #[test]
+    fn distinct_books_get_distinct_guards() {
+        let manager = manager();
+        let first = manager.guard_for("book-d").unwrap();
+        let second = manager.guard_for("book-e").unwrap();
+        assert!(!Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn temporary_files_are_cleaned_on_startup() {
+        let dir = std::env::temp_dir().join(format!("epub-cache-tmp-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("stale.tmp"), b"x").unwrap();
+        fs::write(dir.join("keep.source"), b"y").unwrap();
+        cleanup_temporary_files(&dir);
+        assert!(!dir.join("stale.tmp").exists());
+        assert!(dir.join("keep.source").exists());
+        fs::remove_dir_all(&dir).ok();
+    }
 }

@@ -21,9 +21,9 @@ pub fn get_reading_settings(
     let conn = lock_db(db)?;
     require_book(&conn, book_id)?;
     let global = repository::get_global_reading_settings(&conn)
-        .map_err(|error| format!("internal error: settings query failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: settings query failed: {error}"))?;
     let book_override = repository::get_book_reading_settings(&conn, book_id)
-        .map_err(|error| format!("internal error: settings query failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: settings query failed: {error}"))?;
     let effective = resolve_settings(&global, book_override.as_ref());
     Ok(ReadingSettingsResult {
         effective,
@@ -55,7 +55,7 @@ pub fn save_global_reading_settings(
     validate_effective_settings(&settings)?;
     let conn = lock_db(db)?;
     repository::save_global_reading_settings(&conn, &settings)
-        .map_err(|error| format!("internal error: settings update failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: settings update failed: {error}"))?;
     Ok(settings)
 }
 
@@ -83,7 +83,7 @@ pub fn save_book_reading_settings(
     validate_book_settings(&settings)?;
     let conn = lock_db(db)?;
     if repository::find_book_by_id(&conn, &settings.book_id)
-        .map_err(|error| format!("internal error: db query failed: {error}"))?
+        .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
         .is_none()
     {
         return Err(format!(
@@ -92,7 +92,7 @@ pub fn save_book_reading_settings(
         ));
     }
     repository::save_book_reading_settings(&conn, &settings)
-        .map_err(|error| format!("internal error: settings update failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: settings update failed: {error}"))?;
     Ok(settings)
 }
 
@@ -100,12 +100,12 @@ pub fn clear_book_reading_settings(db: &Mutex<Connection>, book_id: &str) -> Res
     let conn = lock_db(db)?;
     require_book(&conn, book_id)?;
     repository::clear_book_reading_settings(&conn, book_id)
-        .map_err(|error| format!("internal error: settings delete failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: settings delete failed: {error}"))
 }
 
 fn require_book(conn: &Connection, book_id: &str) -> Result<(), String> {
     if repository::find_book_by_id(conn, book_id)
-        .map_err(|error| format!("internal error: db query failed: {error}"))?
+        .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
         .is_none()
     {
         return Err(format!("BOOK_NOT_FOUND: no book with id {book_id}"));
@@ -238,7 +238,7 @@ fn validate_book_settings(settings: &BookReadingSettings) -> Result<(), String> 
 
 fn lock_db(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
     db.lock()
-        .map_err(|error| format!("internal error: db lock poisoned: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: db lock poisoned: {error}"))
 }
 
 #[cfg(test)]

@@ -10,6 +10,7 @@ pub struct FormatMetadata {
     pub cover_cache_path: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceContent {
     pub body: Vec<u8>,
     pub mime: String,

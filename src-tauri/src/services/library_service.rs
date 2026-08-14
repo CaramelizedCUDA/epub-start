@@ -4,7 +4,10 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 use tauri::{AppHandle, Runtime};
 
-use crate::db::models::{Book, BookFormat, BookStatus, OpenBookResult, SelectedSource, SourceKind};
+use crate::db::models::{
+    Book, BookFormat, BookStatus, BookSummary, OpenBookResult, ReadingProgress, SelectedSource,
+    SourceKind,
+};
 use crate::db::repository;
 use crate::platform;
 use crate::source::{ReadSeek, SourceManager};
@@ -22,7 +25,7 @@ pub fn import_book<R: Runtime>(
     let exact_existing = {
         let conn = lock_db(db)?;
         repository::find_book_by_source_locator(&conn, &source.source_locator)
-            .map_err(|error| format!("internal error: db query failed: {error}"))?
+            .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
     };
 
     let now = unix_epoch_millis();
@@ -30,16 +33,22 @@ pub fn import_book<R: Runtime>(
         .as_ref()
         .map(|book| book.id.clone())
         .unwrap_or_else(|| format!("{}-import", uuid::Uuid::new_v4()));
+    eprintln!("[EPUB-IMPORT] import_book: acquire start (probe={probe_id})");
     let (lease, fingerprint) = source_manager.acquire(app, &probe_id, &source.source_locator)?;
+    eprintln!("[EPUB-IMPORT] import_book: acquire done, parse metadata start");
 
     let inspected = parse_book_metadata(&BookFormat::Epub, lease.open_reader()?, None);
+    eprintln!(
+        "[EPUB-IMPORT] import_book: parse done ok={}",
+        inspected.is_ok()
+    );
     let existing = if exact_existing.is_some() {
         exact_existing
     } else if let Ok(metadata) = &inspected {
         let recoverable = {
             let conn = lock_db(db)?;
             repository::list_recoverable_books(&conn)
-                .map_err(|error| format!("internal error: db query failed: {error}"))?
+                .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
         };
         match unique_recoverable_match(recoverable, &fingerprint, &metadata.package_identifier) {
             Err(error) => {
@@ -74,14 +83,14 @@ pub fn import_book<R: Runtime>(
 
     let conn = lock_db(db)?;
     if repository::find_book_by_id(&conn, &book.id)
-        .map_err(|error| format!("internal error: db query failed: {error}"))?
+        .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
         .is_some()
     {
         repository::update_book_by_id(&conn, &book)
-            .map_err(|error| format!("internal error: db update failed: {error}"))?;
+            .map_err(|error| format!("INTERNAL_ERROR: db update failed: {error}"))?;
     } else {
         repository::insert_book(&conn, &book)
-            .map_err(|error| format!("internal error: db insert failed: {error}"))?;
+            .map_err(|error| format!("INTERNAL_ERROR: db insert failed: {error}"))?;
     }
     drop(conn);
     drop(lease);
@@ -109,7 +118,7 @@ pub fn open_book<R: Runtime>(
     let mut book = {
         let conn = lock_db(db)?;
         repository::find_book_by_id(&conn, book_id)
-            .map_err(|error| format!("internal error: db query failed: {error}"))?
+            .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
             .ok_or_else(|| format!("BOOK_NOT_FOUND: no book with id {book_id}"))?
     };
 
@@ -123,7 +132,7 @@ pub fn open_book<R: Runtime>(
             book.updated_at = unix_epoch_millis();
             let conn = lock_db(db)?;
             repository::update_book_by_source(&conn, &book)
-                .map_err(|db_error| format!("internal error: db update failed: {db_error}"))?;
+                .map_err(|db_error| format!("INTERNAL_ERROR: db update failed: {db_error}"))?;
             return Err(error);
         }
     }
@@ -145,11 +154,11 @@ pub fn relocate_book<R: Runtime>(
     let (old_book, candidate_already_in_use) = {
         let conn = lock_db(db)?;
         let old_book = repository::find_book_by_id(&conn, book_id)
-            .map_err(|error| format!("internal error: db query failed: {error}"))?
+            .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
             .ok_or_else(|| format!("BOOK_NOT_FOUND: no book with id {book_id}"))?;
         let candidate_already_in_use =
             repository::find_book_by_source_locator(&conn, &source.source_locator)
-                .map_err(|error| format!("internal error: db query failed: {error}"))?
+                .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
                 .is_some();
         (old_book, candidate_already_in_use)
     };
@@ -211,7 +220,7 @@ pub fn relocate_book<R: Runtime>(
             &source.source_locator,
             candidate_already_in_use,
         );
-        return Err(format!("internal error: db update failed: {error}"));
+        return Err(format!("INTERNAL_ERROR: db update failed: {error}"));
     }
 
     source_manager.invalidate(book_id);
@@ -235,7 +244,7 @@ pub fn delete_book<R: Runtime>(
             rusqlite::Error::QueryReturnedNoRows => {
                 format!("BOOK_NOT_FOUND: no book with id {book_id}")
             }
-            _ => format!("internal error: db delete failed: {error}"),
+            _ => format!("INTERNAL_ERROR: db delete failed: {error}"),
         })?
     };
 
@@ -390,9 +399,63 @@ fn fallback_title(source_locator: &str) -> String {
         .to_string()
 }
 
+/// Returns every book in the library ordered by most recently updated.
+/// Source-locator fields are excluded from the response for privacy.
+pub fn list_books(db: &Mutex<Connection>) -> Result<Vec<BookSummary>, String> {
+    let conn = lock_db(db)?;
+    repository::list_all_books(&conn)
+        .map(|books| books.into_iter().map(BookSummary::from).collect())
+        .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))
+}
+
+/// Returns the saved reading progress for the given book, or `None`
+/// (JSON `null`) if no progress has been recorded yet.
+pub fn get_reading_progress(
+    db: &Mutex<Connection>,
+    book_id: &str,
+) -> Result<Option<ReadingProgress>, String> {
+    let conn = lock_db(db)?;
+    repository::get_reading_progress(&conn, book_id)
+        .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))
+}
+
+/// Persists the current reading position with upsert semantics.
+///
+/// `location_cfi` must be a valid EPUB CFI string and `progression`
+/// must be in the range [0.0, 1.0]. Re-queries the row after the
+/// upsert so callers receive canonical stored values.
+pub fn save_reading_progress(
+    db: &Mutex<Connection>,
+    book_id: String,
+    location_cfi: String,
+    progression: f64,
+) -> Result<ReadingProgress, String> {
+    if !(0.0..=1.0).contains(&progression) {
+        return Err(format!(
+            "VALIDATION_ERROR: progression must be between 0.0 and 1.0, got {}",
+            progression
+        ));
+    }
+
+    let progress = ReadingProgress {
+        book_id,
+        location_cfi: Some(location_cfi),
+        progression: Some(progression),
+        updated_at: unix_epoch_millis(),
+    };
+
+    let conn = lock_db(db)?;
+    repository::upsert_reading_progress(&conn, &progress)
+        .map_err(|error| format!("INTERNAL_ERROR: db upsert failed: {error}"))?;
+
+    repository::get_reading_progress(&conn, &progress.book_id)
+        .map_err(|error| format!("INTERNAL_ERROR: db query failed: {error}"))?
+        .ok_or_else(|| "INTERNAL_ERROR: progress was just saved but not found".to_string())
+}
+
 fn lock_db(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
     db.lock()
-        .map_err(|error| format!("internal error: db lock poisoned: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: db lock poisoned: {error}"))
 }
 
 fn unix_epoch_millis() -> i64 {

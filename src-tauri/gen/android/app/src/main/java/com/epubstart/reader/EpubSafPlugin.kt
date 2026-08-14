@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.activity.result.ActivityResult
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
@@ -23,6 +24,7 @@ class UriArgs {
 class EpubSafPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun pickEpub(invoke: Invoke) {
+        Log.d("EpubSafPlugin", "[EPUB-IMPORT] pickEpub: launching ACTION_OPEN_DOCUMENT")
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -38,6 +40,7 @@ class EpubSafPlugin(private val activity: Activity) : Plugin(activity) {
 
     @ActivityCallback
     fun pickEpubResult(invoke: Invoke, result: ActivityResult) {
+        Log.d("EpubSafPlugin", "[EPUB-IMPORT] pickEpubResult: resultCode=" + result.resultCode)
         if (result.resultCode == Activity.RESULT_CANCELED) {
             invoke.resolve(JSObject().apply { put("cancelled", true) })
             return
@@ -74,6 +77,7 @@ class EpubSafPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun inspectUri(invoke: Invoke) {
+        Log.d("EpubSafPlugin", "[EPUB-IMPORT] inspectUri: start")
         val uri = parsePersistedUri(invoke) ?: return
         try {
             var size = 0L
@@ -107,13 +111,16 @@ class EpubSafPlugin(private val activity: Activity) : Plugin(activity) {
                 put("fileSizeBytes", size)
                 put("lastModifiedTs", lastModified)
             })
+            Log.d("EpubSafPlugin", "[EPUB-IMPORT] inspectUri: ok size=" + size)
         } catch (error: Exception) {
+            Log.d("EpubSafPlugin", "[EPUB-IMPORT] inspectUri: FAILED " + error)
             invoke.reject("Document is no longer accessible")
         }
     }
 
     @Command
     fun openReadFd(invoke: Invoke) {
+        Log.d("EpubSafPlugin", "[EPUB-IMPORT] openReadFd: start")
         val uri = parsePersistedUri(invoke) ?: return
         try {
             val descriptor = activity.contentResolver.openFileDescriptor(uri, "r")
@@ -124,7 +131,9 @@ class EpubSafPlugin(private val activity: Activity) : Plugin(activity) {
             val fd = descriptor.detachFd()
             descriptor.close()
             invoke.resolve(JSObject().apply { put("fd", fd) })
+            Log.d("EpubSafPlugin", "[EPUB-IMPORT] openReadFd: ok fd=" + fd)
         } catch (error: Exception) {
+            Log.d("EpubSafPlugin", "[EPUB-IMPORT] openReadFd: FAILED " + error)
             invoke.reject("Document cannot be opened")
         }
     }

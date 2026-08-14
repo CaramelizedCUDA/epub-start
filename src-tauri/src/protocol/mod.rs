@@ -15,7 +15,16 @@ pub fn epub_protocol<R: Runtime>(
     let cors_origin = allowed_cors_origin(&request);
 
     match result {
-        Ok((body, mime)) => protocol_response(StatusCode::OK, &mime, body, cors_origin.as_deref()),
+        Ok((body, mime)) => {
+            let range = request
+                .headers()
+                .get(header::RANGE)
+                .and_then(|value| value.to_str().ok());
+            match range {
+                Some(raw) => serve_range(body, &mime, raw, cors_origin.as_deref()),
+                None => protocol_response(StatusCode::OK, &mime, body, cors_origin.as_deref()),
+            }
+        }
         Err((status, message)) => protocol_response(
             status,
             "text/plain; charset=utf-8",
@@ -23,6 +32,93 @@ pub fn epub_protocol<R: Runtime>(
             cors_origin.as_deref(),
         ),
     }
+}
+
+/// Handles single-segment `Range: bytes=start-end` requests.
+///
+/// Multi-segment ranges and syntactically invalid headers are ignored and
+/// served as a full 200 response, per RFC 9110. Unsatisfiable single ranges
+/// produce 416 with `Content-Range: bytes */<length>`.
+fn serve_range(
+    body: Vec<u8>,
+    mime: &str,
+    raw: &str,
+    cors_origin: Option<&str>,
+) -> Response<Vec<u8>> {
+    let length = body.len() as u64;
+    let Some(spec) = raw.trim().strip_prefix("bytes=") else {
+        return protocol_response(StatusCode::OK, mime, body, cors_origin);
+    };
+    if spec.contains(',') || spec.is_empty() {
+        return protocol_response(StatusCode::OK, mime, body, cors_origin);
+    }
+
+    let (start_s, end_s) = spec.split_once('-').unwrap_or((spec, ""));
+    let parse_start = start_s.trim().parse::<u64>().ok();
+    let parse_end = end_s.trim().parse::<u64>().ok();
+
+    let (start, end) = match (parse_start, parse_end) {
+        // bytes=start-end
+        (Some(start), Some(end)) => (start, end.min(length.saturating_sub(1))),
+        // bytes=start-
+        (Some(start), None) => {
+            if length == 0 || start >= length {
+                return range_not_satisfiable(length, cors_origin);
+            }
+            (start, length - 1)
+        }
+        // bytes=-suffix (last N bytes)
+        (None, Some(suffix)) => {
+            if suffix == 0 {
+                return range_not_satisfiable(length, cors_origin);
+            }
+            let start = length.saturating_sub(suffix);
+            if length == 0 {
+                return range_not_satisfiable(length, cors_origin);
+            }
+            (start, length - 1)
+        }
+        // bytes=- (invalid)
+        (None, None) => return protocol_response(StatusCode::OK, mime, body, cors_origin),
+    };
+
+    if start > end || start >= length {
+        return range_not_satisfiable(length, cors_origin);
+    }
+
+    let slice = body[start as usize..=end as usize].to_vec();
+    let mut builder = Response::builder()
+        .status(StatusCode::PARTIAL_CONTENT)
+        .header(header::CONTENT_TYPE, mime)
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(
+            header::CONTENT_RANGE,
+            format!("bytes {start}-{end}/{length}"),
+        );
+    if let Some(origin) = cors_origin {
+        builder = builder.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    }
+    builder
+        .body(slice)
+        .unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
+fn range_not_satisfiable(length: u64, cors_origin: Option<&str>) -> Response<Vec<u8>> {
+    let mut builder = Response::builder()
+        .status(StatusCode::RANGE_NOT_SATISFIABLE)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_RANGE, format!("bytes */{length}"));
+    if let Some(origin) = cors_origin {
+        builder = builder.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    }
+    builder
+        .body(Vec::new())
+        .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
 fn serve_entry(
@@ -125,7 +221,8 @@ fn protocol_response(
         .status(status)
         .header(header::CONTENT_TYPE, content_type)
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .header(header::CACHE_CONTROL, "no-store");
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::ACCEPT_RANGES, "bytes");
     if let Some(origin) = cors_origin {
         builder = builder.header(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
     }
@@ -147,6 +244,38 @@ mod tests {
     }
 
     #[test]
+    fn source_errors_are_sanitized_to_stable_prefix() {
+        assert_eq!(
+            sanitize_source_error("BOOK_SOURCE_UNAVAILABLE: content://secret/details"),
+            "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
+        );
+        assert_eq!(
+            sanitize_source_error("raw failure without prefix"),
+            "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
+        );
+    }
+
+    #[test]
+    fn resource_errors_map_to_stable_status_codes() {
+        assert_eq!(
+            map_resource_error("BOOK_RESOURCE_NOT_FOUND: x".into()).0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            map_resource_error("BOOK_RESOURCE_LIMIT_EXCEEDED: x".into()).0,
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        assert_eq!(
+            map_resource_error("FORMAT_NOT_SUPPORTED: x".into()).0,
+            StatusCode::NOT_IMPLEMENTED
+        );
+        assert_eq!(
+            map_resource_error("unexpected".into()).0,
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
     fn cors_is_restricted_to_application_origins() {
         assert_eq!(
             allowed_cors_origin(&request("tauri://localhost")).as_deref(),
@@ -163,5 +292,90 @@ mod tests {
             crate::services::normalize_entry_path("item/./chapter.xhtml").unwrap(),
             "item/chapter.xhtml"
         );
+    }
+
+    fn body_of(response: &Response<Vec<u8>>) -> &[u8] {
+        response.body()
+    }
+
+    #[test]
+    fn range_serves_partial_content_with_correct_headers() {
+        let body = b"0123456789".to_vec();
+        let response = serve_range(body, "text/plain", "bytes=2-5", None);
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(body_of(&response), b"2345");
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 2-5/10"
+        );
+        assert_eq!(
+            response.headers().get(header::ACCEPT_RANGES).unwrap(),
+            "bytes"
+        );
+    }
+
+    #[test]
+    fn range_open_ended_serves_until_end() {
+        let response = serve_range(b"0123456789".to_vec(), "text/plain", "bytes=7-", None);
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(body_of(&response), b"789");
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 7-9/10"
+        );
+    }
+
+    #[test]
+    fn range_suffix_serves_last_n_bytes() {
+        let response = serve_range(b"0123456789".to_vec(), "text/plain", "bytes=-4", None);
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(body_of(&response), b"6789");
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 6-9/10"
+        );
+    }
+
+    #[test]
+    fn range_out_of_bounds_is_416() {
+        let response = serve_range(b"0123456789".to_vec(), "text/plain", "bytes=20-", None);
+        assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes */10"
+        );
+        assert!(body_of(&response).is_empty());
+    }
+
+    #[test]
+    fn range_zero_suffix_is_416() {
+        let response = serve_range(b"0123456789".to_vec(), "text/plain", "bytes=-0", None);
+        assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    }
+
+    #[test]
+    fn malformed_and_multi_ranges_fall_back_to_full_body() {
+        for raw in ["items=0-1", "bytes=3-2,5-6", "bytes=-", "bytes="] {
+            let response = serve_range(b"0123456789".to_vec(), "text/plain", raw, None);
+            assert_eq!(response.status(), StatusCode::OK, "raw={raw}");
+            assert_eq!(body_of(&response), b"0123456789");
+        }
+    }
+
+    #[test]
+    fn end_beyond_length_is_clamped() {
+        let response = serve_range(b"0123456789".to_vec(), "text/plain", "bytes=5-999", None);
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(body_of(&response), b"56789");
+        assert_eq!(
+            response.headers().get(header::CONTENT_RANGE).unwrap(),
+            "bytes 5-9/10"
+        );
+    }
+
+    #[test]
+    fn empty_body_range_is_416() {
+        let response = serve_range(Vec::new(), "text/plain", "bytes=0-", None);
+        assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 }

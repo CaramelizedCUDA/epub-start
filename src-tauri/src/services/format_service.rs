@@ -53,7 +53,9 @@ pub fn normalize_entry_path(path: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_entry_path;
+    use super::*;
+    use crate::db::models::{Book, BookFormat, BookStatus, SourceKind};
+    use std::io::Write;
 
     #[test]
     fn entry_path_rejects_traversal_and_backslashes() {
@@ -63,5 +65,85 @@ mod tests {
             normalize_entry_path("item/./image.png").unwrap(),
             "item/image.png"
         );
+    }
+
+    fn book() -> Book {
+        Book {
+            id: "book".into(),
+            title: "Title".into(),
+            authors: Vec::new(),
+            format: BookFormat::Epub,
+            cover_cache_path: None,
+            source_locator: "/test.epub".into(),
+            source_kind: SourceKind::DesktopPath,
+            file_size_bytes: 0,
+            last_modified_ts: 0,
+            package_identifier: None,
+            status: BookStatus::Available,
+            status_detail: None,
+            added_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    fn epub_bytes() -> Vec<u8> {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer
+            .start_file("META-INF/container.xml", options)
+            .unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0"?><container><rootfiles><rootfile full-path="item/book.opf"/></rootfiles></container>"#,
+            )
+            .unwrap();
+        writer.start_file("item/book.opf", options).unwrap();
+        writer
+            .write_all(
+                br#"<?xml version="1.0"?><package><metadata><title>T</title></metadata><manifest><item href="chapter.xhtml" media-type="application/xhtml+xml"/><item href="img.png" media-type="image/png"/></manifest></package>"#,
+            )
+            .unwrap();
+        writer.start_file("item/chapter.xhtml", options).unwrap();
+        writer.write_all(b"<html>hello</html>").unwrap();
+        writer.start_file("item/img.png", options).unwrap();
+        writer.write_all(b"\x89PNGfake").unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn read_book_resource_serves_xhtml_with_mime() {
+        let resource = read_book_resource(
+            &book(),
+            Box::new(std::io::Cursor::new(epub_bytes())),
+            "item/chapter.xhtml",
+        )
+        .unwrap();
+        assert_eq!(resource.mime, "application/xhtml+xml");
+        assert_eq!(resource.body, b"<html>hello</html>");
+    }
+
+    #[test]
+    fn read_book_resource_serves_image_mime() {
+        let resource = read_book_resource(
+            &book(),
+            Box::new(std::io::Cursor::new(epub_bytes())),
+            "item/img.png",
+        )
+        .unwrap();
+        assert_eq!(resource.mime, "image/png");
+        assert_eq!(resource.body, b"\x89PNGfake");
+    }
+
+    #[test]
+    fn read_book_resource_unknown_entry_returns_stable_not_found() {
+        let error = read_book_resource(
+            &book(),
+            Box::new(std::io::Cursor::new(epub_bytes())),
+            "missing.xhtml",
+        )
+        .unwrap_err();
+        assert!(error.starts_with("BOOK_RESOURCE_NOT_FOUND:"), "got {error}");
     }
 }

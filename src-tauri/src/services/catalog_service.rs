@@ -12,7 +12,7 @@ use crate::db::models::{
 pub fn list_series(db: &Mutex<Connection>) -> Result<Vec<Series>, String> {
     let conn = lock_db(db)?;
     catalog_repository::list_series(&conn)
-        .map_err(|error| format!("internal error: series query failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: series query failed: {error}"))
 }
 
 pub fn create_series(db: &Mutex<Connection>, input: CreateSeriesInput) -> Result<Series, String> {
@@ -25,7 +25,7 @@ pub fn create_series(db: &Mutex<Connection>, input: CreateSeriesInput) -> Result
     };
     let conn = lock_db(db)?;
     catalog_repository::insert_series(&conn, &series)
-        .map_err(|error| format!("internal error: series insert failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: series insert failed: {error}"))?;
     Ok(series)
 }
 
@@ -49,7 +49,7 @@ pub fn delete_series(db: &Mutex<Connection>, series_id: &str) -> Result<(), Stri
     let conn = lock_db(db)?;
     require_entity(&conn, "series", series_id, "series")?;
     catalog_repository::delete_series(&conn, series_id)
-        .map_err(|error| format!("internal error: series delete failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: series delete failed: {error}"))
 }
 
 pub fn set_book_series(
@@ -63,7 +63,7 @@ pub fn set_book_series(
     require_entity(&conn, "books", &assignment.book_id, "book")?;
     require_entity(&conn, "series", &assignment.series_id, "series")?;
     catalog_repository::set_book_series(&conn, &assignment)
-        .map_err(|error| format!("internal error: series assignment failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: series assignment failed: {error}"))?;
     Ok(assignment)
 }
 
@@ -71,7 +71,7 @@ pub fn clear_book_series(db: &Mutex<Connection>, book_id: &str) -> Result<(), St
     let conn = lock_db(db)?;
     require_entity(&conn, "books", book_id, "book")?;
     catalog_repository::clear_book_series(&conn, book_id)
-        .map_err(|error| format!("internal error: series assignment delete failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: series assignment delete failed: {error}"))
 }
 
 pub fn reorder_series_books(
@@ -92,15 +92,15 @@ pub fn reorder_series_books(
         return Err("VALIDATION_ERROR: reorder contains a book outside the series".into());
     }
     catalog_repository::reorder_series_books(&conn, series_id, &positions)
-        .map_err(|error| format!("internal error: series reorder failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: series reorder failed: {error}"))?;
     catalog_repository::list_book_series(&conn, series_id)
-        .map_err(|error| format!("internal error: series query failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: series query failed: {error}"))
 }
 
 pub fn list_tag_groups(db: &Mutex<Connection>) -> Result<Vec<TagGroup>, String> {
     let conn = lock_db(db)?;
     catalog_repository::list_tag_groups(&conn)
-        .map_err(|error| format!("internal error: tag group query failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: tag group query failed: {error}"))
 }
 
 pub fn create_tag_group(
@@ -117,7 +117,7 @@ pub fn create_tag_group(
     };
     let conn = lock_db(db)?;
     catalog_repository::insert_tag_group(&conn, &group)
-        .map_err(|error| format!("internal error: tag group insert failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: tag group insert failed: {error}"))?;
     Ok(group)
 }
 
@@ -145,13 +145,13 @@ pub fn delete_tag_group(db: &Mutex<Connection>, group_id: &str) -> Result<(), St
     let conn = lock_db(db)?;
     require_entity(&conn, "tag_groups", group_id, "tag group")?;
     catalog_repository::delete_tag_group(&conn, group_id)
-        .map_err(|error| format!("internal error: tag group delete failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: tag group delete failed: {error}"))
 }
 
 pub fn list_tags(db: &Mutex<Connection>) -> Result<Vec<Tag>, String> {
     let conn = lock_db(db)?;
     catalog_repository::list_tags(&conn)
-        .map_err(|error| format!("internal error: tag query failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: tag query failed: {error}"))
 }
 
 pub fn create_tag(db: &Mutex<Connection>, input: CreateTagInput) -> Result<Tag, String> {
@@ -170,7 +170,7 @@ pub fn create_tag(db: &Mutex<Connection>, input: CreateTagInput) -> Result<Tag, 
         require_entity(&conn, "tag_groups", group_id, "tag group")?;
     }
     catalog_repository::insert_tag(&conn, &tag)
-        .map_err(|error| format!("internal error: tag insert failed: {error}"))?;
+        .map_err(|error| format!("INTERNAL_ERROR: tag insert failed: {error}"))?;
     Ok(tag)
 }
 
@@ -200,7 +200,7 @@ pub fn delete_tag(db: &Mutex<Connection>, tag_id: &str) -> Result<(), String> {
     let conn = lock_db(db)?;
     require_entity(&conn, "tags", tag_id, "tag")?;
     catalog_repository::delete_tag(&conn, tag_id)
-        .map_err(|error| format!("internal error: tag delete failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: tag delete failed: {error}"))
 }
 
 pub fn set_book_tags(
@@ -228,7 +228,7 @@ pub fn list_book_tags(db: &Mutex<Connection>, book_id: &str) -> Result<Vec<BookT
     let conn = lock_db(db)?;
     require_entity(&conn, "books", book_id, "book")?;
     catalog_repository::list_book_tags(&conn, book_id)
-        .map_err(|error| format!("internal error: book tags query failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: book tags query failed: {error}"))
 }
 
 fn set_tags(
@@ -250,7 +250,7 @@ fn set_tags(
         require_entity(&conn, "tags", tag_id, "tag")?;
     }
     replace(&conn, owner_id, &tag_ids)
-        .map_err(|error| format!("internal error: tag relationship update failed: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: tag relationship update failed: {error}"))
 }
 
 fn validate_tag(tag: &mut Tag) -> Result<(), String> {
@@ -286,7 +286,7 @@ fn ensure_unique_ids<'a>(ids: impl Iterator<Item = &'a str>) -> Result<(), Strin
 
 fn require_entity(conn: &Connection, table: &str, id: &str, label: &str) -> Result<(), String> {
     if catalog_repository::entity_exists(conn, table, id)
-        .map_err(|error| format!("internal error: entity query failed: {error}"))?
+        .map_err(|error| format!("INTERNAL_ERROR: entity query failed: {error}"))?
     {
         Ok(())
     } else {
@@ -303,7 +303,7 @@ fn require_entity(conn: &Connection, table: &str, id: &str, label: &str) -> Resu
 
 fn lock_db(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
     db.lock()
-        .map_err(|error| format!("internal error: db lock poisoned: {error}"))
+        .map_err(|error| format!("INTERNAL_ERROR: db lock poisoned: {error}"))
 }
 
 #[cfg(test)]
