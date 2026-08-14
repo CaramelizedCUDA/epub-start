@@ -453,6 +453,34 @@ mod tests {
     }
 
     #[test]
+    fn finish_transaction_rolls_back_and_releases_on_error() {
+        let conn = database();
+        conn.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        // 事务内先做一次成功写入。
+        insert_series(
+            &conn,
+            &Series {
+                id: "doomed".into(),
+                name: "Doomed".into(),
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+
+        // 模拟中途失败：错误分支必须回滚并结束事务。
+        let outcome = finish_transaction(&conn, Err(rusqlite::Error::ExecuteReturnedResults));
+        assert!(outcome.is_err());
+
+        // 事务已结束（回滚）：能立即开启新事务。若实现漏掉 ROLLBACK，
+        // 这里会报 "cannot start a transaction within a transaction"。
+        conn.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        conn.execute_batch("ROLLBACK;").unwrap();
+        // 回滚后 "doomed" 行不存在。
+        assert!(find_series(&conn, "doomed").unwrap().is_none());
+    }
+
+    #[test]
     fn reorder_updates_requested_positions() {
         let conn = database();
         for (id, locator) in [("book", "/book.epub"), ("book-2", "/book-2.epub")] {

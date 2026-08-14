@@ -195,14 +195,28 @@ pub fn list_recoverable_books(conn: &Connection) -> SqliteResult<Vec<Book>> {
 /// Returns a `rusqlite` error (typically `QueryReturnedNoRows`) when
 /// the `id` does not match any row.
 pub fn delete_book(conn: &Connection, id: &str) -> SqliteResult<(String, Option<String>)> {
-    let artifacts = conn.query_row(
-        "SELECT source_locator, cover_cache_path FROM books WHERE id = ?1",
-        params![id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
-
-    conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
-    Ok(artifacts)
+    // 单事务内完成"读取清理产物 + 删除行"，避免删除与产物查询之间
+    // 被其他写操作插入竞态窗口；DELETE 触发 progress/notes 级联。
+    conn.execute_batch("BEGIN IMMEDIATE;")?;
+    let result = (|| -> SqliteResult<(String, Option<String>)> {
+        let artifacts = conn.query_row(
+            "SELECT source_locator, cover_cache_path FROM books WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        conn.execute("DELETE FROM books WHERE id = ?1", params![id])?;
+        Ok(artifacts)
+    })();
+    match result {
+        Ok(artifacts) => {
+            conn.execute_batch("COMMIT;")?;
+            Ok(artifacts)
+        }
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            Err(error)
+        }
+    }
 }
 
 // ── Reading progress ─────────────────────────────────────────────
@@ -619,6 +633,35 @@ mod tests {
         assert_eq!(source_locator, "/tmp/cascade.epub");
         assert_eq!(cover.as_deref(), Some("/tmp/covers/b7.jpg"));
         assert!(get_reading_progress(&conn, "b7").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_cascade_delete_removes_notes() {
+        let conn = seeded_db();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        let book = sample_book("b7n", "Notes Cascade", "/tmp/notes-cascade.epub");
+        insert_book(&conn, &book).unwrap();
+        insert_note(
+            &conn,
+            &Note {
+                id: "note-1".into(),
+                book_id: "b7n".into(),
+                cfi_start: "epubcfi(/6/4)".into(),
+                cfi_end: "epubcfi(/6/6)".into(),
+                cfi_range: None,
+                selected_text: "words".into(),
+                content: "".into(),
+                color: "#112233".into(),
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+        assert!(find_note_by_id(&conn, "note-1").unwrap().is_some());
+
+        delete_book(&conn, "b7n").unwrap();
+        assert!(find_note_by_id(&conn, "note-1").unwrap().is_none());
     }
 
     #[test]

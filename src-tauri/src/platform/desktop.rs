@@ -108,3 +108,50 @@ pub fn epub_root_url(book_id: &str) -> String {
         format!("epub://localhost/book/{book_id}/")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::models::{SelectedSource, SourceKind};
+
+    fn absolute_path() -> String {
+        if cfg!(target_os = "windows") {
+            r"C:\books\sample.epub".to_string()
+        } else {
+            "/home/user/books/sample.epub".to_string()
+        }
+    }
+
+    #[test]
+    fn desktop_selection_accepts_absolute_desktop_path() {
+        let source = SelectedSource {
+            source_locator: absolute_path(),
+            source_kind: SourceKind::DesktopPath,
+        };
+        assert!(validate_selected_source(&source).is_ok());
+    }
+
+    #[test]
+    fn desktop_selection_rejects_relative_paths() {
+        let source = SelectedSource {
+            source_locator: "books/sample.epub".to_string(),
+            source_kind: SourceKind::DesktopPath,
+        };
+        let error = validate_selected_source(&source).unwrap_err();
+        assert!(
+            error.starts_with("VALIDATION_ERROR:"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn desktop_selection_rejects_kind_locator_mismatch() {
+        // Android 的 content:// locator 不能携带 DesktopPath kind。
+        let source = SelectedSource {
+            source_locator: "content://provider/document/1".to_string(),
+            source_kind: SourceKind::DesktopPath,
+        };
+        let error = validate_selected_source(&source).unwrap_err();
+        assert!(error.starts_with("VALIDATION_ERROR:"));
+    }
+}

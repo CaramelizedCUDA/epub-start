@@ -45,10 +45,21 @@ pub fn save_book_image<R: Runtime>(
 }
 
 fn sanitize_source_error(error: &str) -> String {
-    error
-        .split_once(':')
-        .map(|(prefix, _)| format!("{prefix}: source is unavailable"))
-        .unwrap_or_else(|| "BOOK_SOURCE_UNAVAILABLE: source is unavailable".to_string())
+    // 只放行已知的稳定错误前缀；其余（包括可能携带盘符或路径的
+    // 原始错误文本）一律映射为 BOOK_SOURCE_UNAVAILABLE。
+    // 旧的 split_once(':') 会把 "C:\...\book.epub: ..." 的盘符
+    // "C" 当作错误前缀返回给前端，破坏稳定错误契约。
+    const STABLE_PREFIXES: [&str; 3] = [
+        "BOOK_SOURCE_UNAVAILABLE",
+        "BOOK_RESOURCE_LIMIT_EXCEEDED",
+        "INTERNAL_ERROR",
+    ];
+    let prefix = STABLE_PREFIXES
+        .iter()
+        .find(|prefix| error.starts_with(**prefix))
+        .copied()
+        .unwrap_or("BOOK_SOURCE_UNAVAILABLE");
+    format!("{prefix}: source is unavailable")
 }
 
 fn validate_image_mime(mime: &str) -> Result<(), String> {
@@ -134,6 +145,35 @@ mod tests {
     fn source_errors_do_not_expose_locator_details() {
         assert_eq!(
             sanitize_source_error("BOOK_SOURCE_UNAVAILABLE: C:\\private\\book.epub"),
+            "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
+        );
+    }
+
+    #[test]
+    fn source_error_sanitization_keeps_only_known_prefixes() {
+        assert_eq!(
+            sanitize_source_error("BOOK_SOURCE_UNAVAILABLE: file vanished"),
+            "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
+        );
+        assert_eq!(
+            sanitize_source_error("BOOK_RESOURCE_LIMIT_EXCEEDED: too large"),
+            "BOOK_RESOURCE_LIMIT_EXCEEDED: source is unavailable"
+        );
+        assert_eq!(
+            sanitize_source_error("INTERNAL_ERROR: lock poisoned"),
+            "INTERNAL_ERROR: source is unavailable"
+        );
+    }
+
+    #[test]
+    fn source_error_sanitization_never_splits_windows_drive_letters() {
+        // 回归测试：旧实现 split_once(':') 会把盘符 "C" 当作错误前缀。
+        assert_eq!(
+            sanitize_source_error("C:\\Users\\alice\\book.epub: Access is denied"),
+            "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
+        );
+        assert_eq!(
+            sanitize_source_error("some unknown failure without any prefix"),
             "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
         );
     }

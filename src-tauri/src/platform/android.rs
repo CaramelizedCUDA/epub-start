@@ -78,22 +78,7 @@ pub async fn select_epub_sources<R: Runtime>(
     // the newest as of 2026-08-14); remove this sleep after upgrading.
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    if response.cancelled {
-        return Ok(Vec::new());
-    }
-
-    let source_locator = response.source_locator.ok_or_else(|| {
-        "SAF_PERMISSION_DENIED: Android picker returned no persisted URI".to_string()
-    })?;
-
-    if !source_locator.starts_with("content://") {
-        return Err("VALIDATION_ERROR: Android picker returned an invalid URI".to_string());
-    }
-
-    Ok(vec![SelectedSource {
-        source_locator,
-        source_kind: SourceKind::AndroidContentUri,
-    }])
+    super::selection_from_picker_response(response.cancelled, response.source_locator)
 }
 
 pub fn validate_epub_source<R: Runtime>(
@@ -167,7 +152,7 @@ pub fn epub_root_url(book_id: &str) -> String {
 }
 
 fn validate_content_uri(source_locator: &str) -> Result<(), String> {
-    if source_locator.starts_with("content://") {
+    if super::is_content_uri(source_locator) {
         Ok(())
     } else {
         Err("VALIDATION_ERROR: Android source must be a content URI".to_string())

@@ -372,4 +372,58 @@ mod tests {
             "unexpected error: {err}"
         );
     }
+
+    #[test]
+    fn concurrent_note_creation_preserves_all_rows() {
+        let db = std::sync::Arc::new(test_db());
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let db = db.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..20 {
+                        create_note(&db, valid_input()).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(list_notes(&db, "b").unwrap().len(), 160);
+    }
+
+    #[test]
+    fn failed_update_keeps_original_note_content() {
+        let db = test_db();
+        let created = create_note(&db, valid_input()).unwrap();
+        let update = UpdateNoteInput {
+            id: created.id.clone(),
+            cfi_start: created.cfi_start.clone(),
+            cfi_end: created.cfi_end.clone(),
+            cfi_range: created.cfi_range.clone(),
+            selected_text: created.selected_text.clone(),
+            content: "keep me".into(),
+            color: "not-a-color".into(),
+        };
+        assert!(update_note(&db, update).is_err());
+        let listed = list_notes(&db, "b").unwrap();
+        assert_eq!(listed[0].content, created.content);
+    }
+
+    #[test]
+    fn deleting_book_cascades_notes() {
+        let db = test_db();
+        create_note(&db, valid_input()).unwrap();
+        {
+            let conn = db.lock().unwrap();
+            crate::db::repository::delete_book(&conn, "b").unwrap();
+        }
+        let err = list_notes(&db, "b").unwrap_err();
+        assert!(err.starts_with("BOOK_NOT_FOUND:"));
+        let conn = db.lock().unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }
