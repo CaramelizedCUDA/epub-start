@@ -605,4 +605,80 @@ mod tests {
             1
         );
     }
+
+    #[test]
+    fn test_v1_failure_rolls_back_every_v1_object() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+        // Force V1 to fail only after `books` and `reading_progress` have been
+        // created. This makes the assertions below prove transactional rollback
+        // instead of merely observing an early failure before any V1 DDL ran.
+        conn.execute_batch("CREATE TABLE notes (conflict INTEGER);")
+            .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+        assert_eq!(
+            conn.query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM _migrations",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        for rolled_back_table in ["books", "reading_progress"] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [rolled_back_table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 0, "{rolled_back_table} was not rolled back");
+        }
+        let preexisting_conflict_table_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='notes'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(preexisting_conflict_table_exists, 1);
+    }
+
+    #[test]
+    fn test_v3_failure_rolls_back_every_v3_object() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute("INSERT INTO _migrations VALUES (1, 0)", [])
+            .unwrap();
+        conn.execute("INSERT INTO _migrations VALUES (2, 0)", [])
+            .unwrap();
+        conn.execute_batch("CREATE TABLE global_reading_settings_v3 (conflict INTEGER NOT NULL);")
+            .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+        assert_eq!(
+            conn.query_row("SELECT MAX(version) FROM _migrations", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        let v3_column_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('global_reading_settings') WHERE name='font_size_px'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(v3_column_count, 0);
+    }
 }

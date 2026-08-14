@@ -2,6 +2,14 @@
 
 本文件是实现时的强制规则。依赖清单的唯一权威来源为 [README.md](README.md)，数据与 IPC 的具体定义分别以 [DATABASE.md](DATABASE.md) 和 [IPC.md](IPC.md) 为准。
 
+## Backend First 工作边界
+
+- B0–B3 后端阶段优先处理 `src-tauri/`、SQLite、平台、协议、后台任务和 IPC；现有 `src/` 视为 legacy shell。
+- 后端阶段禁止新增前端功能、视觉优化或交互重构。只有 IPC 契约同步、类型检查、安全修复和构建阻塞允许最小前端改动。
+- 后端完成必须以 Rust/数据库/协议/错误路径/运行态验收为证据；`npm run build`、页面截图和前端人工操作不能单独证明后端完成。
+- 只有通过 [ROADMAP.md](ROADMAP.md) 的 B3 门禁，才可进入前端 F1–F3。进入前端阶段后，先重建信息架构和状态处理，再做视觉美化。
+- 后端契约冻结后，任何为 UI 便利而修改 Command、模型、错误前缀、数据库字段或资源预算的行为都必须重新记录迁移、更新契约并补充测试。
+
 ## Rust
 
 - 业务逻辑、数据库访问、解析器和 Tauri Command 中严禁 `.unwrap()` 与 `.expect()`；使用 `?`、明确的错误映射或返回 `Result`。
@@ -60,6 +68,13 @@
 - SAF Provider 缺失的 size/mtime 返回 `0`，不得伪造。重启后必须重新查询持久权限；权限失效映射为 `BOOK_SOURCE_UNAVAILABLE:`。
 - 修改生成 Android 工程前必须保留 `EpubSafPlugin.kt`；重新运行 Tauri Android 初始化时检查其是否被覆盖。
 
+### Android 验证门禁
+
+- 模拟器用于构建和基础行为检查，真实设备用于 SAF Provider、持久授权、授权撤销、进程回收、低存储、WebView、性能与手势验证，两者不可互相替代。
+- B1 必须完成第一次真实设备来源链门禁；B3 前必须完成来源链回归，否则不得宣称全平台后端冻结或开始 Android 前端功能接入。
+- B2 在真实设备验证索引取消、系统终止恢复、大文件和低存储；F2/F3 分别验证功能接入与体验/兼容性矩阵。
+- 至少保留一台较低配置/较旧系统设备与一台当前主流设备；Android DocumentsProvider 云端来源只用于 SAF 兼容测试，不代表 P4 网盘功能已经实现。
+
 ## 依赖管理与白名单控制（最高优先级）
 
 ### 当前允许使用的库
@@ -73,11 +88,13 @@
 1. 禁止擅自引入：上述白名单外的任何 npm 包或 Rust crate 均不得加入、安装或在代码中引用。
 2. 遇到能力瓶颈：若白名单无法实现功能（例如 PDF、RAR、复杂富文本），必须停止编码，不能以临时代码绕过限制。
 3. 提案流程：向人类说明“我需要一个库来实现 [功能]”、“推荐 [库 A] 或 [库 B] 及理由”，等待确认将其加入 README 白名单后才可继续。
-4. 冻结区：`ROADMAP.md` 标记为冻结区的 PDF、TXT、CBZ、CBR 实现，在当前 Phase 禁止触碰，禁止提前引入任何相关依赖。
+4. 冻结区：`ROADMAP.md` 标记为冻结区的 TXT、CBZ/图片 ZIP、PDF、CBR、通用 ZIP 分发包与外部网盘/远程来源，在当前阶段禁止触碰，禁止提前引入任何相关依赖或 Command。
 
-### Phase 3/4 留存规则
+现有 `zip` crate 仅批准用于 EPUB 和当前受控资源读取，不代表获准实现 CBZ、图片 ZIP 或通用 ZIP 分发包。P3 解锁前不得增加 `BookFormat::Zip`、`ImportInspector` 占位实现或外层归档导入入口。
 
-Phase 2 无法可靠评估的页面渲染 trait、PDF/图像归档接口、Cargo Feature 拆包、新格式依赖、Android/Linux WebView 性能和跨端触控专项必须记录到 ROADMAP 对应冻结区。记录建议不代表批准实现；进入对应 Phase 后仍须重新评估并获得人类确认。
+### P3/P4 留存规则
+
+当前无法可靠评估的页面渲染 trait、PDF/图像归档接口、Cargo Feature 拆包、新格式依赖、外部网盘 Provider、网络/OAuth/安全存储依赖、Android/Linux WebView 性能和跨端触控专项必须记录到 ROADMAP 对应冻结区。记录建议不代表批准实现；进入对应阶段后仍须重新评估并获得人类确认。
 
 ## Agent 工作流
 

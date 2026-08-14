@@ -2,6 +2,12 @@
 
 本文件规定模块职责和目录位置。持久化字段以 [DATABASE.md](DATABASE.md) 为准，公开 Command 契约以 [IPC.md](IPC.md) 为准，依赖限制以 [README.md](README.md) 为准。
 
+## 开发阶段边界
+
+项目采用 Backend First。B0–B3 阶段以 `src-tauri/`、SQLite、平台适配、协议和 IPC 为主；`src/` 仅保留可运行的 legacy shell，并允许为契约同步、类型检查、安全修复和构建阻塞做最小改动。不得在后端阶段新增 React 功能、视觉方案或交互优化。
+
+后端通过 [ROADMAP.md](ROADMAP.md) 的 B3 门禁后，建立 IPC/模型/错误语义/资源预算的契约冻结点，才进入前端 F1–F3。前端重建必须以冻结契约为输入；任何后端语义变化都必须重新走 [IPC.md](IPC.md)、模型、测试和 TODO 审计流程。
+
 ## 目录结构
 
 ```text
@@ -72,7 +78,9 @@ EPUB 内部资源的逻辑地址为 `book/{book_id}/{entry_path}`：Windows WebV
 
 `asset://` 只可用于已授权的普通本地缓存文件；不能替代 `epub://`，也不能把 EPUB ZIP 内路径直接映射到宿主文件系统。
 
-## Phase 2 后端能力边界
+当前来源架构只承诺桌面绝对路径和 Android `content://` URI。P4 外部网盘解锁前，不新增远程来源枚举、Provider 层、账号/凭据模块或网络 Reader，也不为未选型的远程协议提前重构 `SourceLease`。未来远程来源应优先评估“Provider 下载到应用受控缓存，再复用现有 Reader/格式/协议链”；若选择远程 Range/流式读取，必须另行证明随机 ZIP 访问、取消、重试和资源预算可控。
+
+## B1–B2 后端能力边界
 
 ```text
 platform/  -> 只处理桌面路径、Android SAF 与权限
@@ -83,15 +91,37 @@ services/  -> 编排数据库、来源和格式能力
 commands/  -> IPC 薄适配
 ```
 
-Phase 2 新记录的 UUID 与时间戳由 `services/` 生成；Command 不接受前端伪造的审计字段。`notes_service` 负责批注长度、颜色、归属与缺失状态校验，`settings_service` 负责全局/单书设置解析，`catalog_service` 负责系列、标签组/标签和关系事务；`db/` 只执行参数化持久化与级联约束。
+后端业务新记录的 UUID 与时间戳由 `services/` 生成；Command 不接受前端伪造的审计字段。`notes_service` 负责批注长度、颜色、归属与缺失状态校验，`settings_service` 负责全局/单书设置解析，`catalog_service` 负责系列、标签组/标签和关系事务；搜索/索引服务负责任务状态、取消和预算；`db/` 只执行参数化持久化与级联约束。
 
-`BookFormat` 继续位于数据库共享模型中，禁止在 `formats/` 重复定义。Phase 2 的能力接口拆分为 `MetadataProvider`、`TocProvider`、`TextContentProvider` 与 `ResourceProvider`；接口不得以默认空值、`todo!`、`unimplemented!` 或 panic 伪装不支持的能力。`ActiveFormat` 在 Phase 2 只有 EPUB 实现，其他枚举值由注册表返回稳定的 `FORMAT_NOT_SUPPORTED:`，不创建空目录或占位处理器。目录与当前书 DOM 搜索由前端 EPUB.js engine 实现，因此 Rust 不创建虚假的 TOC/Text provider 实现。
+`BookFormat` 继续位于数据库共享模型中，禁止在 `formats/` 重复定义。后端能力接口拆分为 `MetadataProvider`、`TocProvider`、`TextContentProvider` 与 `ResourceProvider`；接口不得以默认空值、`todo!`、`unimplemented!` 或 panic 伪装不支持的能力。当前 `ActiveFormat` 只有 EPUB 实现，其他枚举值由注册表返回稳定的 `FORMAT_NOT_SUPPORTED:`，不创建空目录或占位处理器。目录树的 DOM 渲染和视口交互留给后端冻结后的前端阶段；搜索索引、任务状态和资源预算属于后端，不能由前端本地数组替代。
 
-CFI 的 DOM 解析、高亮 range 生成和渲染继续属于前端 EPUB.js 适配层；Rust 只保存经过长度校验的透明 CFI 字符串。PDF/CBZ/CBR 的页面能力接口、Cargo Feature 隔离和相关依赖留待 Phase 3 技术选型，不在 Phase 2 提前冻结。
+CFI 的 DOM 解析、高亮 range 生成和渲染继续属于后端冻结后的前端 EPUB.js 适配层；Rust 只保存经过长度校验的透明 CFI 字符串。PDF/CBZ/CBR 的页面能力接口、Cargo Feature 隔离和相关依赖留待 P3 技术选型，不在 B1–B3 提前冻结。
 
 `protocol/` 禁止依赖 `formats::epub::*`。资源请求必须按 `book_id -> SourceLease -> ActiveFormat -> ResourceProvider -> Response` 流转；来源租约存活期间缓存不得被淘汰，每个请求使用独立 Reader，禁止共享可变 `ZipArchive`。
 
-## 前端 Phase 2 结构
+## P3 多格式目标边界（冻结设计）
+
+当前代码不得提前实现本节，但现有架构也不得把 EPUB 的 CFI、EPUB.js Rendition 或文本排版设置误写成所有格式的通用能力。长期阅读模型分为可重排文档（EPUB/TXT）和固定页面（PDF/CBZ/CBR）；PDF 的文本层能力按文件声明，不是固定保证。
+
+P3.0 需要先设计 capability 组合，而不是万能 Reader 或散落的格式分支：`MetadataProvider`、`ResourceProvider`、`TocProvider`、`TextContentProvider`、`PageProvider`、`SearchProvider`、`AnnotationProvider`。格式不支持某项能力时返回稳定的不支持结果，前端隐藏入口；不得用空目录、空搜索结果或默认页伪装支持。
+
+导入检查应独立于格式处理器：
+
+```text
+SelectedSource / future cached remote source
+  -> ImportInspector
+  -> ImportCandidate[]
+  -> FormatRegistry
+  -> format-specific import service
+```
+
+`ImportInspector` 负责识别 EPUB、单书分发包、纯图片漫画归档和多书候选；格式处理器负责解释已经确定的格式内容。ZIP 是外层分发容器或 CBZ 图片归档，不是数据库图书格式；禁止定义 `BookFormat::Zip`。EPUB 必须先通过 EPUB 签名与容器结构识别，不能被外层 ZIP 规则解包。暂存文件只进入应用私有目录，成功后原子转入受控缓存，失败或取消必须清理。
+
+位置和设置同样按阅读模型隔离：EPUB 使用 CFI，TXT 使用经过设计的文本锚点，PDF/漫画使用页码及必要的页内坐标；文本排版设置与页面缩放/阅读方向分开持久化。具体 Schema 和 IPC 只能在 P3.0 评审后通过追加迁移引入。
+
+## 前端阶段结构（后端冻结后）
+
+以下内容描述 F1–F3 的目标结构，不表示当前阶段已经完成，也不授权在 B3 之前继续扩展前端：
 
 分页正文点击由 EPUB iframe 捕获事件，但判定方向时必须换算为阅读器视口坐标，并按整个视口左右各 25% 命中；一个用户点击只允许触发一次翻页，滚动模式不得启用该命中区。图片、链接、表单控件、活动文本选区和已渲染的高亮标记必须优先。
 

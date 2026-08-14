@@ -2,6 +2,8 @@
 
 本文件是数据库表、字段、索引和迁移顺序的唯一真相来源。Rust 模型与 TypeScript 镜像见 [IPC.md](IPC.md)。数据库文件位于 Tauri `app_data_dir`；启动时启用 `PRAGMA foreign_keys = ON`。
 
+项目当前采用 Backend First。B0–B3 阶段的业务能力必须先以不可修改的迁移、仓储/服务实现和自动化测试落地；前端不得用本地状态、临时 JSON 或假数据替代尚未完成的持久化契约。B3 契约冻结后，如前端重建发现字段缺陷，仍须追加迁移并同步 IPC，禁止直接改写已发布 Schema。
+
 ## 迁移规则
 
 - 使用有序、不可修改的 Rust 迁移，例如 `v1_initial_library`；已发布迁移只可追加，不能改写。
@@ -59,9 +61,15 @@ CREATE INDEX idx_notes_book_id ON notes(book_id);
 
 `authors_json` 是字符串数组 JSON，避免为当前 MVP 引入作者关系表。`source_locator` 统一存放绝对路径或 `content://` URI，`source_kind` 决定校验方式。禁止将访问令牌、临时 URI 权限或 ZIP 内容写入此表。
 
+P4 外部网盘解锁前，`source_kind` 不追加远程枚举，Schema 不新增网盘账号、OAuth 令牌、刷新令牌或通用凭据 JSON 字段。未来远程来源必须通过追加迁移设计 Provider、远程对象稳定 ID、版本/ETag、缓存状态与账号引用；敏感凭据不得直接存入 `books` 或明文 SQLite。远程文件来源也不得与阅读进度、批注的跨设备同步共用未经设计的表。
+
 `file_size_bytes` 与 `last_modified_ts` 是重新定位的辅助指纹，不是安全哈希。桌面来源应保存实际值；Android SAF Provider 无法提供某项元数据时，该字段保存 `0` 表示“未知”，严禁以导入时间或当前时间伪造修改时间。对 EPUB，`package_identifier` 由 OPF 解析；它可为空，但在 SAF 辅助元数据不完整时是重新定位所需的稳定回退标识。`status_detail` 存放面向诊断的简短错误描述，不存放敏感来源内容。
 
 `reading_progress.location_cfi` 仅承载 EPUB CFI；对未来格式保持 `NULL`。`progression` 是可选的 0 到 1 数值，可供所有格式采用，但不得用它伪造精确位置。`notes` 的 CFI 字段为 EPUB 专用，Phase 1 只创建表，不提供 UI 或 IPC 写入。
+
+P3.0 必须通过追加迁移设计多格式位置模型，不能复用 `location_cfi` 存放 TXT 偏移、PDF 页码或漫画页码。规划方向为显式 `location_kind` 与受校验 payload：EPUB CFI、TXT 文本锚点、固定页面页码及必要页内坐标；最终字段和约束须在实现前重新评审。文本排版设置与固定页面设置也必须分表或分类型约束，避免漫画继承字体/行距或 EPUB 继承页面缩放。
+
+`.zip` 不加入 `books.format`。纯图片 ZIP 经 P3.2 检查后以 `cbz` 语义入库；只包装一本 EPUB/TXT/PDF 的 ZIP 经 P3.5 安全解包后，按内部图书的真实格式入库；多书分发包为多个独立图书记录。解包暂存路径和导入任务状态如需持久化，必须使用追加迁移，禁止把临时解包路径写成永久 `source_locator`。
 
 ## V2 Schema（Phase 2）
 

@@ -2,6 +2,8 @@
 
 本文件是 Tauri Command 的唯一公开接口定义。数据库字段定义以 [DATABASE.md](DATABASE.md) 为准，前端调用位置以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。serde 结构体字段与 TypeScript 镜像字段使用 `snake_case`；Tauri 扁平 Command 参数键遵循 Tauri v2 调用约定，在 TypeScript 中使用 `camelCase`（例如 Rust `book_id` 对应 `bookId`）。禁止对嵌套 serde 对象做隐式重命名。
 
+项目当前处于后端 B0–B3。此阶段新增能力必须先交付真实 Rust 实现、测试和本文件契约，再允许最小 TypeScript 镜像同步；不得为了展示页面注册 stub Command。通过 B3 后，本文件、serde 模型、TypeScript 镜像、稳定错误前缀和资源预算共同形成前端重建所依赖的契约冻结点。
+
 ## 共享模型
 
 Rust 端放在 `src-tauri/src/db/models.rs`（或紧邻其职责的模块），并使用 `serde`：
@@ -135,13 +137,17 @@ export type SaveBookImageArgs = {
 };
 ```
 
-`select_epub_sources` 在 Phase 1 只选择 EPUB；未来格式不可借用该 Command。Phase 2 已注册批注、设置、系列与标签基础 Command；系列全文搜索 Command 由 TODO 第 9 节单独交付，不得在基础 IPC 阶段添加空实现。
+`select_epub_sources` 在 Phase 1 只选择 EPUB；未来格式不可借用该 Command。批注、设置、系列与标签基础 Command 可以保留并继续审计；系列全文搜索 Command 必须由 TODO 的 B2 搜索任务连同真实后台任务、取消和预算一起交付，不得添加空实现。
 
-## Phase 2 Commands
+P3 解锁后，通用来源选择、导入检查与导入提交必须使用新的契约，不能偷偷扩展 `select_epub_sources`/`import_book` 改变 Phase 1 EPUB 语义。规划模型至少应区分 `ImportCandidate`、候选真实格式、是否为漫画图片归档、单书/多书和需要用户选择的歧义；具体 Command 在 P3.0 评审后确定。ZIP 不得加入 `BookFormat`，图片 ZIP 成功导入后返回 `cbz`，单书 ZIP 返回内部真实格式。
 
-所有 Phase 2 模型同时定义于 Rust serde 模型、`src/types/models.ts` 与 `src/types/ipc.ts`。字符串输入必须修剪、限制长度并使用 SQLite 参数绑定；批注、标签和搜索摘要只按纯文本渲染。
+P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌、远程打开或同步相关 Command，也不扩展 `SelectedSource`/`SourceKind` 伪装远程能力。未来 Provider 契约必须区分账号授权、远程对象选择、下载/缓存任务和本地受控来源转换；阅读进度与批注跨设备同步不属于远程文件来源 Command。
 
-数据库生成所有 Phase 2 记录的 UUID 与时间戳；前端创建/更新时只提交可编辑字段。具体契约如下：
+## 后端业务 Commands（B2，前端冻结后消费）
+
+所有后端业务模型同时定义于 Rust serde 模型、`src/types/models.ts` 与 `src/types/ipc.ts`。字符串输入必须修剪、限制长度并使用 SQLite 参数绑定；批注、标签和搜索摘要只按纯文本渲染。
+
+数据库/服务层生成所有后端业务记录的 UUID 与时间戳；前端创建/更新时只提交可编辑字段。具体契约如下：
 
 | Command | Args | 成功返回 | 关键语义 |
 | --- | --- | --- | --- |
@@ -172,9 +178,9 @@ export type SaveBookImageArgs = {
 
 `ReadingSettings` / `ReadingSettingsInput` 的阅读排版字段为：`font_size_px`（12–32）、`line_height_multiplier`（1.0–3.0）、`paragraph_spacing_multiplier`（0–2.0）、`text_indent_em`（0–4.0）、`margin_top_px` / `margin_bottom_px`（0–100）、`margin_left_percent` / `margin_right_percent`（0–20）、`max_column_width_px`（300–1200）。`BookReadingSettings` / `BookReadingSettingsInput` 使用同名可空字段逐项覆盖；主题、字体、flow、spread 契约保持不变。前端保存异步执行，失败重试一次；第二次失败显示错误但不得回滚已应用的阅读预览。
 
-系列搜索的规划名称为 `ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`；这些 Command 尚未注册，必须由 TODO 第 9 节连同真实后台任务、取消和预算一起实现。
+系列搜索的规划名称为 `ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`；这些 Command 尚未注册，必须由 TODO 的 B2 搜索任务连同真实后台任务、取消和预算一起实现。
 
-目录树与当前书全文搜索由前端 EPUB.js 适配层完成，不增加 IPC。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个 CFI 最大 4,096 字符。
+目录树的 DOM 渲染与当前书的章节内查找由后端冻结后的 EPUB.js 适配层完成；同系列/多卷搜索由 B2 后端索引 Command 提供。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个 CFI 最大 4,096 字符。
 
 ## 错误契约
 
@@ -192,6 +198,7 @@ export type SaveBookImageArgs = {
 | `TAG_NOT_FOUND:` | `tag_id` 无对应记录 | 刷新标签列表。 |
 | `TAG_GROUP_NOT_FOUND:` | `group_id` 无对应记录 | 刷新标签组与标签列表。 |
 | `VALIDATION_ERROR:` | 参数格式或值不合法 | 保留当前 UI，显示可操作错误。 |
+| `BOOK_RESOURCE_NOT_FOUND:` | 请求的 EPUB 内部条目不存在或路径无效 | 资源加载失败或图片导出提示条目缺失；不暴露宿主路径。 |
 | `BOOK_RESOURCE_LIMIT_EXCEEDED:` | EPUB 或搜索索引超过安全预算 | 停止读取或索引，提示文件过大或压缩异常。 |
 | `FORMAT_NOT_SUPPORTED:` | 当前 Phase 未实现该格式 | 返回书架并保留图书记录。 |
 | `SEARCH_INDEX_UNAVAILABLE:` | FTS5、来源或索引任务不可用 | 显示状态并允许稍后重试或重建。 |
