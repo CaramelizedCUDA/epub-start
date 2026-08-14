@@ -27,6 +27,10 @@ coverage/
 target/
 src-tauri/target/
 
+# Tauri-generated schema snapshots (regenerated on every build)
+src-tauri/gen/schemas/android-schema.json
+src-tauri/gen/schemas/mobile-schema.json
+
 # Local logs and runtime artifacts
 *.log
 *.pid
