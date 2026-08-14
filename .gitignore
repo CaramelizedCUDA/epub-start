@@ -31,6 +31,7 @@ src-tauri/target/
 *.log
 *.pid
 *.tmp
+.tmp_*
 *.temp
 *.bak
 *.backup

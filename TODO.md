@@ -10,31 +10,33 @@
 - 未实现能力不得注册 stub、空返回、`todo!`、`unimplemented!` 或假进度；不支持能力必须返回稳定错误。
 - 发现数据库、IPC、架构或安全文档冲突时，先停在文档/契约层解决，不用代码绕过规范。
 
-## B0 后端审计与健康基线（已完成 2026-08-14）
+## B0 后端审计与健康基线（复核中，完成证明已撤回）
 
 ### 0.1 已有基线（仅作证据，不等于完成）
 
 - [x] `cargo fmt --check` 通过（2026-08-14）。
 - [x] `cargo check` 通过（2026-08-14）。
-- [x] `cargo test` 通过：67/67（2026-08-14，含本次审计新增的 V1/V3 迁移失败回滚测试）。
+- [x] `cargo test` 当前执行为绿色：67/67（2026-08-14）。覆盖事实：完整 Rust 测试套件成功执行；未覆盖事实：本次新增的 V1/V3 迁移失败回滚测试没有留存“故意注入缺陷→测试变红→恢复→测试变绿”证据，因此不能据此标记为“已验证”。
 - [x] `npm.cmd run build` 通过（2026-08-14）；仅证明 TypeScript/Vite 可构建，不证明前端体验或后端完成。
 - [x] `npm.cmd run tauri build` 通过两次、第二次 exit 0（2026-08-14 11:48/11:53），产出 MSI（5.20 MB）与 NSIS（3.01 MB）安装包；`Cargo.lock`/`package-lock.json` 均在位，构建可重复。
-- [x] Android 环境阻塞已记录：缺少 SDK/NDK/JDK/Rust Android target/设备（详见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.1 节）。负责人：用户本人；复核条件：环境就绪后 `tauri android init`（保留 EpubSafPlugin.kt）并完成 B1 首次实机门禁。固定 EPUB 样本已就绪（8 本）。
+- [x] Android 环境准备已完成（2026-08-14）：工具链装于 `D:\Android\Sdk`（JDK17/cmdline-tools/platform-tools/android-35/build-tools/NDK27），Rust Android targets 已装，荣耀 PPG-AN00（Android 15）与黑鲨 SKW-A0（Android 9）可用于探查，固定 EPUB 样本已就绪（8 本）。这只解除环境阻塞，不代表 B1 门禁通过。
 
 ### 0.2 生产代码健康审计
 
-- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；按“包含调用的源码行”统计为 205 行（共 212 次调用），全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:93` 事件循环收口；锁 poisoning 均映射为错误（2026-08-14）。
+- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 202 行（共 209 次调用），全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:94` 事件循环收口；锁 poisoning 均映射为错误（2026-08-14）。未统计 `src-tauri/target` 生成代码。
 - [x] 审计 36 个 `#[tauri::command]`：绝大部分为薄适配；3 个缺口已记录修复任务（进度 Command 含业务逻辑、两个只读 Command 绕过 services 层、51 处小写 `internal error:` 前缀），见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 缺口清单。
 - [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
 - [x] 生成 Command 注册清单并三方比对：Rust 36 == IPC.md 36 == `tauri.ts` 36，命名一致；B2 搜索 Command 未注册（符合规定）；18 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行的文档缺口。
-- [x] 生成迁移清单：V1/V2/V3 均以 `BEGIN IMMEDIATE`+`COMMIT/ROLLBACK` 包裹、版本表门控幂等；本次新增 V1/V3 失败回滚测试，三层回滚、幂等、升级保数据、级联删除均有测试（67/67）。
-- [x] 生成安全边界清单：来源校验、租约、ZIP 预算、协议路径、MIME、CORS 与错误脱敏已有自动化测试；图片导出的 MIME/文件名/来源错误脱敏有测试，桌面保存对话框与实际写入为历史运行态验收；Android 权限链为静态审查且设备验证受外部环境阻塞；`Range` 支持为 B1 计划内缺口。
+- [ ] 迁移实现清单已生成：V1/V2/V3 均使用 `BEGIN IMMEDIATE`+`COMMIT/ROLLBACK` 和版本门控；当前套件为绿色。未完成：V1/V3 新增回滚测试缺少变红自证，不能计入“失败回滚已验证”。接手 Agent 必须在各自目标迁移步骤注入会破坏事务回滚的缺陷，确认对应测试在目标步骤失败，再恢复实现并记录绿色结果。
+- [x] 生成安全边界清单。辅助逻辑已测：ZIP 预算、路径规范化、MIME、CORS、错误脱敏以及桌面来源/租约相关单元测试；未测或不能据此证明：Android 稳定导入、干净 Android 构建、自动化设备流水线。桌面保存对话框与实际写入仅有历史人工运行态记录；`Range` 支持仍是 B1 缺口。legacy 前端/WebView 的资源请求方式不属于 B0 后端审计。
 
 ### 0.3 B0 完成标准
 
 - [x] 形成 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，缺口清单含文件位置、风险等级、修复任务和验证命令。
-- [x] 明确区分“已实现”“已自动验证”“已桌面运行态验证”“受 Android 环境阻塞”四种状态。
-- [x] 审计结论与 README、架构、数据库、IPC、规范、路线图和安全文档一致；修复 IPC.md 文档缺口一处。
+- [x] 明确区分辅助逻辑（静态/单元自动验证）、桌面端人工运行态和 Android 设备探查；不再把环境就绪或等价调试路由当作 Android 门禁。
+- [x] 已同步 README、ROADMAP、TODO、SECURITY 与 BACKEND_AUDIT 的当前结论，并保留 IPC.md 已修复的 `BOOK_RESOURCE_NOT_FOUND:` 文档记录。
+- [ ] Android 平台工程可从干净、已审查的 scaffold 通过官方 `npm.cmd run tauri -- android build --debug --target aarch64` 构建；当前受 `.tauri/tauri-api` 目录冲突和本地 BuildTask 绕过污染阻塞，不能用手工复制 `.so` 的 APK 代替。
+- [ ] 重新签发 B0 完成证明：先补齐 V1/V3 回滚测试变红/变绿证据并完成 Android 官方干净构建，再复核审计覆盖清单与文档结论；在此之前不得把 B0 标记为完成。
 
 ## B1 后端核心能力（当前阶段）
 
@@ -46,8 +48,8 @@
 - [x] `services/` 已承载导入、打开、删除、重新定位、图片和格式用例；Command 保持薄适配。
 - [ ] 对每条 `epub://` 资源请求补齐成功、来源失效、路径穿越、MIME、Range、CORS、超预算和并发 Reader 测试。
 - [ ] 审计 `save_book_image` 的桌面保存、用户取消、非图片 MIME、来源失效和敏感信息不出前端；Android 明确返回稳定未支持错误。
-- [ ] 补齐 Android SAF 选择、持久授权、重启校验、撤销授权和失效来源的静态测试；设备验证仍单独记录为外部阻塞。
-- [ ] **B1 Android 首次实机门禁：** 在真实设备验证 SAF 选择、持久权限、完全重启、授权撤销、重新定位、私有缓存、文件描述符生命周期和自定义协议资源读取；模拟器和桌面构建不得替代。
+- [ ] 补齐 Android SAF 选择、持久授权、重启校验、撤销授权和失效来源的静态测试。已有双机探查可作为复现线索，但不能替代静态/自动覆盖。
+- [ ] **B1 Android 后端/平台首次实机门禁（未通过）：** 已观察到 SAF 选择、持久权限、重启、授权撤销、重新定位、私有缓存、FD 计数以及后端协议路由响应；但任意书仍可能间歇性导入卡住。待 B0 的官方干净构建关闭后，用双机直接验证 Rust/插件导入、来源读取、协议状态码/MIME/CORS/路径防护并定位导入卡住。legacy 前端/WebView 的 `fetch` 行为不作为本门禁或 B0 的否决条件。
 
 ### 2. 数据库、服务和错误契约
 
@@ -119,5 +121,5 @@
 
 ## 历史记录
 
-- 2026-08-14：B0 完成。`cargo fmt --check`、`cargo check`、`cargo test` 67/67、`npm.cmd run build` 通过；`npm.cmd run tauri build` 两次通过（MSI/NSIS，exit 0）；生产代码 panic/unwrap 审计、36 个 Command 三方比对、迁移与安全边界审计完成，产出 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，缺口清单 6 项均有修复任务；IPC.md 补 `BOOK_RESOURCE_NOT_FOUND:` 前缀行；Android SDK/NDK/设备仍为外部阻塞（负责人与复核条件已记录）。B1 开始。
-- Phase 1 Windows 桌面 EPUB 基线、来源重新定位和 CFI 恢复已完成；Android SDK/NDK/设备认证仍是外部阻塞。
+- 2026-08-14：撤回 B0 完成证明。保留桌面构建与 67/67 绿色执行事实，但 V1/V3 新增迁移回滚测试缺少变红自证，Android 官方构建也不能从干净 scaffold 稳定复现；两项均是 B0 缺口。Android 导入偶发卡住属于 B1 运行态缺口。前端 `fetch(epub://...)` 不属于 B0 后端判定。后续修改方向见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.5、0.4 与缺口清单。
+- Phase 1 Windows 桌面 EPUB 基线、来源重新定位和 CFI 恢复保留历史验收记录；Android 当前是代码链/构建复现性阻塞，不再错误标记为缺少 SDK/NDK/设备。

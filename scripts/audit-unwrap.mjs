@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * audit-unwrap.mjs — 统计 src-tauri 下 Rust 代码中的 `.unwrap()` 数量。
+ * audit-unwrap.mjs — 统计 src-tauri/src 下 Rust 源码中的 `.unwrap()` 数量。
  *
  * 口径：与 BACKEND_AUDIT.md 一致 ——
  *   - 匹配行数：包含 `.unwrap()` 调用的源码行数（一行多次调用只算一行）
@@ -15,7 +15,9 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SRC = join(ROOT, 'src-tauri');
+// 只统计仓库源码。扫描 src-tauri/ 会把 target/ 下的生成代码计入结果，
+// 导致统计随本机构建缓存变化，无法作为可重复的审计证据。
+const SRC = join(ROOT, 'src-tauri', 'src');
 const PATTERN = /\.unwrap\(\)/g;
 
 /** 递归收集所有 .rs 文件 */
