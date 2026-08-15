@@ -6,7 +6,7 @@
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计初稿形成于 2026-08-14，但完成证明已撤回并进入复核：当前测试命令为绿色，不等于新增的 V1/V3 迁移回滚测试已经完成“故意注入缺陷→变红→恢复→变绿”的自证；Android SDK/NDK、Rust targets 与双机环境已经具备，但官方 Android 平台构建尚不能从干净工程稳定复现。导入链间歇性卡住作为 B1 平台运行态缺口继续处理。前端 WebView 如何消费资源 URL 不属于 B0 后端完成判定。证据与接手方向见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)。
+仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前阶段为 B2 后端业务能力，并新增 Android 发布制品与运行时存储预算规划；前端 WebView 如何消费资源 URL 不属于 B0/B1 后端完成判定。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
@@ -49,7 +49,7 @@ cd src-tauri && cargo check
 npm run tauri build
 ```
 
-需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。Android 设备验收还需要已配置的 Android SDK/NDK、Rust target、模拟器和真实设备；桌面构建与模拟器不能替代真实设备上的 SAF Provider、持久权限、进程回收、低存储、WebView 和手势验收。首次真实设备来源链门禁安排在 B1，B3 前必须完成，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
+需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建与模拟器不能替代真实设备上的 SAF Provider、持久权限、进程回收、低存储、WebView 和手势验收。B1 首次真实设备来源链门禁已经完成；B2 继续验证后台任务、低存储以及发布制品/运行时存储预算，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
 
 ## 测试 EPUB
 

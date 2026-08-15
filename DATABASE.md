@@ -187,6 +187,12 @@ CREATE TABLE search_index_state (
 
 V2 CRUD 中的 UUID、`created_at` 与 `updated_at` 由 Rust 服务层生成，渲染层不得提供或覆盖这些审计字段。系列、标签组与标签更新必须保留原始 `created_at`；批注更新必须保留原始 `book_id` 与 `created_at`。删除图书时，`source_cache_entries`、`book_series`、`book_tags`、`book_reading_settings`、`search_documents` 与 `search_index_state` 和 V1 的进度/笔记一起级联删除；系列与标签定义保留。
 
+### B2 存储预算规划（尚未实现）
+
+`source_cache_entries.cache_size_bytes` 和 `last_accessed_at` 是来源缓存预算与真实 LRU 的现有数据基础。B2 实现必须在成功取得缓存租约时更新 `last_accessed_at`，并保证缓存文件写入、元数据更新、失败清理与淘汰之间不存在把半成品记录为可用缓存的状态。删除图书后，数据库级联删除缓存记录，文件清理由服务层尽力完成；后续清理任务必须能够识别数据库无对应记录的孤儿文件。
+
+初始来源缓存软/硬上限为 256/512 MiB，封面缓存软/硬上限为 64/128 MiB；搜索索引在 B2 实现前确定独立预算，全部可重建数据合计硬上限不得超过 1 GiB。`books`、阅读进度、批注、设置等持久业务数据不属于缓存预算，禁止为满足预算而删除。若现有字段不足以原子表达淘汰或恢复状态，只能追加 V4 或更高版本迁移；本规划不修改 V2 Schema，也不表示预算已经生效。
+
 ## V3 Schema（阅读设置扩展）
 
 V3 是追加迁移，禁止改写 V1/V2。V2 的 `font_size_percent`、`line_height_percent`、`margin_percent` 只保留为升级来源；V3 之后公开模型、保存逻辑和渲染均以新字段为准。

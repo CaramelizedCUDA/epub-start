@@ -12,14 +12,14 @@
 
 ## B0 后端审计与健康基线（已完成，完成证明 2026-08-14 重新签发）
 
-### 0.1 已有基线（仅作证据，不等于完成）
+### 0.1 初次审计基线（历史执行事实，不代表当前最终状态）
 
 - [x] `cargo fmt --check` 通过（2026-08-14）。
 - [x] `cargo check` 通过（2026-08-14）。
-- [x] `cargo test` 当前执行为绿色：67/67（2026-08-14）。覆盖事实：完整 Rust 测试套件成功执行；未覆盖事实：本次新增的 V1/V3 迁移失败回滚测试没有留存“故意注入缺陷→测试变红→恢复→测试变绿”证据，因此不能据此标记为“已验证”。
+- [x] 初次审计时 `cargo test` 为绿色：67/67（2026-08-14）。当时未覆盖事实：新增 V1/V3 迁移失败回滚测试尚未留存“故意注入缺陷→测试变红→恢复→测试变绿”证据；该缺口随后已在 0.2 与 B0 完成标准中补齐。B1 收尾最终执行为 108/108，见 3 节。
 - [x] `npm.cmd run build` 通过（2026-08-14）；仅证明 TypeScript/Vite 可构建，不证明前端体验或后端完成。
 - [x] `npm.cmd run tauri build` 通过两次、第二次 exit 0（2026-08-14 11:48/11:53），产出 MSI（5.20 MB）与 NSIS（3.01 MB）安装包；`Cargo.lock`/`package-lock.json` 均在位，构建可重复。
-- [x] Android 环境准备已完成（2026-08-14）：工具链装于 `D:\Android\Sdk`（JDK17/cmdline-tools/platform-tools/android-35/build-tools/NDK27），Rust Android targets 已装，荣耀 PPG-AN00（Android 15）与黑鲨 SKW-A0（Android 9）可用于探查，固定 EPUB 样本已就绪（8 本）。这只解除环境阻塞，不代表 B1 门禁通过。
+- [x] Android 环境准备已完成（2026-08-14）：工具链装于 `D:\Android\Sdk`（JDK17/cmdline-tools/platform-tools/android-35/build-tools/NDK27），Rust Android targets 已装，荣耀 PPG-AN00（Android 15）与黑鲨 SKW-A0（Android 9）可用于探查，固定 EPUB 样本已就绪（8 本）。该条只记录环境就绪；B1 门禁的后续通过证据见 1.52。
 
 ### 0.2 生产代码健康审计
 
@@ -28,7 +28,7 @@
 - [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
 - [x] 生成 Command 注册清单并三方比对：Rust 36 == IPC.md 36 == `tauri.ts` 36，命名一致；B2 搜索 Command 未注册（符合规定）；18 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行的文档缺口。
 - [x] 迁移实现清单已生成，且 V1/V3 回滚测试已完成变红自证（2026-08-14）：V1/V2/V3 均使用 `BEGIN IMMEDIATE`+`COMMIT/ROLLBACK` 和版本门控。变红证据：在 V1/V3 目标失败分支注入 `COMMIT;` 破坏回滚后，`test_v1_failure_rolls_back_every_v1_object` 失败于 `books was not rolled back`（migrations.rs:640）、`test_v3_failure_rolls_back_every_v3_object` 失败于 `font_size_px` 列存在断言（migrations.rs:682）；恢复后 `cargo test db::migrations` 9/9、完整 `cargo test` 67/67 通过。
-- [x] 生成安全边界清单。辅助逻辑已测：ZIP 预算、路径规范化、MIME、CORS、错误脱敏以及桌面来源/租约相关单元测试；未测或不能据此证明：Android 稳定导入、干净 Android 构建、自动化设备流水线。桌面保存对话框与实际写入仅有历史人工运行态记录；`Range` 支持仍是 B1 缺口。legacy 前端/WebView 的资源请求方式不属于 B0 后端审计。
+- [x] 初次审计生成安全边界清单。辅助逻辑当时已测：ZIP 预算、路径规范化、MIME、CORS、错误脱敏以及桌面来源/租约相关单元测试；当时未测：Android 稳定导入、干净 Android 构建和自动化设备流水线，`Range` 仍是 B1 缺口。前两项与 Range 随后已关闭；自动化设备流水线及低存储/长期压力仍未覆盖。桌面保存对话框与实际写入只有历史人工运行态记录；legacy 前端/WebView 的资源请求方式不属于 B0 后端审计。
 
 ### 0.3 B0 完成标准
 
@@ -72,7 +72,7 @@
 - [ ] 设计并实现当前书/同系列搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限和来源失效。
 - [ ] 使用 bundled SQLite FTS5 trigram 建立惰性增量索引；查询短于 3 个字符时使用参数化 `LIKE`。
 - [ ] 索引按来源指纹失效，支持部分结果、手动重建和过期重建；禁止用前端数组或一次性整本 EPUB `Vec<u8>` 代替。
-- [ ] 执行预算：单章节 8 MiB、单书 64 MiB、索引总量 2 GiB；所有计数使用溢出检查。
+- [ ] 执行预算：单章节 8 MiB、单书 64 MiB、一次索引任务累计提取量 2 GiB；所有计数使用溢出检查。2 GiB 是拒绝异常输入的处理安全上限，不是允许常驻设备的索引目标；持久索引必须纳入下方运行时存储预算。
 - [ ] 覆盖多卷、中日韩文本、同词多命中、跨章节结果、取消、来源不可用、损坏章节和资源超限测试。
 - [ ] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`；未实现前不得注册。
 - [ ] 在 Android 真实设备验证索引取消、应用进程被系统终止后的恢复、低存储空间、大文件和来源失效行为。
@@ -85,16 +85,28 @@
 - [ ] 完成全局/单书阅读设置的持久化、逐字段覆盖、默认值和迁移回归。
 - [ ] 完成批注数据契约的最终审计：纯文本、CFI、长度、颜色、重启恢复所需字段和删除级联。
 
-### 6. B2 完成标准
+### 6. Android 制品与运行时存储预算
+
+- [ ] 建立可重复的 arm64 release 体积报告，分别记录 APK/AAB、Rust 原生库和前端 `dist`；先关闭本机 release 测量遇到的 `tauri-plugin-fs/android/.tauri/tauri-api` 目录冲突，再记录干净构建命令、工具链版本与基线。不得删除 Cargo 全局缓存或提交本地构建绕过来制造通过。
+- [ ] 实施初始发布门禁：arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 MiB、前端 `dist` ≤ 2 MiB；相对已提交基线增长 >10% 必须解释。首次可靠 release 基线建立后只允许收紧；放宽预算需人工批准并同步路线图和安全文档。
+- [ ] 明确 debug/profile/release 用途：保留完整符号的 debug 包只用于 native 诊断；日常真机回归使用移除原生调试段的 profile；release 不得携带调试段、测试 EPUB、预置来源缓存或本机产物。记录空白安装后的 code 与 data/cache 分项，不用 Android 设置页单一数字代替制品测量。
+- [ ] 将 Android 来源缓存从当前 1 GiB 单一上限改为软上限 256 MiB、硬上限 512 MiB；缓存命中更新 `source_cache_entries.last_accessed_at`，按真实 LRU 淘汰，活动 `SourceLease` 受保护。若安全淘汰后仍无法满足硬上限，返回稳定资源限制错误，不静默超限。
+- [ ] 为封面缓存实施软上限 64 MiB、硬上限 128 MiB，并清理删书、导入失败、数据库不存在记录对应的孤儿文件；搜索索引在写入前确定独立预算，来源缓存、封面和索引等全部可重建数据的合计硬上限 ≤ 1 GiB。
+- [ ] 覆盖磁盘不足、中断写入、缓存命中更新时间、LRU 顺序、活动租约、进程重启、孤儿清理和重建测试；新增测试必须完成变红自证。Android 运行态按“空白安装→固定样本导入→触发淘汰→重启→清理”记录分项占用与未覆盖项。
+- [ ] 如需向前端暴露缓存统计/清理，先在 IPC.md 定义 Command、返回模型和错误语义，再实现并注册；本阶段不得预注册 stub。数据库优先复用 V2 的 `cache_size_bytes`/`last_accessed_at`，字段不足时只追加迁移。
+
+### 7. B2 完成标准
 
 - [ ] 所有后端业务能力都有真实服务实现、IPC 契约、数据库迁移（如需要）、错误语义和自动化测试。
 - [ ] 搜索任务可取消、可查询、可重建，资源预算和来源失效行为可验证。
+- [ ] Android 发布制品存在可重复分项基线并通过绝对上限与 10% 回归门禁；运行时可重建数据具备软/硬上限、真实 LRU、活动租约保护、低存储错误和可验证清理语义。
 - [ ] 不存在“前端已接入但后端未实现”的 Command、假数据或临时本地状态替代品。
 
 ## B3 后端验证与契约冻结
 
 - [ ] Windows 运行态回归：导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索、系列、标签和重启恢复。
-- [ ] Android 静态链审计和 B1 首次实机来源链门禁完成；未通过时不得完成全平台 B3 冻结或开始 Android 前端功能接入。
+- [ ] Android 静态链审计和 B1 首次实机来源链门禁已完成；补做 B2 搜索任务、低存储、缓存淘汰和进程恢复回归，未通过时不得完成全平台 B3 冻结或开始 Android 前端功能接入。
+- [ ] 以干净 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用；确认无调试段、测试 EPUB、预置缓存，且绝对上限、10% 回归门禁及缓存总预算均通过。
 - [ ] 运行 `cargo fmt --check`、`cargo check`、完整 `cargo test`、`npm.cmd run build` 和 `npm.cmd run tauri build`，记录版本、测试数量和已知警告。
 - [ ] 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与实现一致。
 - [ ] 建立后端契约冻结点：冻结 Command、模型、错误前缀、数据库字段、资源预算和来源状态语义。
@@ -124,4 +136,5 @@
 - 2026-08-14：撤回 B0 完成证明。保留桌面构建与 67/67 绿色执行事实，但 V1/V3 新增迁移回滚测试缺少变红自证，Android 官方构建也不能从干净 scaffold 稳定复现；两项均是 B0 缺口。Android 导入偶发卡住属于 B1 运行态缺口。前端 `fetch(epub://...)` 不属于 B0 后端判定。后续修改方向见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.5、0.4 与缺口清单。
 - 2026-08-14：B0 完成证明重新签发——V1/V3 回滚测试完成变红自证、Android 官方干净构建通过；B1 缺口 #1/#2/#3/#4 关闭（services 下沉、错误前缀统一、Range + 并发 Reader + 资源读取测试）；`cargo test` 85/85、`cargo fmt --check` 与 `audit:check` 通过。剩余：Android 导入偶发卡住（B1 门禁，缺口 #7）。
 - 2026-08-14：B1 缺口 #7 关闭——导入卡住根因 tauri#14994（wry MainPipe 唤醒）以 200ms 唤醒窗口 workaround 修复并黑鲨 30 轮验证；B1 Android 后端/平台首次实机门禁通过。Codex 提出的 8 项修改方向全部完成。
-- Phase 1 Windows 桌面 EPUB 基线、来源重新定位和 CFI 恢复保留历史验收记录；Android 当前是代码链/构建复现性阻塞，不再错误标记为缺少 SDK/NDK/设备。
+- 2026-08-14：Phase 1 Windows 桌面 EPUB 基线、来源重新定位和 CFI 恢复保留历史验收记录；Android 工具链、官方 debug 构建和 B1 首次实机门禁均已完成，仍无自动化设备验收流水线。
+- 2026-08-15：B2 新增 Android 制品与运行时存储预算规划。设备探查显示 151.08 MiB debug APK 主要由保留调试符号的 143.97 MiB Rust 原生库构成，不得外推 release 体积；当前应用私有数据约 31.45 MiB，其中来源缓存约 26.82 MiB、封面约 3.99 MiB。release 基线尚未建立，预算任务保持未完成。

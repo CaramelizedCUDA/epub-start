@@ -2,12 +2,12 @@
 
 审计日期：2026-08-14。审计对象：`src-tauri/`（生产代码、测试、迁移、协议、平台适配），以及 [IPC.md](IPC.md)、`src/types/ipc.ts`、`src/lib/tauri.ts` 的契约一致性。
 
-本文件是 B0 阶段的审计产出。2026-08-14 复核时撤回了原“B0 完成”证明；下列状态用于避免把代码存在、命令为绿和人工探查混为一谈：
+本文件是 B0 阶段的审计产出。2026-08-14 复核时曾撤回原“B0 完成”证明，随后在 V1/V3 变红自证与 Android 干净构建补齐后重新签发；B1 也已完成。下列状态仍用于避免把代码存在、命令为绿和人工探查混为一谈：
 
 - **已实现**：代码真实存在且可定位。
 - **辅助逻辑（静态/单元）**：可由审查或自动化命令覆盖；必须同时写明已测与未测范围。
 - **桌面端**：需要 Windows/Linux 人工运行态证据；历史记录不自动升级为本次验证。
-- **Android 环境**：SDK/NDK/targets/设备已具备；后端/平台代码链、干净构建或来源导入未通过时标记为阻塞。
+- **Android 环境**：SDK/NDK/targets/设备已具备；B1 已有双机运行态记录，但未自动化的 Provider/WebView、低存储和长期压力行为仍须单列，不能由桌面测试代替。
 
 ## 0.1 基线验证
 
@@ -21,17 +21,17 @@
 
 环境阻塞记录（与项目代码无关，仅供复现参考）：本会话沙箱在受限模式下禁止 esbuild/cargo 派生子进程（spawn EPERM），需要在提权模式下运行构建；用户侧正常环境不受影响。PowerShell 的 `2>&1` 会把 npm 的 stderr `Info` 行包装成 NativeCommandError 噪音，第二次用 `cmd /c` 重定向验证 exit code 为 0，构建本身无错误。
 
-### 自动化命令（执行事实，不等于所有测试已自证）
+### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：当前 67/67 通过，exit 0（2026-08-14；65 个既有测试 + 2 个新增迁移失败回滚测试）。已测：当前代码下完整 Rust 测试套件为绿色。未测：新增 V1/V3 回滚测试没有留存“故意注入缺陷→目标测试变红→恢复→变绿”的自证，因此不能据此标记为“已验证/已覆盖”。
-- `cargo fmt --check`：通过（2026-08-14，含新增测试代码，无格式差异）。
+- `cargo test`：B1 收尾时 108/108 通过，exit 0（2026-08-14）。已测：迁移回滚、协议 Range、资源读取、并发租约、来源纯逻辑、错误脱敏、仓储事务及系列/标签/设置/批注错误路径；本次新增测试均完成变红自证，详见修复记录。未测：自动化 Android Provider/Activity、真实磁盘写满/断电、长期压力和所有 WebView 版本。
+- `cargo fmt --check` 与 `cargo check`：B1 收尾时通过（2026-08-14）。
 
-### Android 环境（环境已具备，代码链仍阻塞）
+### Android 环境（B1 首次门禁已完成）
 
 - 已具备 JDK 17、Android SDK/NDK、四个 Rust Android targets、荣耀 PPG-AN00（Android 15）和黑鲨 SKW-A0（Android 9）；固定 EPUB 样本共 8 本。
 - `cargo check --target aarch64-linux-android` 在显式设置 NDK 编译器后通过，证明 Rust 目标可编译；未证明完整 Tauri Android 工程可干净复现。
 - 官方 `npm.cmd run tauri -- android build --debug --target aarch64` 已在干净 scaffold 上通过（2026-08-14，exit 0，产出 debug APK 与 AAB；`gen/android` 删除后重新 `tauri android init --ci` 生成、`EpubSafPlugin.kt` 放回、无任何本地构建绕过）。
-- 双机已有后端/平台初步探查，协议处理器可返回资源、状态码和 MIME；导入仍存在间歇性卡住。legacy 前端/WebView 如何消费资源 URL 属于前端集成范围，不参与 B0 后端完成判定。
+- 双机已有后端/平台探查，协议处理器可返回资源、状态码和 MIME；导入卡住已通过 Tauri MainPipe 唤醒窗口 workaround 关闭并完成设备回归。legacy 前端/WebView 如何消费资源 URL 属于前端集成范围，不参与 B0/B1 后端完成判定。
 
 **下一次复核条件**：干净官方构建已通过；导入卡住已修复（见 0.4）；B1 实机门禁已在双机完成（SAF 选择、重启、撤销、重新定位、缓存、FD 生命周期、协议状态码/MIME/CORS/Range/路径防护），详细证据见 0.4 探查矩阵与修复记录。
 
@@ -70,13 +70,13 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 - **未调用**：18 个系列/标签目录 wrapper（`list_series`…`list_book_tags`）在后端已实现并有测试，但 legacy shell 前端未调用。这符合 B 阶段「前端冻结」策略，不视为缺陷，在 F2 接入。
 - **文档缺口**：`BOOK_RESOURCE_NOT_FOUND:` 前缀在 Rust（`formats/epub/mod.rs:45`）、协议层（`protocol/mod.rs:79`）与前端 `mapError` 中均已使用，但 [IPC.md](IPC.md) 错误契约表缺少该行。本次审计已补上（见下方修复记录）。
 
-### 0.2.5 数据库迁移清单 — 实现存在，V1/V3 测试自证待补
+### 0.2.5 数据库迁移清单 — 通过（V1/V3 已补变红自证）
 
 | 迁移 | 内容 | 幂等 | 失败回滚 | 测试 |
 | --- | --- | --- | --- | --- |
-| V1 | books/reading_progress/notes + 4 索引 | 版本表 `_migrations` 门控 | BEGIN IMMEDIATE…COMMIT/ROLLBACK | 建表、升级保留数据、索引、幂等；回滚测试代码存在但未做变红自证 |
+| V1 | books/reading_progress/notes + 4 索引 | 版本表 `_migrations` 门控 | BEGIN IMMEDIATE…COMMIT/ROLLBACK | 建表、升级保留数据、索引、幂等；回滚测试已完成变红自证 |
 | V2 | source_cache_entries/series/标签/设置/search_documents + FTS5 trigram/search_index_state + notes.cfi_range | 同上 | 同上 | 冲突回滚、级联删除 |
-| V3 | 阅读设置新字段 + 数据转换 + 表重建 | 同上 | 同上 | 旧值转换、默认值；回滚测试代码存在但未做变红自证 |
+| V3 | 阅读设置新字段 + 数据转换 + 表重建 | 同上 | 同上 | 旧值转换、默认值；回滚测试已完成变红自证 |
 
 - 外键级联：`PRAGMA foreign_keys = ON` 在迁移入口开启；`test_v2_cascade_removes_all_book_owned_rows` 覆盖 books 删除后 8 张子表级联清空，系列/标签定义保留。
 - FTS5 trigram 虚拟表已在 V2 建立（仅 Schema），索引逻辑按 TODO B2 交付，无假进度。
@@ -95,21 +95,21 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 | CORS | `protocol/mod.rs::allowed_cors_origin` 白名单（开发源 + Tauri 源 + opaque null），外部源不反射 | 辅助逻辑已测白名单；未测各 Android WebView 版本的真实 Origin 行为 |
 | 错误脱敏 | `protocol/mod.rs::sanitize_source_error` 只保留前缀；`image_service` 用白名单化前缀脱敏（2026-08-14 修复盘符冒号缺陷）；services 层 `INTERNAL_ERROR:` 后不再透传 rusqlite 原始错误；前端 mapError 兜底 | 辅助逻辑已测稳定前缀与状态码映射（协议层 2 个 + image_service 白名单/盘符回归 2 个，2026-08-14，均有变红自证）；未测所有设备/Provider 错误文本 |
 | 单条目图片导出 | `services/image_service.rs`：仅 `image/*` MIME、文件名清洗、桌面保存对话框、Android 明确返回 `FORMAT_NOT_SUPPORTED:` | 辅助逻辑已测 MIME、文件名和来源错误脱敏；桌面写入仅有历史人工记录；Android 仅观察到未支持错误，未实现 SAF 写入 |
-| Android 权限 | `EpubSafPlugin.kt`：takePersistableUriPermission 成功后才返回 URI；inspectUri/openReadFd 每次复核 persistedUriPermissions；releasePermission 释放授权 | 静态实现存在并有设备探查；未有自动化覆盖，且稳定导入未通过 |
+| Android 权限 | `EpubSafPlugin.kt`：takePersistableUriPermission 成功后才返回 URI；inspectUri/openReadFd 每次复核 persistedUriPermissions；releasePermission 释放授权 | 静态实现存在且 B1 双机门禁已通过；未有自动化 Provider/Activity 覆盖，长期压力与低存储仍待 B2/B3 |
 
-## 0.3 B0 完成标准（未满足）
+## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 
 1. 审计结果与缺口清单已经形成，IPC.md 的 `BOOK_RESOURCE_NOT_FOUND:` 文档缺口已经修复。
 2. 已按辅助逻辑、桌面端、Android 环境三类重写证据口径，并同步 README/ROADMAP/TODO/SECURITY。
-3. B0 未满足项已全部关闭（2026-08-14）：V1/V3 回滚测试已完成变红自证（见 0.2.5）；Android 平台工程已用官方命令从干净、已审查的 scaffold 稳定构建（见 0.1）。B0 完成证明重新签发。Android 稳定导入仍是 B1 运行态缺口；前端/WebView 资源请求方式不参与 B0 判定。
+3. B0 原未满足项已全部关闭（2026-08-14）：V1/V3 回滚测试已完成变红自证（见 0.2.5）；Android 平台工程已用官方命令从干净、已审查的 scaffold 稳定构建（见 0.1）。B0 完成证明重新签发；其后 Android 稳定导入缺口也已在 B1 关闭。前端/WebView 资源请求方式不参与 B0/B1 后端判定。
 
-## 0.4 Android 初步实机探查（2026-08-14，不等于门禁通过）
+## 0.4 Android 初步实机探查与 B1 收口（2026-08-14）
 
 ### 环境与设备
 
 - 工具链（命令行轻量方案，`D:\Android\Sdk`）：Temurin JDK 17.0.20（`D:\Android\jdk17`）、cmdline-tools 15859902、platform-tools 37.0.1、platforms;android-35、build-tools;35.0.0、NDK 27.3.13750724；用户级 `JAVA_HOME`/`ANDROID_HOME`/`NDK_HOME`/`PATH` 已设置。
 - Rust Android targets 已装：aarch64/armv7/i686/x86_64-linux-android。
-- `gen/android` 曾经 `tauri android init --ci` 生成，项目自有 `EpubSafPlugin.kt` 已保留；但其余 scaffold 当前包含未跟踪文件、构建产物和本地绕过，尚未审查入库边界。
+- `gen/android` 已通过 `tauri android init --ci` 从干净 scaffold 重新生成，项目自有 `EpubSafPlugin.kt` 已保留；本地绕过与构建产物未入库，边界见本节末尾。
 - 设备 1：荣耀 PPG-AN00（Android 15/API 35，arm64，WebView 150.0.7871.181），无线调试接入。
 - 设备 2：黑鲨 SKW-A0（Android 9/API 28，arm64，WebView 79.0.3945.116），USB 接入。
 - 官方构建可重复性已恢复（2026-08-14）：干净 scaffold + 官方命令 exit 0；历史本地绕过链不再使用。
@@ -119,7 +119,7 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 | 项 | 内容 | 结果 |
 | --- | --- | --- |
 | A | 启动/崩溃 | 双机可启动/重启，观察到数据库与缓存目录；官方干净构建已通过（2026-08-14），产物验证并入 B1 门禁 |
-| B1 | SAF 选择 | 双机人工选择并产生 `android_content_uri` 记录；导入仍会间歇性卡住，不能标记稳定通过 |
+| B1 | SAF 选择 | 初步探查时曾间歇性卡住；MainPipe 唤醒 workaround 后，黑鲨 30 轮导入/删除与荣耀 8 本连续导入全部完成，B1 门禁关闭 |
 | B2 | 持久授权（重启） | 观察到重启后记录保留；后端等价路由可返回资源 200，可作为处理器运行态线索；不评价前端消费方式 |
 | B3 | 授权撤销/来源失效 | 观察到 `BOOK_SOURCE_UNAVAILABLE:` 稳定前缀；尚无自动化设备覆盖 |
 | B4 | 重新定位 | 观察到来源恢复后 `open_book` 成功；尚无完整 UI 回归记录 |
@@ -142,6 +142,24 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 - 官方 Android 构建已修复并验证（2026-08-14）：`gen/android` 删除后重新 `tauri android init --ci` 生成，仅放回项目自有 `EpubSafPlugin.kt`，无任何本地构建绕过（无 `BuildTask.kt` 修改、无手动 `.so` 复制、无 `local.properties`、无 `assets/` 预置）；`npm.cmd run tauri -- android build --debug --target aarch64` exit 0 产出 APK 与 AAB。
 - 入库边界不变：禁止入库 `app/src/main/assets/`、`.so`、`build/`、`.gradle/`、`local.properties`、生成 schema 副本和本地绕过；已跟踪的 `EpubSafPlugin.kt` 必须保留；scaffold 由 `gen/android/.gitignore` 与项目根 `.gitignore` 控制。
 
+## 0.5 Android 体积与缓存探查（2026-08-15，B2 规划输入）
+
+本节记录测量事实与未覆盖项，不签发 release 体积完成证明。
+
+| 分项 | 测量结果 | 结论边界 |
+| --- | --- | --- |
+| universal arm64 debug APK | 158,415,466 字节（151.08 MiB） | 仅为 debug 产物，不代表 release |
+| `lib/arm64-v8a/libepub_start_lib.so` | 143.97 MiB，约占 APK 95% | 主要由 Rust/NDK 调试段构成；副本仅移除调试信息后为 27.27 MiB |
+| 前端 `dist` | 约 0.57 MiB | 不是本次膨胀主因 |
+| DEX | 压缩后约 5.19 MiB | 次要占用 |
+| 设备应用私有数据 | 约 31.45 MiB | 其中来源缓存约 26.82 MiB、封面约 3.99 MiB；会随使用增长 |
+
+ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.debug_line` 和 `.debug_ranges`。因此设备设置页观察到约 338 MB，可合理解释为 debug APK、系统解包/运行时优化和应用数据的合计；不能据此声称 release 安装包为 338 MB，也不能据此声称 release 已达标。
+
+本次 arm64 release 构建已经进入 Rust release 编译，但在现有 Tauri 插件生成缓存处失败：`tauri-plugin-fs/android/.tauri/tauri-api` 创建目录时报“文件已存在（os error 183）”。本次没有删除 Cargo 全局缓存、没有修改生成任务、没有手动复制 `.so`，因此可靠 release APK/AAB 基线仍缺失。B2 接手方向与初始预算见 [TODO.md](TODO.md)“Android 制品与运行时存储预算”；B3 前必须形成可重复 release 分项报告。
+
+当前 `source/cache.rs` 的总上限为 1 GiB，淘汰按文件 `modified` 排序；缓存命中提前返回，不会把访问时间写回文件或 `source_cache_entries.last_accessed_at`，因此不能称为真实 LRU。活动租约受保护，但跳过活动项后没有形成可证明的硬上限闭环；封面缓存也没有独立总预算。这些均为 B2 未完成项，不能在本节标记“已验证”。
+
 ## 缺口清单
 
 | # | 缺口 | 文件位置 | 风险 | 修复任务 | 验证命令 |
@@ -154,6 +172,8 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 | 6 | Android 官方构建不可从干净 scaffold 复现 | `src-tauri/gen/android`、Tauri Android 生成/构建链 | 高/阻塞 B0 完成证明 | **已关闭**（2026-08-14）：干净再生成 scaffold（保留 EpubSafPlugin.kt）、无本地绕过，官方命令 exit 0 产出 APK/AAB | `npm.cmd run tauri -- android build --debug --target aarch64` |
 | 7 | Android 导入偶发卡住 | `platform/android.rs`、SAF 插件/来源缓存链 | 高/阻塞 B1 实机门禁 | **已关闭**（2026-08-14）：根因 tauri#14994 MainPipe 唤醒，`select_epub_sources` 返回前 200ms sleep workaround；黑鲨 30 轮循环导入无卡住 | 双机后端/平台验收 |
 | 8 | V1/V3 回滚测试缺少变红自证 | `src-tauri/src/db/migrations.rs` | 中/阻塞 B0 完成证明 | **已补证**（2026-08-14）：V1/V3 分别在目标步骤注入 `COMMIT;` 破坏回滚并确认目标断言变红（V1: `books was not rolled back`@640；V3: `font_size_px` 列@682），恢复后 9/9 与完整套件通过 | `cargo test db::migrations` + `cargo test` |
+| 9 | Android release 制品缺少可重复分项基线 | Gradle/Tauri release 构建链、体积报告脚本 | 中/阻塞 B3 冻结 | **B2 待处理**：先解决 `tauri-plugin-fs/android/.tauri/tauri-api` 目录冲突，再测 arm64 release APK/AAB、原生库、前端 dist 与安装后 code；不得用 debug 338 MB 代替 | 干净 arm64 release 构建 + 分项体积报告 |
+| 10 | 来源/封面缓存缺少真实 LRU 与完整软硬预算 | `source/cache.rs`、`source_cache_entries`、封面清理逻辑 | 中/长期膨胀风险 | **B2 待处理**：来源 256/512 MiB、封面 64/128 MiB，命中更新 `last_accessed_at`，活动租约保护，合计可重建数据硬上限 ≤ 1 GiB；低存储与孤儿清理需变红自证 | 单元/集成变红验证 + Android 分项占用回归 |
 
 ## 修复记录
 
@@ -170,3 +190,4 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 - 2026-08-14：B1 缺口 #4 关闭——`epub://` 协议实现 Range（单段/开放/suffix/416/回退 + `Accept-Ranges`）；新增协议层 10 个测试、format_service 3 个资源读取测试、cache 5 个并发租约测试，均完成变红自证；完整 `cargo test` 85/85 通过。
 - 2026-08-14：B1 缺口 #7 关闭——导入卡住根因定位为 tauri#14994（wry MainPipe 唤醒），`select_epub_sources` 增加 200ms 唤醒窗口 workaround；导入链路加 `[EPUB-IMPORT]` 可观测日志（Rust eprintln + Kotlin Log.d）；黑鲨 30 轮循环导入/删除无卡住。
 - 2026-08-14：B1 收尾审计与测试补齐完成（TODO 1.50/1.51/2.58/2.59 关闭，B1 完成证明签发）：① `save_book_image` 审计——修复 `sanitize_source_error` 用 `split_once(':')` 会把 Windows 盘符（如 `C:\...`）当作错误前缀的缺陷，改为已知前缀白名单（BOOK_SOURCE_UNAVAILABLE / BOOK_RESOURCE_LIMIT_EXCEEDED / INTERNAL_ERROR）+ 3 个测试；② SAF 纯逻辑抽至 `platform/mod.rs`（picker 响应转换 + content:// 前缀与非空 authority 校验），桌面构建新增 9 个 SAF 测试与 3 个桌面 `validate_selected_source` 测试；③ 仓储审计——`delete_book` 的 SELECT+DELETE 两步竞态窗口以 BEGIN IMMEDIATE 单事务闭合；services 层 41 处 rusqlite 原始错误透传（`: {error}`）全部移除，错误消息只保留稳定前缀；④ 系列/标签/设置/批注新增 12 个并发创建、失败保留、事务回滚释放、删除级联与稳定错误测试（并发测试验证无死锁与行数守恒，不做强线性一致声明）。全部新测试 10 组变红自证（注入→目标断言变红→恢复→变绿）通过；`cargo test` 108/108、`cargo fmt --check` 干净、`cargo check` 通过；`audit:unwrap` 自动统计 273 行/280 次（全部位于测试模块）。
+- 2026-08-15：新增 Android 体积与缓存探查记录，并将治理任务纳入 B2、冻结门禁纳入 B3。只记录 debug 制品和设备分项事实；由于 arm64 release 构建受 Tauri 插件生成缓存目录冲突阻塞，未签发 release 体积完成证明。IPC 未新增缓存 Command，避免在设计前注册 stub。
