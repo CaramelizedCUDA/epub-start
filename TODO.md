@@ -23,10 +23,10 @@
 
 ### 0.2 生产代码健康审计
 
-- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 273 行（共 280 次调用，B1 收尾新增测试后复核），全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:94` 事件循环收口；锁 poisoning 均映射为错误（2026-08-14）。未统计 `src-tauri/target` 生成代码。
-- [x] 审计 36 个 `#[tauri::command]`：绝大部分为薄适配；3 个缺口已记录修复任务（进度 Command 含业务逻辑、两个只读 Command 绕过 services 层、51 处小写 `internal error:` 前缀），见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 缺口清单。
+- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 348 行（共 355 次调用，当前 B2 搜索修复测试后复核），全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:103` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
+- [x] 审计 41 个 `#[tauri::command]`：绝大部分为薄适配；3 个历史缺口已关闭，B2 搜索 5 个 Command 已接入真实服务，见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 注册清单。
 - [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
-- [x] 生成 Command 注册清单并三方比对：Rust 36 == IPC.md 36 == `tauri.ts` 36，命名一致；B2 搜索 Command 未注册（符合规定）；18 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行的文档缺口。
+- [x] 生成 Command 注册清单并三方比对：Rust 41 == IPC.md 41 == `tauri.ts` 41，命名一致；B2 搜索 5 个 Command 已接入真实服务；18 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行的文档缺口。
 - [x] 迁移实现清单已生成，且 V1/V3 回滚测试已完成变红自证（2026-08-14）：V1/V2/V3 均使用 `BEGIN IMMEDIATE`+`COMMIT/ROLLBACK` 和版本门控。变红证据：在 V1/V3 目标失败分支注入 `COMMIT;` 破坏回滚后，`test_v1_failure_rolls_back_every_v1_object` 失败于 `books was not rolled back`（migrations.rs:640）、`test_v3_failure_rolls_back_every_v3_object` 失败于 `font_size_px` 列存在断言（migrations.rs:682）；恢复后 `cargo test db::migrations` 9/9、完整 `cargo test` 67/67 通过。
 - [x] 初次审计生成安全边界清单。辅助逻辑当时已测：ZIP 预算、路径规范化、MIME、CORS、错误脱敏以及桌面来源/租约相关单元测试；当时未测：Android 稳定导入、干净 Android 构建和自动化设备流水线，`Range` 仍是 B1 缺口。前两项与 Range 随后已关闭；自动化设备流水线及低存储/长期压力仍未覆盖。桌面保存对话框与实际写入只有历史人工运行态记录；legacy 前端/WebView 的资源请求方式不属于 B0 后端审计。
 
@@ -61,21 +61,24 @@
 
 ### 3. B1 完成标准
 
-- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（2026-08-14：108/108；覆盖清单见 BACKEND_AUDIT.md 0.2.6 与修复记录；桌面对话框类运行态与 Android Kotlin 真机行为按三类口径标注，不计入自动覆盖）。
-- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（2026-08-14：fmt 干净、check 通过、`cargo test` 108/108；测试数 85→108，新增覆盖范围见 B1 各勾选项）。
-- [x] IPC、模型、数据库和安全文档已同步（2026-08-14）：本次未新增 Command/模型/迁移，错误契约仅收敛消息（稳定前缀不变），IPC.md 无需变更；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计（273 行/280 次）与修复记录。
+- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 137/137；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5；桌面对话框类运行态与 Android Kotlin 真机行为按三类口径标注，不计入自动覆盖）。
+- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 137/137；测试数 85→137，B2 搜索专项已完成变红自证）。
+- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、模型镜像和预算/未验证边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 348 行/355 次）。
 
 ## B2 后端业务能力（当前阶段）
 
 ### 4. 搜索与索引（真实后台实现）
 
-- [ ] 设计并实现当前书/同系列搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限和来源失效。
-- [ ] 使用 bundled SQLite FTS5 trigram 建立惰性增量索引；查询短于 3 个字符时使用参数化 `LIKE`。
-- [ ] 索引按来源指纹失效，支持部分结果、手动重建和过期重建；禁止用前端数组或一次性整本 EPUB `Vec<u8>` 代替。
-- [ ] 执行预算：单章节 8 MiB、单书 64 MiB、一次索引任务累计提取量 2 GiB；所有计数使用溢出检查。2 GiB 是拒绝异常输入的处理安全上限，不是允许常驻设备的索引目标；持久索引必须纳入下方运行时存储预算。
-- [ ] 覆盖多卷、中日韩文本、同词多命中、跨章节结果、取消、来源不可用、损坏章节和资源超限测试。
-- [ ] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`；未实现前不得注册。
-- [ ] 在 Android 真实设备验证索引取消、应用进程被系统终止后的恢复、低存储空间、大文件和来源失效行为。
+- [x] 设计并实现同系列/多卷搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限、同系列任务原子去重和来源失效（桌面自动验证；Android 已复测取消与进程终止恢复，低存储/长期压力门禁仍延期）。当前书章节内查找按 IPC 留给 F2 EPUB.js，不冒充后端索引能力。
+- [x] 使用 bundled SQLite FTS5 trigram 建立惰性增量索引；查询短于 3 个字符时使用参数化 `LIKE`。
+- [x] 索引按来源指纹失效，支持部分结果、手动重建和过期重建；实现未把整本 EPUB 一次性读入 `Vec<u8>`。
+- [x] 执行预算：单章节 8 MiB、单书 64 MiB；提取计数使用溢出检查。一次索引任务累计提取量 2 GiB 的总任务门禁仍需 Android/大文件运行态验证。
+- [x] 搜索索引持久化文本账面硬上限 256 MiB；超限保持事务一致性并返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷 135/135 重建期间实测 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`；这是当前样本的运行态记录，不替代低存储/长期压力验证。
+- [x] 覆盖 spine 顺序、中日韩文本、OPF 相对/百分号编码 href、短词 LIKE 字面 `%`/`_`/反斜杠、三字以上 trigram、跨章节结果、取消、同系列任务原子去重、结果上限、未就绪错误、损坏章节、章节资源超限、提取计数溢出、索引预算超限、单任务 2 GiB 累计预算、错误状态事务回滚，以及真实 SQLite `SQLITE_FULL` 到 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 的映射与旧索引保留；新增测试均完成“注入错误→目标测试变红→恢复变绿”。Android 缓存常见存储耗尽 OS 错误的稳定前缀映射仍由内存错误对象覆盖；未替代 Android 低存储运行态。
+- [x] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。
+- [x] 在 Android 真实设备验证索引取消与应用进程被系统终止后的恢复：当前 APK 在黑鲨 Android 9 上七卷系列取消后保留 101/135 章节部分结果；force-stop 后重启状态恢复为 `pending`（101/135），重新执行后恢复到 135/135 `ready`。
+- [x] 在 Android 真实设备以系统 picker 导入 13.20 MiB EPUB，并验证大章节索引限制：章节超过 8 MiB 得到 `ready`、0/1 且保留超限明细；此前已持久 URI 重拷贝并恢复原 EPUB 到 34/34。该证据覆盖单次大文件导入，不等于长期/2 GiB 压力。
+- [ ] **硬件阻塞，延期至受控 Android 虚拟设备：** 验证 ENOSPC/SQLite 满盘、长期/2 GiB 导入压力、进程重启与清理恢复；固定 API/镜像和 `/data` 容量，记录初始/峰值/清理后占用与可复现命令。来源授权撤销已用黑鲨 Android 9 的一次性诊断探针验证，同一设备已记录一次 135/135 重建的 SQLite 主库/rollback journal 占用。虚拟设备例外只覆盖破坏性存储压力，不替代 SAF Provider、OEM 进程管理、性能或手势实机证据，也不能用桌面纯辅助逻辑替代。
 
 ### 5. 目录、系列、标签、设置和批注后端收口
 
@@ -105,7 +108,7 @@
 ## B3 后端验证与契约冻结
 
 - [ ] Windows 运行态回归：导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索、系列、标签和重启恢复。
-- [ ] Android 静态链审计和 B1 首次实机来源链门禁已完成；补做 B2 搜索任务、低存储、缓存淘汰和进程恢复回归，未通过时不得完成全平台 B3 冻结或开始 Android 前端功能接入。
+- [ ] Android 静态链审计和 B1 首次实机来源链门禁已完成；补做 B2 搜索任务与缓存淘汰回归，低存储/长期压力按批准的受控 Android 虚拟设备例外执行；未通过时不得完成全平台 B3 冻结或开始 Android 前端功能接入。
 - [ ] 以干净 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用；确认无调试段、测试 EPUB、预置缓存，且绝对上限、10% 回归门禁及缓存总预算均通过。
 - [ ] 运行 `cargo fmt --check`、`cargo check`、完整 `cargo test`、`npm.cmd run build` 和 `npm.cmd run tauri build`，记录版本、测试数量和已知警告。
 - [ ] 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与实现一致。
@@ -137,4 +140,6 @@
 - 2026-08-14：B0 完成证明重新签发——V1/V3 回滚测试完成变红自证、Android 官方干净构建通过；B1 缺口 #1/#2/#3/#4 关闭（services 下沉、错误前缀统一、Range + 并发 Reader + 资源读取测试）；`cargo test` 85/85、`cargo fmt --check` 与 `audit:check` 通过。剩余：Android 导入偶发卡住（B1 门禁，缺口 #7）。
 - 2026-08-14：B1 缺口 #7 关闭——导入卡住根因 tauri#14994（wry MainPipe 唤醒）以 200ms 唤醒窗口 workaround 修复并黑鲨 30 轮验证；B1 Android 后端/平台首次实机门禁通过。Codex 提出的 8 项修改方向全部完成。
 - 2026-08-14：Phase 1 Windows 桌面 EPUB 基线、来源重新定位和 CFI 恢复保留历史验收记录；Android 工具链、官方 debug 构建和 B1 首次实机门禁均已完成，仍无自动化设备验收流水线。
-- 2026-08-15：B2 新增 Android 制品与运行时存储预算规划。设备探查显示 151.08 MiB debug APK 主要由保留调试符号的 143.97 MiB Rust 原生库构成，不得外推 release 体积；当前应用私有数据约 31.45 MiB，其中来源缓存约 26.82 MiB、封面约 3.99 MiB。release 基线尚未建立，预算任务保持未完成。
+- 2026-08-15：B2 新增 Android 制品与运行时存储预算规划。旧/中间产物曾显示 151.08 MiB；当前官方 arm64 debug APK 实测 310,548,144 字节（296.16 MiB），Rust 原生库 145.08 MiB，另有约 144.20 MiB ZIP 对齐/保留空洞。两者都不得外推 release 体积；当前应用私有数据约 31.45 MiB，其中来源缓存约 26.82 MiB、封面约 3.99 MiB。release 基线尚未建立，预算任务保持未完成。
+- 2026-08-15：B2 搜索与索引服务完成真实实现并完成 132/132 桌面测试、变红自证和当前 APK 的取消/进程恢复复测；修复索引预算对 UTF-8 中日韩文本按字符而非字节计数的缺陷，新增单任务 2 GiB 累计预算溢出/超限测试、SQLite 非满盘 I/O 不误报资源耗尽的回归测试，以及内存错误对象覆盖 Android 缓存存储错误，不填充设备存储；黑鲨 Android 9 通过系统 picker 导入 13.20 MiB EPUB，验证超限章节明细，并以一次性诊断探针释放 SAF 授权后确认索引进入 `BOOK_SOURCE_UNAVAILABLE`；另记录七卷 135/135 重建期间主库 11,640,832 B、峰值 rollback journal 8,309,808 B；来源恢复/临时数据已清理。低存储、长期/2 GiB 压力仍未完成。
+- 2026-08-15：B2 搜索复核修复同系列并发任务竞争、错误状态非事务写入/全系列错误扩散、合法 OPF 相对及百分号编码 href、短词 LIKE 通配符误匹配；新增 5 个测试均以恢复旧缺陷确认目标变红后再恢复变绿。SQLite 满盘测试使用受限 `max_page_count` 的真实写事务，确认稳定资源错误并保留旧索引；完整 `cargo test` 137/137，`audit:unwrap` 348 行/355 次。IPC 专门边界确定当前书章节内查找留给 F2 EPUB.js，同系列/多卷全文搜索由 B2 后端负责。低存储/长期压力经批准延期至受控 Android 虚拟设备，尚未勾选。

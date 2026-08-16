@@ -26,7 +26,7 @@ EpubStart 是一个本地优先的 EPUB 阅读器。主要威胁来源为：
 | 控制文件最大体积（container.xml/OPF） | 2 MiB | `epub/mod.rs` |
 | ZIP 最大条目数 | 5,000 | `epub/mod.rs` |
 
-当前已统一实施：压缩源 512 MiB、声明与实际总解压量 2 GiB、单项及整包压缩比 200:1。搜索提取将在 TODO 的 B2 搜索任务随索引实现加入单章节 8 MiB、单书 64 MiB、一次任务累计提取量 2 GiB 限制；所有计数必须使用溢出检查。2 GiB 是异常输入处理的安全上限，不是允许搜索索引常驻设备的体积目标。
+当前已统一实施：压缩源 512 MiB、声明与实际总解压量 2 GiB、单项及整包压缩比 200:1；B2 搜索提取已加入单章节 8 MiB、单书 64 MiB、一次任务累计提取量 2 GiB 限制，所有计数使用溢出检查。2 GiB 是异常输入处理的安全上限，不是允许搜索索引常驻设备的体积目标。Android 已验证系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和持久 URI 授权撤销后的来源失效，并记录过一次重建的主库/rollback journal 占用；缓存写入的常见存储耗尽 OS 错误已用内存错误对象覆盖，SQLite `SQLITE_FULL` 已通过限制 `max_page_count` 的真实写事务映射为稳定 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 并验证回滚保留旧索引。Android 低存储与长期/2 GiB 导入压力仍未完成，经批准延期至固定镜像和受控 `/data` 容量的 Android 虚拟设备；该例外不替代 SAF、OEM、性能或手势实机证据。
 
 这些限制当前针对 EPUB 资源链。P3 的 CBZ/图片 ZIP 和通用 ZIP 分发包必须重新评估条目数、嵌套层数、总解压量、单图尺寸、总像素、解码内存和暂存磁盘预算；不得因复用 `zip` crate 而自动沿用不充分的 EPUB 限制。
 
@@ -38,14 +38,14 @@ EpubStart 是一个本地优先的 EPUB 阅读器。主要威胁来源为：
 
 已移除 `epub_bytes_cache`。桌面使用 `File + Read + Seek`，Android 使用应用私有来源缓存；缓存使用 size、mtime 与前 4 KiB 精确样本指纹，失配时原子重建，当前实现为单本 512 MiB、总量 1 GiB，并通过租约保护在用文件。ZIP 同时执行 5,000 条目、单项 50 MiB、控制文件 2 MiB、总解压 2 GiB 和 200:1 压缩比限制。
 
-当前 1 GiB 是实现中的拒绝上限，不是产品目标。B2 规划将来源缓存改为软/硬上限 256/512 MiB、封面缓存 64/128 MiB，并要求缓存命中更新 `last_accessed_at`、按真实 LRU 淘汰、活动 `SourceLease` 不被删除；搜索索引另设独立预算，全部可重建数据的合计硬上限不超过 1 GiB。达到硬上限且无法安全淘汰时必须返回稳定资源限制错误。数据库、阅读进度、批注、设置和用户明确保存的文件不属于可清理缓存。
+当前 1 GiB 是实现中的拒绝上限，不是产品目标。B2 规划将来源缓存改为软/硬上限 256/512 MiB、封面缓存 64/128 MiB，并要求缓存命中更新 `last_accessed_at`、按真实 LRU 淘汰、活动 `SourceLease` 不被删除；搜索索引已实施 256 MiB UTF-8 文本字节账面硬上限，全部可重建数据的合计硬上限不超过 1 GiB。达到硬上限且无法安全淘汰时必须返回稳定资源限制错误。数据库、阅读进度、批注、设置和用户明确保存的文件不属于可清理缓存。
 
 ### Android 体积探查基线（2026-08-15，规划证据）
 
 本次只建立诊断基线，不声明 release 已达标：
 
-- arm64 universal debug APK 为 158,415,466 字节（151.08 MiB）；其中 `libepub_start_lib.so` 为 143.97 MiB，约占 APK 的 95%。ELF 主要膨胀来自 `.debug_info`、`.debug_str`、`.debug_line`、`.debug_ranges` 等调试段；对副本执行仅移除调试信息后，原生库降至 27.27 MiB。
-- 前端 `dist` 约 0.57 MiB，DEX 压缩后约 5.19 MiB，均不是本次 debug 包膨胀主因。因此设备显示约 338 MB 可合理解释为 debug APK、系统解包/优化及应用数据的合计，不能外推为 release 安装体积。
+- 当前官方构建的 arm64 universal debug APK 为 310,548,144 字节（296.16 MiB）；其中 `libepub_start_lib.so` 为 145.08 MiB。较早的 151.08 MiB 是旧/中间产物，不能作为最终 APK 基线。ELF 主要膨胀来自 `.debug_info`、`.debug_str`、`.debug_line`、`.debug_ranges` 等调试段；此前副本仅移除调试信息后，原生库降至 27.27 MiB。
+- 前端 `dist` 约 0.57 MiB，DEX 压缩后约 5.19 MiB；当前 APK 还存在约 144.20 MiB 的 ZIP 对齐/保留空洞，需在 release 构建链中单独解释。因此设备显示约 338 MB 可合理解释为 debug APK、系统解包/优化及应用数据的合计，不能外推为 release 安装体积。
 - 黑鲨设备应用私有数据约 31.45 MiB，其中来源缓存约 26.82 MiB、封面约 3.99 MiB；这证明运行时缓存会随使用增长，必须与发布制品分开治理。
 - 本次 arm64 release 测量在 Tauri 插件生成缓存的目录冲突处失败：`tauri-plugin-fs/android/.tauri/tauri-api` 报“文件已存在（os error 183）”。未删除 Cargo 全局缓存、未加入本地构建绕过，因此尚无可信 release APK/AAB 基线。
 
@@ -120,8 +120,8 @@ V1、V2、V3 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，错误分�
 
 - Android SAF 持久权限的运行时撤销检测依赖平台插件
 - 当前无自动化的 Android 设备验收流水线
-- Android SDK/NDK、Rust targets 与双机环境已经具备；官方干净 debug 构建和 B1 首次实机来源链门禁已完成，导入卡住 workaround 已有黑鲨 30 轮与荣耀连续导入记录。未覆盖自动化设备回归、所有 DocumentsProvider、长期压力和低存储故障。
-- 尚无可信的 arm64 release 体积基线；本次测量受 Tauri 插件生成缓存目录冲突阻塞。debug APK 的 151.08 MiB 与设备显示约 338 MB 不得写成 release 体积结论，B2/B3 必须完成分项预算与发布候选复测。
+- Android SDK/NDK、Rust targets 与双机环境已经具备；官方干净 debug 构建和 B1 首次实机来源链门禁已完成，导入卡住 workaround 已有黑鲨 30 轮与荣耀连续导入记录。未覆盖自动化设备回归、所有 DocumentsProvider；长期压力和低存储故障因真机硬件条件延期至受控 Android 虚拟设备。
+- 尚无可信的 arm64 release 体积基线；本次测量受 Tauri 插件生成缓存目录冲突阻塞。当前 debug APK 为 296.16 MiB，设备显示约 338 MB 不得写成 release 体积结论，B2/B3 必须完成分项预算与发布候选复测。
 - legacy 前端/WebView 如何请求 EPUB 资源属于前端集成范围，不作为 B0 后端安全审计是否通过的判据
 - EPUB.js 的 iframe 隔离依赖其内置安全策略，而非 Tauri 主 WebView 的 CSP
 - 封面文件通过 `asset://` 协议暴露，需确认 `asset` scope 配置正确

@@ -77,6 +77,28 @@ pub struct EpubMetadata {
     pub cover_entry_path: Option<String>,
 }
 
+/// A bounded plain-text document extracted from one EPUB spine item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchDocument {
+    pub spine_index: i64,
+    pub href: String,
+    pub title: String,
+    pub body: String,
+    pub cfi: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchExtraction {
+    pub documents: Vec<SearchDocument>,
+    pub total_documents: i64,
+    pub bytes_extracted: u64,
+    pub errors: Vec<String>,
+    pub cancelled: bool,
+}
+
+pub const MAX_SEARCH_CHAPTER_SIZE: u64 = 8 * 1024 * 1024;
+pub const MAX_SEARCH_BOOK_SIZE: u64 = 64 * 1024 * 1024;
+
 /// Error type for EPUB parse failures.
 #[derive(Debug)]
 pub enum EpubError {
@@ -345,6 +367,319 @@ fn is_image_path(path: &str) -> bool {
         || lower.ends_with(".webp")
 }
 
+#[derive(Debug, Clone)]
+struct SearchSpineItem {
+    href: String,
+    title: String,
+}
+
+fn parse_search_spine(xml_bytes: &[u8]) -> Result<Vec<SearchSpineItem>, String> {
+    let mut reader = Reader::from_reader(xml_bytes);
+    let mut buf = Vec::new();
+    let mut in_manifest = false;
+    let mut in_spine = false;
+    let mut manifest = std::collections::HashMap::<String, (String, String)>::new();
+    let mut spine_ids = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(event)) => {
+                let name = event.name().as_ref().to_vec();
+                let local = strip_ns(&name, b"opf:");
+                if local == b"manifest" {
+                    in_manifest = true;
+                } else if local == b"spine" {
+                    in_spine = true;
+                } else if in_manifest && local == b"item" {
+                    let mut id = None;
+                    let mut href = None;
+                    let mut media_type = String::new();
+                    for attr in event.attributes().flatten() {
+                        let key = String::from_utf8_lossy(attr.key.as_ref());
+                        let value = String::from_utf8_lossy(&attr.value).to_string();
+                        match key.as_ref() {
+                            "id" => id = Some(value),
+                            "href" => href = Some(value),
+                            "media-type" => media_type = value,
+                            _ => {}
+                        }
+                    }
+                    if let (Some(id), Some(href)) = (id, href) {
+                        manifest.insert(id, (href, media_type));
+                    }
+                } else if in_spine && local == b"itemref" {
+                    for attr in event.attributes().flatten() {
+                        if attr.key.as_ref() == b"idref" {
+                            spine_ids.push(String::from_utf8_lossy(&attr.value).to_string());
+                        }
+                    }
+                }
+            }
+            Ok(Event::Empty(event)) => {
+                let name = event.name().as_ref().to_vec();
+                let local = strip_ns(&name, b"opf:");
+                if in_manifest && local == b"item" {
+                    let mut id = None;
+                    let mut href = None;
+                    let mut media_type = String::new();
+                    for attr in event.attributes().flatten() {
+                        let key = String::from_utf8_lossy(attr.key.as_ref());
+                        let value = String::from_utf8_lossy(&attr.value).to_string();
+                        match key.as_ref() {
+                            "id" => id = Some(value),
+                            "href" => href = Some(value),
+                            "media-type" => media_type = value,
+                            _ => {}
+                        }
+                    }
+                    if let (Some(id), Some(href)) = (id, href) {
+                        manifest.insert(id, (href, media_type));
+                    }
+                } else if in_spine && local == b"itemref" {
+                    for attr in event.attributes().flatten() {
+                        if attr.key.as_ref() == b"idref" {
+                            spine_ids.push(String::from_utf8_lossy(&attr.value).to_string());
+                        }
+                    }
+                }
+            }
+            Ok(Event::End(event)) => {
+                let name = event.name().as_ref().to_vec();
+                let local = strip_ns(&name, b"opf:");
+                if local == b"manifest" {
+                    in_manifest = false;
+                } else if local == b"spine" {
+                    in_spine = false;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => return Err(format!("OPF spine parse error: {error}")),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(spine_ids
+        .into_iter()
+        .filter_map(|id| manifest.remove(&id))
+        .filter(|(_, media_type)| {
+            media_type.is_empty() || media_type.contains("html") || media_type.contains("xhtml")
+        })
+        .map(|(href, _)| {
+            let title = Path::new(&href)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("Chapter")
+                .replace(['_', '-'], " ");
+            SearchSpineItem { href, title }
+        })
+        .collect())
+}
+
+fn resolve_search_href(opf_path: &str, href: &str) -> Result<String, String> {
+    let path_end = href.find(['?', '#']).unwrap_or(href.len());
+    let href_path = &href[..path_end];
+    if href_path.is_empty() || href_path.starts_with('/') || href_path.contains('\\') {
+        return Err("invalid spine href".to_string());
+    }
+
+    let mut segments = Vec::<String>::new();
+    for segment in opf_base_dir(opf_path).split('/') {
+        push_normalized_zip_segment(&mut segments, segment)?;
+    }
+    for segment in href_path.split('/') {
+        let decoded = decode_percent_segment(segment)?;
+        push_normalized_zip_segment(&mut segments, &decoded)?;
+    }
+    if segments.is_empty() {
+        return Err("invalid empty spine path".to_string());
+    }
+    Ok(segments.join("/"))
+}
+
+fn push_normalized_zip_segment(segments: &mut Vec<String>, segment: &str) -> Result<(), String> {
+    match segment {
+        "" | "." => Ok(()),
+        ".." => {
+            if segments.pop().is_none() {
+                return Err("spine href escapes the EPUB root".to_string());
+            }
+            Ok(())
+        }
+        _ if segment.contains(['/', '\\', '\0']) => Err("invalid spine href segment".to_string()),
+        _ => {
+            segments.push(segment.to_string());
+            Ok(())
+        }
+    }
+}
+
+fn decode_percent_segment(segment: &str) -> Result<String, String> {
+    let bytes = segment.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return Err("invalid percent encoding in spine href".to_string());
+            }
+            let high = decode_hex_digit(bytes[index + 1])?;
+            let low = decode_hex_digit(bytes[index + 2])?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).map_err(|_| "spine href is not valid UTF-8".to_string())
+}
+
+fn decode_hex_digit(value: u8) -> Result<u8, String> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        b'A'..=b'F' => Ok(value - b'A' + 10),
+        _ => Err("invalid percent encoding in spine href".to_string()),
+    }
+}
+
+fn html_text(bytes: &[u8]) -> Result<(String, String), String> {
+    let mut reader = Reader::from_reader(bytes);
+    let mut buf = Vec::new();
+    let mut body = String::new();
+    let mut title = String::new();
+    let mut current_tag = String::new();
+    let mut hidden_depth = 0usize;
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(event)) => {
+                let tag = String::from_utf8_lossy(event.name().as_ref()).to_ascii_lowercase();
+                if tag == "script" || tag == "style" || tag == "svg" {
+                    hidden_depth += 1;
+                }
+                current_tag = tag;
+            }
+            Ok(Event::End(event)) => {
+                let tag = String::from_utf8_lossy(event.name().as_ref()).to_ascii_lowercase();
+                if (tag == "script" || tag == "style" || tag == "svg") && hidden_depth > 0 {
+                    hidden_depth -= 1;
+                }
+                current_tag.clear();
+            }
+            Ok(Event::Text(event)) => {
+                if hidden_depth == 0 {
+                    let text = event
+                        .unescape()
+                        .map_err(|error| format!("HTML text decode error: {error}"))?
+                        .trim()
+                        .to_string();
+                    if !text.is_empty() {
+                        if !body.is_empty() {
+                            body.push(' ');
+                        }
+                        body.push_str(&text);
+                        if title.is_empty() && (current_tag == "title" || current_tag == "h1") {
+                            title = text;
+                        }
+                    }
+                }
+            }
+            Ok(Event::CData(event)) => {
+                if hidden_depth == 0 {
+                    let text = String::from_utf8_lossy(event.as_ref()).trim().to_string();
+                    if !text.is_empty() {
+                        if !body.is_empty() {
+                            body.push(' ');
+                        }
+                        body.push_str(&text);
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(error) => return Err(format!("XHTML parse error: {error}")),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok((title, body))
+}
+
+/// Extracts bounded, plain-text spine documents for the B2 search index.
+/// The callback is checked between chapters so a running task can be cancelled.
+pub fn extract_search_documents<R: Read + Seek, F: FnMut() -> bool>(
+    reader: R,
+    mut cancelled: F,
+) -> Result<SearchExtraction, String> {
+    let mut archive = ZipArchive::new(reader).map_err(|error| format!("ZIP error: {error}"))?;
+    validate_archive_budget(&mut archive)?;
+    let container = read_zip_entry_by_name(
+        &mut archive,
+        "META-INF/container.xml",
+        MAX_CONTROL_FILE_SIZE,
+    )?;
+    let opf_path = parse_container(&container).map_err(|error| error.to_string())?;
+    let opf = read_zip_entry_by_name(&mut archive, &opf_path, MAX_CONTROL_FILE_SIZE)?;
+    let spine = parse_search_spine(&opf)?;
+    let total_documents = spine.len() as i64;
+    let mut extraction = SearchExtraction {
+        total_documents,
+        ..SearchExtraction::default()
+    };
+    for (index, item) in spine.into_iter().enumerate() {
+        if cancelled() {
+            extraction.cancelled = true;
+            break;
+        }
+        let entry_path = match resolve_search_href(&opf_path, &item.href) {
+            Ok(path) => path,
+            Err(error) => {
+                extraction.errors.push(format!("{}: {}", item.href, error));
+                continue;
+            }
+        };
+        let bytes = match read_zip_entry_by_name(&mut archive, &entry_path, MAX_SEARCH_CHAPTER_SIZE)
+        {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                extraction.errors.push(format!("{}: {}", item.href, error));
+                continue;
+            }
+        };
+        extraction.bytes_extracted = checked_search_bytes(extraction.bytes_extracted, bytes.len())?;
+        if extraction.bytes_extracted > MAX_SEARCH_BOOK_SIZE {
+            return Err(format!(
+                "BOOK_RESOURCE_LIMIT_EXCEEDED: search extraction exceeds {} bytes",
+                MAX_SEARCH_BOOK_SIZE
+            ));
+        }
+        match html_text(&bytes) {
+            Ok((parsed_title, body)) => {
+                if !body.is_empty() {
+                    extraction.documents.push(SearchDocument {
+                        spine_index: index as i64,
+                        href: item.href,
+                        title: if parsed_title.is_empty() {
+                            item.title
+                        } else {
+                            parsed_title
+                        },
+                        body,
+                        cfi: Some(format!("epubcfi(/6/{})", (index + 1) * 2)),
+                    });
+                }
+            }
+            Err(error) => extraction.errors.push(format!("{}: {}", item.href, error)),
+        }
+    }
+    Ok(extraction)
+}
+
+fn checked_search_bytes(current: u64, added: usize) -> Result<u64, String> {
+    current.checked_add(added as u64).ok_or_else(|| {
+        "BOOK_RESOURCE_LIMIT_EXCEEDED: search extraction byte counter overflow".to_string()
+    })
+}
+
 // ── Public API ─────────────────────────────────────────────────────
 
 /// Open an EPUB file, parse its metadata, and extract cover image
@@ -535,7 +870,8 @@ mod tests {
     fn build_test_epub() -> Vec<u8> {
         let cursor = std::io::Cursor::new(Vec::new());
         let mut writer = zip::ZipWriter::new(cursor);
-        let options = zip::write::FileOptions::default();
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
         writer
             .start_file("META-INF/container.xml", options)
@@ -554,6 +890,68 @@ mod tests {
             )
             .unwrap();
 
+        writer.finish().unwrap().into_inner()
+    }
+
+    fn build_search_epub() -> Vec<u8> {
+        build_search_epub_with_second(b"<html><body>second chapter</body></html>")
+    }
+
+    fn build_search_epub_with_second(second: &[u8]) -> Vec<u8> {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer
+            .start_file("META-INF/container.xml", options)
+            .unwrap();
+        writer
+            .write_all(br#"<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#)
+            .unwrap();
+        writer.start_file("OEBPS/content.opf", options).unwrap();
+        writer
+            .write_all(
+                br#"<package><metadata><dc:title xmlns:dc="x">Search</dc:title></metadata><manifest>
+                <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+                <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/>
+                </manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>"#,
+            )
+            .unwrap();
+        writer.start_file("OEBPS/c1.xhtml", options).unwrap();
+        writer
+            .write_all(
+                "<html><head><title>第一章</title></head><body>你好世界 Rust</body></html>"
+                    .as_bytes(),
+            )
+            .unwrap();
+        writer.start_file("OEBPS/c2.xhtml", options).unwrap();
+        writer.write_all(second).unwrap();
+        writer.finish().unwrap().into_inner()
+    }
+
+    fn build_search_epub_with_relative_encoded_href() -> Vec<u8> {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer
+            .start_file("META-INF/container.xml", options)
+            .unwrap();
+        writer
+            .write_all(br#"<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>"#)
+            .unwrap();
+        writer.start_file("OPS/content.opf", options).unwrap();
+        writer
+            .write_all(
+                br#"<package><manifest>
+                <item id="c1" href="../Text/chapter%201.xhtml?edition=1#part" media-type="application/xhtml+xml"/>
+                </manifest><spine><itemref idref="c1"/></spine></package>"#,
+            )
+            .unwrap();
+        writer.start_file("Text/chapter 1.xhtml", options).unwrap();
+        writer
+            .write_all(b"<html><body>relative path chapter</body></html>")
+            .unwrap();
         writer.finish().unwrap().into_inner()
     }
 
@@ -629,5 +1027,77 @@ mod tests {
 
         let error = read_zip_entry_by_name(&mut archive, "entry.bin", 8).unwrap_err();
         assert!(error.contains("size limit"));
+    }
+
+    #[test]
+    fn search_extraction_preserves_spine_order_and_cjk_text() {
+        let extraction =
+            extract_search_documents(std::io::Cursor::new(build_search_epub()), || false).unwrap();
+        assert_eq!(extraction.total_documents, 2);
+        assert_eq!(extraction.documents.len(), 2);
+        assert_eq!(extraction.documents[0].spine_index, 0);
+        assert!(extraction.documents[0].body.contains("你好世界"));
+        assert_eq!(extraction.documents[0].title, "第一章");
+        assert_eq!(extraction.documents[1].spine_index, 1);
+    }
+
+    #[test]
+    fn search_extraction_honors_cancellation_between_chapters() {
+        let extraction =
+            extract_search_documents(std::io::Cursor::new(build_search_epub()), || true).unwrap();
+        assert!(extraction.cancelled);
+        assert!(extraction.documents.is_empty());
+    }
+
+    #[test]
+    fn search_extraction_keeps_partial_results_for_damaged_chapter() {
+        let extraction = extract_search_documents(
+            std::io::Cursor::new(build_search_epub_with_second(
+                b"<html><body>&invalid;</body></html>",
+            )),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(extraction.documents.len(), 1);
+        assert_eq!(extraction.total_documents, 2);
+        assert_eq!(extraction.errors.len(), 1);
+    }
+
+    #[test]
+    fn search_extraction_rejects_chapter_over_eight_mib() {
+        let mut chapter = b"<html><body>".to_vec();
+        chapter.extend(std::iter::repeat_n(b'x', MAX_SEARCH_CHAPTER_SIZE as usize));
+        chapter.extend_from_slice(b"</body></html>");
+        let extraction = extract_search_documents(
+            std::io::Cursor::new(build_search_epub_with_second(&chapter)),
+            || false,
+        )
+        .unwrap();
+        assert!(extraction.documents.len() <= 1);
+        assert!(extraction
+            .errors
+            .iter()
+            .any(|error| error.contains("size limit")));
+    }
+
+    #[test]
+    fn search_extraction_byte_counter_rejects_overflow() {
+        let error = checked_search_bytes(u64::MAX, 1).unwrap_err();
+        assert!(error.starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:"));
+    }
+
+    #[test]
+    fn search_extraction_resolves_relative_and_percent_encoded_spine_hrefs() {
+        let extraction = extract_search_documents(
+            std::io::Cursor::new(build_search_epub_with_relative_encoded_href()),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(extraction.documents.len(), 1);
+        assert!(extraction.documents[0]
+            .body
+            .contains("relative path chapter"));
+        assert!(extraction.errors.is_empty());
+        assert!(resolve_search_href("OPS/content.opf", "../../secret.xhtml").is_err());
     }
 }

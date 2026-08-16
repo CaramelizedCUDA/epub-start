@@ -7,7 +7,7 @@
 - **已实现**：代码真实存在且可定位。
 - **辅助逻辑（静态/单元）**：可由审查或自动化命令覆盖；必须同时写明已测与未测范围。
 - **桌面端**：需要 Windows/Linux 人工运行态证据；历史记录不自动升级为本次验证。
-- **Android 环境**：SDK/NDK/targets/设备已具备；B1 已有双机运行态记录，但未自动化的 Provider/WebView、低存储和长期压力行为仍须单列，不能由桌面测试代替。
+- **Android 环境**：SDK/NDK/targets/设备已具备；B1 已有双机运行态记录，但未自动化的 Provider/WebView、低存储和长期压力行为仍须单列，不能由桌面测试代替。低存储/长期压力因真机硬件条件延期到受控 Android 虚拟设备，其他行为仍保留实机门禁。
 
 ## 0.1 基线验证
 
@@ -23,7 +23,7 @@
 
 ### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：B1 收尾时 108/108 通过，exit 0（2026-08-14）。已测：迁移回滚、协议 Range、资源读取、并发租约、来源纯逻辑、错误脱敏、仓储事务及系列/标签/设置/批注错误路径；本次新增测试均完成变红自证，详见修复记录。未测：自动化 Android Provider/Activity、真实磁盘写满/断电、长期压力和所有 WebView 版本。
+- `cargo test`：B2 搜索复核后 137/137 通过，exit 0（当前工作区）。已测：B1 原有覆盖，加上 spine 顺序、中日韩文本、合法 OPF 相对/百分号编码 href、取消、同系列任务原子去重、损坏章节部分结果、8 MiB 章节上限、短词 LIKE 与 `%`/`_`/反斜杠字面匹配、FTS5 trigram、结果上限、未就绪错误、进程重启恢复、状态聚合（含缺失状态和 ready 部分错误）、指纹失效判断、索引提取字节计数溢出、UTF-8 文本按字节计数、单任务 2 GiB 累计预算溢出/超限、持久索引账面预算超限错误及超限回滚保留旧文档、错误状态写入事务回滚、受限 `max_page_count` 触发的真实 SQLite `SQLITE_FULL` 与 Android 缓存存储错误到 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 的稳定映射、非满盘 SQLite I/O 不误报资源耗尽；本次新增 5 个测试均完成变红自证。未测：Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 导入压力，以及低存储场景下 SQLite page/WAL 实际占用和所有 WebView 版本；Android Provider/Activity 仅做设备抽样。
 - `cargo fmt --check` 与 `cargo check`：B1 收尾时通过（2026-08-14）。
 
 ### Android 环境（B1 首次门禁已完成）
@@ -40,15 +40,15 @@
 ### 0.2.1 panic/unwrap/expect 与锁生命周期 — 通过
 
 - `panic!`、`todo!`、`unimplemented!`、`unreachable!`：生产代码 0 处（grep 全量确认）。
-- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 273 行（共 280 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
-- `.expect()`：生产代码仅 1 处，`lib.rs:94` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B1 前保留现状即可。
+- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 348 行（共 355 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
+- `.expect()`：生产代码仅 1 处，`lib.rs:103` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B2 保留现状即可。
 - 安全 unwrap 变体（`unwrap_or`/`unwrap_or_else`/`unwrap_or_default`）：43 处，均为带默认值的非 panic 形式，合格。
 - 锁与生命周期：`AppState.db: Mutex<Connection>`，服务层统一经 `lock_db` 辅助函数获取并把 poisoning 映射为错误；`source/cache.rs` 的 `active: Mutex<HashMap<String, Weak<()>>>` 同样映射 poisoning，租约由 `Arc<()>` 守护。未发现手动 `spawn` 线程或生命周期漏洞。
 - 忽略错误（`let _ =`）14 处：均为 best-effort 清理（迁移 ROLLBACK 失败、缓存文件删除、SAF 权限释放、封面清理），语义合理，不需要处理。
 
 ### 0.2.2 Command 薄适配审计 — 通过（3 个缺口已关闭，2026-08-14）
 
-36 个 Command 现在全部为薄适配（参数解析 + 服务调用 + 错误转换）。原 3 个缺口均已修复：
+41 个 Command 现在全部为薄适配（参数解析 + 服务调用 + 错误转换）。原 3 个缺口均已修复；B2 新增的 5 个搜索 Command 也已接入真实服务：
 
 1. `commands/save_reading_progress.rs`：progression 范围校验、unix 时间戳、upsert 与回查已下沉到 `services::save_reading_progress`（`services/library_service.rs`）。
 2. `commands/get_reading_progress.rs` 与 `commands/list_books.rs`：已改为经 `services::get_reading_progress` / `services::list_books` 编排（统一 `lock_db` 与错误转换）。
@@ -60,17 +60,24 @@
 - 插件注册（dialog、epub_saf 平台插件）与 `epub` 协议注册为声明式注册，失败由 Tauri 框架统一报告。
 - 唯一 `expect` 见 0.2.1，为事件循环收口。
 
-### 0.2.4 Command 注册清单比对 — 36/36 一致，1 个文档缺口
+### 0.2.4 Command 注册清单比对 — 41/41 一致，历史文档缺口已修复
 
-Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（Phase 1 9 个 + 后端业务 27 个）、`src/types/ipc.ts`、`src/lib/tauri.ts` 逐一比对：
+Rust 注册（`lib.rs` invoke_handler）41 个 Command，与 [IPC.md](IPC.md)、`src/types/ipc.ts`、`src/lib/tauri.ts` 逐一比对：
 
-- **命名一致**：36 个 Command 名称在 Rust/IPC.md/tauri.ts 三方完全一致，无命名漂移。
+- **命名一致**：41 个 Command 名称在 Rust/IPC.md/tauri.ts 三方完全一致，无命名漂移。
 - **入参/返回一致**：ipc.ts 声明的 Args 类型覆盖所有带参 Command；`save_global_reading_settings` 的 Rust 参数为 `settings`（直接参数，非嵌套对象），tauri.ts 对应传 `{ settings }`，符合 Tauri v2 约定。
-- **未实现**：B2 搜索 Command（`ensure_series_search_index` 等 5 个）未注册、无 stub，符合 IPC.md 与 TODO B2 的规定。
+- **B2 搜索**：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index` 已注册并调用真实服务；后台索引使用来源租约和指纹，预算超限返回稳定错误，任务在章节边界检查取消。
 - **未调用**：18 个系列/标签目录 wrapper（`list_series`…`list_book_tags`）在后端已实现并有测试，但 legacy shell 前端未调用。这符合 B 阶段「前端冻结」策略，不视为缺陷，在 F2 接入。
 - **文档缺口**：`BOOK_RESOURCE_NOT_FOUND:` 前缀在 Rust（`formats/epub/mod.rs:45`）、协议层（`protocol/mod.rs:79`）与前端 `mapError` 中均已使用，但 [IPC.md](IPC.md) 错误契约表缺少该行。本次审计已补上（见下方修复记录）。
 
-### 0.2.5 数据库迁移清单 — 通过（V1/V3 已补变红自证）
+### 0.2.5 B2 搜索与索引 — 自动化与 Android 部分运行态通过；低存储/长期压力延期至受控虚拟设备
+
+- `formats/epub::extract_search_documents` 按 OPF spine 顺序读取 XHTML，受控解析相对路径、`..` 和百分号编码并拒绝越过 EPUB 根目录；单章节限制 8 MiB、单书限制 64 MiB，服务层以 `checked_add` 统计一次任务累计 2 GiB；不把整本 EPUB 读成一个 `Vec<u8>`。
+- `services/search_service.rs` 使用 V2 FTS5 trigram 外部内容表，短于 3 个字符走参数化、转义通配符的 `LIKE`；索引记录来源 `SourceFingerprint`，指纹变化会重建，章节损坏会保留已提取文档并记录部分结果错误；持久化文本账面硬上限为 256 MiB，既有文本按 UTF-8 字节数统计，计数溢出和超限均返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，超限重建回滚并保留原索引文档。
+- 已注册并实现 5 个 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。同一系列最多一个活动任务，后台线程在章节边界检查取消；错误状态清理/FTS 重建/状态更新在单事务内完成，`SQLITE_FULL` 使用稳定资源错误且回滚保留旧索引，单任务内部错误不再扩散清空整个系列。取消、来源不可用、资源超限均不会把错误原文或宿主路径返回给前端。
+- 自动化已测：spine 顺序、中日韩文本、相对/编码 href、取消、同系列任务去重、损坏章节部分结果、8 MiB 限制、短词 LIKE 与通配符字面查询、trigram 查询、结果上限、未就绪错误、进程重启状态恢复、ready/pending 聚合（含缺失状态和 ready 部分错误）、指纹失效判断、提取字节计数溢出、UTF-8 文本按字节计数、单任务 2 GiB 累计预算溢出/超限、索引预算超限稳定错误和超限回滚保留旧文档、错误状态事务失败回滚、真实 SQLite `SQLITE_FULL`/缓存存储错误映射、非满盘 SQLite I/O 保持内部错误；当前 137/137 全量测试通过。新增 5 个回归测试均按“恢复旧缺陷→目标测试变红→恢复修复→变绿”自证；SQLite 满盘使用受限 page_count 的真实写事务，缓存 OS 错误仍只构造内存错误对象，不填充设备存储。Android 当前 APK 真机复测：黑鲨 Android 9 单卷索引 34/34 并返回 trigram 摘要；七卷系列立即取消后保留 101/135 部分结果并进入 `error`；force-stop 后重启状态恢复为 `pending`（101/135），继续执行后恢复到 135/135 `ready`；系统 picker 导入 13.20 MiB EPUB 后，章节超限状态为 `ready`、0/1 且保留 `entry ... exceeds the size limit of 8388608 bytes`；一次性诊断探针调用现有 SAF `releasePermission` 后重建状态为 `error`，明细为 `BOOK_SOURCE_UNAVAILABLE: ... Persisted read permission is missing`；七卷 135/135 重建期间观测到 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`。未测：受控 Android 虚拟设备上的低存储、长期/2 GiB 导入压力和所有 WebView 版本。
+
+### 0.2.6 数据库迁移清单 — 通过（V1/V3 已补变红自证）
 
 | 迁移 | 内容 | 幂等 | 失败回滚 | 测试 |
 | --- | --- | --- | --- | --- |
@@ -82,13 +89,13 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 - FTS5 trigram 虚拟表已在 V2 建立（仅 Schema），索引逻辑按 TODO B2 交付，无假进度。
 - `test_v1_failure_rolls_back_every_v1_object` 与 `test_v3_failure_rolls_back_every_v3_object` 已完成变红自证（2026-08-14 补证）：将对应失败分支的 `ROLLBACK;` 临时替换为 `COMMIT;` 破坏事务回滚——V1 测试变红且失败断言为 `books was not rolled back`（migrations.rs:640，证明失败发生在 V1 的 `notes` 冲突步骤之后）；V3 测试变红且失败断言为 `font_size_px` 列存在（left: 1，migrations.rs:682，证明失败发生在 V3 的 `global_reading_settings_v3` 冲突步骤之后）；恢复实现后 `cargo test db::migrations` 9/9 通过、完整 `cargo test` 通过（见修复记录）。
 
-### 0.2.6 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
+### 0.2.7 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
 
 | 边界 | 实现位置 | 状态 |
 | --- | --- | --- |
 | 来源校验 | `platform/desktop.rs`（绝对路径+存在+可读+扩展名）、`platform/android.rs`（content:// 校验 + 插件持久权限复核）、`platform/mod.rs`（共享 SAF 纯逻辑：picker 响应转换 + content:// 非空 authority 校验，2026-08-14） | 辅助逻辑：桌面 `validate_selected_source` 3 个测试 + SAF 9 个测试（均变红自证，2026-08-14）；未测：自动化 Android Provider/撤销链（Kotlin 真机行为，双机探查为准） |
 | Reader 租约 | `source/reader.rs` + `source/cache.rs`：SourceLease + Arc 守护；桌面直读文件、Android 私有缓存原子复制 + 指纹复核 | 辅助逻辑：租约共享/重建/并发与临时文件清理 5 个测试 + 变红自证（2026-08-14）；Android 自动化 FD/缓存恢复仍为设备抽样 |
-| ZIP 预算 | `formats/epub/mod.rs`：5000 条目、2 MiB 控制文件、50 MiB 单条目、2 GiB 总解压、200:1 压缩比、`checked_add` 溢出检查、`take()` 包装 | 辅助逻辑已测压缩比与超限；未测真实设备低存储/大文件运行态 |
+| ZIP 预算 | `formats/epub/mod.rs`：5000 条目、2 MiB 控制文件、50 MiB 单条目、2 GiB 总解压、200:1 压缩比、`checked_add` 溢出检查、`take()` 包装 | 辅助逻辑已测压缩比与超限；Android 已测持久 URI 的 8 MiB 章节拒绝和缓存重拷贝；未测低存储与完整大文件导入压力 |
 | 协议路径 | `services/format_service.rs::normalize_entry_path`：拒绝 `..`、`\`、`/` 开头、空段；Components 规范化二次检查 | 辅助逻辑已测路径规范化；Android 后端路由有初步设备探查；前端消费方式不在本审计范围 |
 | MIME | `formats/epub/mod.rs::mime_for_path` 扩展名白名单；响应带 `X-Content-Type-Options: nosniff` | 辅助逻辑已测扩展名映射；Android 后端响应有初步设备探查；WebView 渲染不在本审计范围 |
 | Range | `protocol/mod.rs::serve_range`：单段 `bytes=start-end`、开放结尾、suffix、越界 416 + `Content-Range: bytes */len`、多段/非法回退全文；`Accept-Ranges: bytes` | 已实现/已自动验证（8 个单元测试 + 变红自证，2026-08-14） |
@@ -121,7 +128,7 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 | A | 启动/崩溃 | 双机可启动/重启，观察到数据库与缓存目录；官方干净构建已通过（2026-08-14），产物验证并入 B1 门禁 |
 | B1 | SAF 选择 | 初步探查时曾间歇性卡住；MainPipe 唤醒 workaround 后，黑鲨 30 轮导入/删除与荣耀 8 本连续导入全部完成，B1 门禁关闭 |
 | B2 | 持久授权（重启） | 观察到重启后记录保留；后端等价路由可返回资源 200，可作为处理器运行态线索；不评价前端消费方式 |
-| B3 | 授权撤销/来源失效 | 观察到 `BOOK_SOURCE_UNAVAILABLE:` 稳定前缀；尚无自动化设备覆盖 |
+| B3 | 授权撤销/来源失效 | 黑鲨 Android 9：一次性诊断探针释放持久 URI 授权后，重建索引得到 `BOOK_SOURCE_UNAVAILABLE: ... Persisted read permission is missing`；临时书籍与文件已清理。未覆盖自动化 Provider/Activity 流水线 |
 | B4 | 重新定位 | 观察到来源恢复后 `open_book` 成功；尚无完整 UI 回归记录 |
 | B5 | FD 生命周期 | `open_book` ×40 抽样时 fd 308→341→310；只是不见稳定泄漏的观察，非压力/长期证明 |
 | B6 | 私有缓存 | 观察到 `.source` 与 `.fingerprint.json`；未验证低存储、损坏或并发恢复 |
@@ -148,13 +155,13 @@ Rust 注册（`lib.rs` invoke_handler）36 个 Command，与 [IPC.md](IPC.md)（
 
 | 分项 | 测量结果 | 结论边界 |
 | --- | --- | --- |
-| universal arm64 debug APK | 158,415,466 字节（151.08 MiB） | 仅为 debug 产物，不代表 release |
-| `lib/arm64-v8a/libepub_start_lib.so` | 143.97 MiB，约占 APK 95% | 主要由 Rust/NDK 调试段构成；副本仅移除调试信息后为 27.27 MiB |
+| universal arm64 debug APK（当前官方构建，2026-08-15） | 310,548,144 字节（296.16 MiB） | 仅为 debug 产物，不代表 release；较早的 151.08 MiB 数字是旧/中间产物，不能作为最终 APK 基线 |
+| `lib/arm64-v8a/libepub_start_lib.so` | 145.08 MiB，约占 APK 原生 payload | 主要由 Rust/NDK 调试段构成；此前副本仅移除调试信息后为 27.27 MiB |
 | 前端 `dist` | 约 0.57 MiB | 不是本次膨胀主因 |
 | DEX | 压缩后约 5.19 MiB | 次要占用 |
 | 设备应用私有数据 | 约 31.45 MiB | 其中来源缓存约 26.82 MiB、封面约 3.99 MiB；会随使用增长 |
 
-ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.debug_line` 和 `.debug_ranges`。因此设备设置页观察到约 338 MB，可合理解释为 debug APK、系统解包/运行时优化和应用数据的合计；不能据此声称 release 安装包为 338 MB，也不能据此声称 release 已达标。
+ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.debug_line` 和 `.debug_ranges`。当前 APK 的 ZIP 还观察到 `classes7.dex` 与 `assets/tauri.conf.json` 之间约 144.20 MiB 的对齐/保留空洞，必须在 release 构建链审计中解释，不能把它误归因于业务资源。设备设置页观察到约 338 MB，可由当前 debug APK、系统解包/运行时优化和应用数据共同解释；不能据此声称 release 安装包为 338 MB，也不能据此声称 release 已达标。
 
 本次 arm64 release 构建已经进入 Rust release 编译，但在现有 Tauri 插件生成缓存处失败：`tauri-plugin-fs/android/.tauri/tauri-api` 创建目录时报“文件已存在（os error 183）”。本次没有删除 Cargo 全局缓存、没有修改生成任务、没有手动复制 `.so`，因此可靠 release APK/AAB 基线仍缺失。B2 接手方向与初始预算见 [TODO.md](TODO.md)“Android 制品与运行时存储预算”；B3 前必须形成可重复 release 分项报告。
 
@@ -168,7 +175,7 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 | 2 | 两个只读 Command 直连 repository，绕过 services 层 | `commands/get_reading_progress.rs`、`commands/list_books.rs` | 低 | **已修复**（2026-08-14）：经 `services::get_reading_progress` / `services::list_books` | `cargo test` |
 | 3 | 51 处小写 `internal error:` 前缀 | 多个 services/commands 文件 | 低 | **已修复**（2026-08-14）：全部统一为 `INTERNAL_ERROR:`，grep 复核 0 处小写残留 | `cargo test` + grep 复核 |
 | 4 | `epub://` 协议无 Range 支持 | `src-tauri/src/protocol/mod.rs` | 低 | **已实现**（2026-08-14）：`serve_range` 单段/开放结尾/suffix/416/回退 + `Accept-Ranges`；8 个单元测试 + 变红自证；并发 Reader 租约 5 个测试 + 变红自证 | `cargo test` |
-| 5 | lib.rs 事件循环 `expect` | `src-tauri/src/lib.rs:94` | 低 | 可选：保持 Tauri 惯例 | `cargo check` |
+| 5 | lib.rs 事件循环 `expect` | `src-tauri/src/lib.rs:103` | 低 | 可选：保持 Tauri 惯例 | `cargo check` |
 | 6 | Android 官方构建不可从干净 scaffold 复现 | `src-tauri/gen/android`、Tauri Android 生成/构建链 | 高/阻塞 B0 完成证明 | **已关闭**（2026-08-14）：干净再生成 scaffold（保留 EpubSafPlugin.kt）、无本地绕过，官方命令 exit 0 产出 APK/AAB | `npm.cmd run tauri -- android build --debug --target aarch64` |
 | 7 | Android 导入偶发卡住 | `platform/android.rs`、SAF 插件/来源缓存链 | 高/阻塞 B1 实机门禁 | **已关闭**（2026-08-14）：根因 tauri#14994 MainPipe 唤醒，`select_epub_sources` 返回前 200ms sleep workaround；黑鲨 30 轮循环导入无卡住 | 双机后端/平台验收 |
 | 8 | V1/V3 回滚测试缺少变红自证 | `src-tauri/src/db/migrations.rs` | 中/阻塞 B0 完成证明 | **已补证**（2026-08-14）：V1/V3 分别在目标步骤注入 `COMMIT;` 破坏回滚并确认目标断言变红（V1: `books was not rolled back`@640；V3: `font_size_px` 列@682），恢复后 9/9 与完整套件通过 | `cargo test db::migrations` + `cargo test` |
@@ -191,3 +198,4 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 - 2026-08-14：B1 缺口 #7 关闭——导入卡住根因定位为 tauri#14994（wry MainPipe 唤醒），`select_epub_sources` 增加 200ms 唤醒窗口 workaround；导入链路加 `[EPUB-IMPORT]` 可观测日志（Rust eprintln + Kotlin Log.d）；黑鲨 30 轮循环导入/删除无卡住。
 - 2026-08-14：B1 收尾审计与测试补齐完成（TODO 1.50/1.51/2.58/2.59 关闭，B1 完成证明签发）：① `save_book_image` 审计——修复 `sanitize_source_error` 用 `split_once(':')` 会把 Windows 盘符（如 `C:\...`）当作错误前缀的缺陷，改为已知前缀白名单（BOOK_SOURCE_UNAVAILABLE / BOOK_RESOURCE_LIMIT_EXCEEDED / INTERNAL_ERROR）+ 3 个测试；② SAF 纯逻辑抽至 `platform/mod.rs`（picker 响应转换 + content:// 前缀与非空 authority 校验），桌面构建新增 9 个 SAF 测试与 3 个桌面 `validate_selected_source` 测试；③ 仓储审计——`delete_book` 的 SELECT+DELETE 两步竞态窗口以 BEGIN IMMEDIATE 单事务闭合；services 层 41 处 rusqlite 原始错误透传（`: {error}`）全部移除，错误消息只保留稳定前缀；④ 系列/标签/设置/批注新增 12 个并发创建、失败保留、事务回滚释放、删除级联与稳定错误测试（并发测试验证无死锁与行数守恒，不做强线性一致声明）。全部新测试 10 组变红自证（注入→目标断言变红→恢复→变绿）通过；`cargo test` 108/108、`cargo fmt --check` 干净、`cargo check` 通过；`audit:unwrap` 自动统计 273 行/280 次（全部位于测试模块）。
 - 2026-08-15：新增 Android 体积与缓存探查记录，并将治理任务纳入 B2、冻结门禁纳入 B3。只记录 debug 制品和设备分项事实；由于 arm64 release 构建受 Tauri 插件生成缓存目录冲突阻塞，未签发 release 体积完成证明。IPC 未新增缓存 Command，避免在设计前注册 stub。
+- 2026-08-15：B2 搜索与索引真实实现落地并完成复核修复：新增 EPUB spine 有界纯文本提取、FTS5 trigram/短词字面 `LIKE`、来源指纹失效、部分结果、事务化 256 MiB 索引账面预算、UTF-8 按字节计数、单任务 2 GiB 累计预算检查、同系列任务去重、取消/重建/重启恢复、错误状态事务回滚、相对/百分号编码 href 和 5 个真实 Command；新增回归测试均完成变红自证，完整 `cargo test` 137/137、`audit:check` 348 行/355 次一致；受限 page_count 的真实写事务验证 SQLite `SQLITE_FULL` 映射到稳定 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 并保留旧索引，缓存 OS 错误继续由内存错误对象覆盖，未触碰设备存储。当前 Android APK 已复测单卷 34/34 查询、七卷取消 101/135、force-stop 后 `pending`→135/135 `ready`；另以系统 picker 导入 13.20 MiB EPUB 完成章节超限拒绝，并用一次性 SAF 释放探针确认授权撤销后 `BOOK_SOURCE_UNAVAILABLE`。低存储、长期/2 GiB 导入压力和 SQLite page/WAL 实际占用延期至受控 Android 虚拟设备，不签发该门禁完成证明。

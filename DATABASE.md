@@ -187,11 +187,11 @@ CREATE TABLE search_index_state (
 
 V2 CRUD 中的 UUID、`created_at` 与 `updated_at` 由 Rust 服务层生成，渲染层不得提供或覆盖这些审计字段。系列、标签组与标签更新必须保留原始 `created_at`；批注更新必须保留原始 `book_id` 与 `created_at`。删除图书时，`source_cache_entries`、`book_series`、`book_tags`、`book_reading_settings`、`search_documents` 与 `search_index_state` 和 V1 的进度/笔记一起级联删除；系列与标签定义保留。
 
-### B2 存储预算规划（尚未实现）
+### B2 存储预算规划（部分实现：搜索索引账面预算已实现，其余待完成）
 
 `source_cache_entries.cache_size_bytes` 和 `last_accessed_at` 是来源缓存预算与真实 LRU 的现有数据基础。B2 实现必须在成功取得缓存租约时更新 `last_accessed_at`，并保证缓存文件写入、元数据更新、失败清理与淘汰之间不存在把半成品记录为可用缓存的状态。删除图书后，数据库级联删除缓存记录，文件清理由服务层尽力完成；后续清理任务必须能够识别数据库无对应记录的孤儿文件。
 
-初始来源缓存软/硬上限为 256/512 MiB，封面缓存软/硬上限为 64/128 MiB；搜索索引在 B2 实现前确定独立预算，全部可重建数据合计硬上限不得超过 1 GiB。`books`、阅读进度、批注、设置等持久业务数据不属于缓存预算，禁止为满足预算而删除。若现有字段不足以原子表达淘汰或恢复状态，只能追加 V4 或更高版本迁移；本规划不修改 V2 Schema，也不表示预算已经生效。
+初始来源缓存软/硬上限为 256/512 MiB，封面缓存软/硬上限为 64/128 MiB；B2 搜索索引文本账面硬上限已实现为 256 MiB，全部可重建数据合计硬上限仍不得超过 1 GiB。索引预算只统计持久化文本字段的 UTF-8 字节数；搜索错误状态的文档清理、FTS 重建和 `search_index_state` 更新必须在同一个 `BEGIN IMMEDIATE` 事务中完成，任一步失败回滚并保留旧索引，`SQLITE_FULL` 映射为 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷重建已记录主库 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`，但该样本不等于低存储/长期压力门禁。达到上限必须保持数据库一致性。`books`、阅读进度、批注、设置等持久业务数据不属于缓存预算，禁止为满足预算而删除。来源/封面真实 LRU、软硬淘汰和低存储闭环仍待后续实现；若现有字段不足以原子表达淘汰或恢复状态，只能追加 V4 或更高版本迁移；本规划不修改 V2 Schema。
 
 ## V3 Schema（阅读设置扩展）
 

@@ -42,11 +42,15 @@ pub fn run() {
                 .map_err(|e| format!("failed to open database: {}", e))?;
 
             migrations::run_migrations(&conn).map_err(|e| format!("migration failed: {}", e))?;
+            let db = Mutex::new(conn);
+            services::recover_interrupted_search_tasks(&db)
+                .map_err(|e| format!("search recovery failed: {}", e))?;
 
             app.manage(AppState {
-                db: Mutex::new(conn),
+                db,
                 cover_cache_dir,
                 source_manager,
+                search_tasks: services::SearchTaskRegistry::default(),
             });
 
             Ok(())
@@ -88,6 +92,11 @@ pub fn run() {
             commands::catalog::set_book_tags,
             commands::catalog::set_series_tags,
             commands::catalog::list_book_tags,
+            commands::search::ensure_series_search_index,
+            commands::search::get_search_index_status,
+            commands::search::cancel_search_index,
+            commands::search::search_series,
+            commands::search::rebuild_search_index,
         ])
         .register_uri_scheme_protocol("epub", epub_protocol)
         .run(tauri::generate_context!())

@@ -16,6 +16,9 @@ import type {
   Series,
   Tag,
   TagGroup,
+  SearchIndexStatus,
+  SearchResult,
+  SearchTaskStatus,
 } from '../types/models';
 import type {
   SelectedSource,
@@ -45,6 +48,9 @@ import type {
   UpdateTagGroupArgs,
   TagGroupIdArgs,
   TagIdArgs,
+  SearchSeriesArgs,
+  SearchIndexSeriesArgs,
+  CancelSearchArgs,
 } from '../types/ipc';
 
 function mapError(err: unknown): never {
@@ -216,6 +222,32 @@ export async function setSeriesTags(args: SetSeriesTagsArgs): Promise<void> {
 
 export async function listBookTags(args: BookIdArgs): Promise<BookTag[]> {
   return invoke<BookTag[]>('list_book_tags', args).catch(mapError);
+}
+
+export async function ensureSeriesSearchIndex(
+  args: SearchIndexSeriesArgs,
+): Promise<SearchTaskStatus> {
+  return invoke<SearchTaskStatus>('ensure_series_search_index', args).catch(mapError);
+}
+
+export async function getSearchIndexStatus(
+  args: SearchIndexSeriesArgs,
+): Promise<SearchIndexStatus> {
+  return invoke<SearchIndexStatus>('get_search_index_status', args).catch(mapError);
+}
+
+export async function cancelSearchIndex(args: CancelSearchArgs): Promise<void> {
+  return invoke<void>('cancel_search_index', args).catch(mapError);
+}
+
+export async function searchSeries(args: SearchSeriesArgs): Promise<SearchResult[]> {
+  return invoke<SearchResult[]>('search_series', args).catch(mapError);
+}
+
+export async function rebuildSearchIndex(
+  args: SearchIndexSeriesArgs,
+): Promise<SearchTaskStatus> {
+  return invoke<SearchTaskStatus>('rebuild_search_index', args).catch(mapError);
 }
 
 export async function saveGlobalReadingSettings(

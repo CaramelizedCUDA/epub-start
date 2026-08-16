@@ -49,7 +49,7 @@ cd src-tauri && cargo check
 npm run tauri build
 ```
 
-需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建与模拟器不能替代真实设备上的 SAF Provider、持久权限、进程回收、低存储、WebView 和手势验收。B1 首次真实设备来源链门禁已经完成；B2 继续验证后台任务、低存储以及发布制品/运行时存储预算，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
+需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建不能替代 Android 验收，普通模拟器也不能替代真实设备上的 SAF Provider、持久权限、OEM 进程回收、WebView、性能和手势证据。由于现有真机无法安全构造近满存储，B2 的 ENOSPC/SQLite 满盘、长期/2 GiB 压力及重启清理允许延期到固定 API、受控 `/data` 容量的可复现 Android 虚拟设备执行；该例外不外推到其他实机门禁。B1 首次真实设备来源链门禁已经完成；B2 已完成搜索任务的主要实现及 Android 取消/恢复、大文件单次导入和来源授权失效探查，低存储、长期压力和 SQLite page/WAL 运行态预算仍待验证，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
 
 ## 测试 EPUB
 

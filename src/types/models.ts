@@ -146,3 +146,31 @@ export interface BookTag {
   tag: Tag;
   inherited_from_series: boolean;
 }
+
+export interface SearchTaskStatus {
+  task_id: string;
+  series_id: string;
+  status: string;
+  indexed_documents: number;
+  total_documents: number;
+  error_detail: string | null;
+  updated_at: number;
+}
+
+export interface SearchIndexStatus {
+  series_id: string;
+  status: string;
+  indexed_documents: number;
+  total_documents: number;
+  error_detail: string | null;
+  updated_at: number;
+}
+
+export interface SearchResult {
+  book_id: string;
+  spine_index: number;
+  href: string;
+  title: string;
+  snippet: string;
+  cfi: string | null;
+}

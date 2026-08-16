@@ -304,3 +304,34 @@ pub struct BookTag {
     pub tag: Tag,
     pub inherited_from_series: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchTaskStatus {
+    pub task_id: String,
+    pub series_id: String,
+    pub status: String,
+    pub indexed_documents: i64,
+    pub total_documents: i64,
+    pub error_detail: Option<String>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchIndexStatus {
+    pub series_id: String,
+    pub status: String,
+    pub indexed_documents: i64,
+    pub total_documents: i64,
+    pub error_detail: Option<String>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub book_id: String,
+    pub spine_index: i64,
+    pub href: String,
+    pub title: String,
+    pub snippet: String,
+    pub cfi: Option<String>,
+}

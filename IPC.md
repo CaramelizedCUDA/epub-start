@@ -178,7 +178,12 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 
 `ReadingSettings` / `ReadingSettingsInput` 的阅读排版字段为：`font_size_px`（12–32）、`line_height_multiplier`（1.0–3.0）、`paragraph_spacing_multiplier`（0–2.0）、`text_indent_em`（0–4.0）、`margin_top_px` / `margin_bottom_px`（0–100）、`margin_left_percent` / `margin_right_percent`（0–20）、`max_column_width_px`（300–1200）。`BookReadingSettings` / `BookReadingSettingsInput` 使用同名可空字段逐项覆盖；主题、字体、flow、spread 契约保持不变。前端保存异步执行，失败重试一次；第二次失败显示错误但不得回滚已应用的阅读预览。
 
-系列搜索的规划名称为 `ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`；这些 Command 尚未注册，必须由 TODO 的 B2 搜索任务连同真实后台任务、取消和预算一起实现。
+| `ensure_series_search_index` / `rebuild_search_index` | `{ seriesId }` | `SearchTaskStatus` | 启动惰性增量索引或强制重建；返回任务 ID、状态和进度。来源指纹变化时自动重建；同一系列已有活动任务时返回 `SEARCH_INDEX_UNAVAILABLE:`，不启动竞争任务。 |
+| `get_search_index_status` | `{ seriesId }` | `SearchIndexStatus` | 返回系列聚合状态、已索引/总章节、部分结果错误和更新时间；即使状态为 `ready`，也保留章节超限等部分结果明细。 |
+| `cancel_search_index` | `{ taskId }` | `void` | 设置取消标记；任务在章节边界安全停止并保留已提交的部分结果。 |
+| `search_series` | `{ seriesId, query, limit? }` | `SearchResult[]` | 查询最大 200 字符，默认最多 100 条；少于 3 个字符使用参数化 `LIKE` 并将 `%`、`_`、反斜杠按字面匹配，否则使用 FTS5 trigram。 |
+
+以上 Command 已有真实 Rust 后台实现；当前 APK 已在黑鲨 Android 9 验证取消、进程终止恢复、系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和来源授权撤销后的 `BOOK_SOURCE_UNAVAILABLE`，并记录过一次 135/135 重建的主库与 rollback journal 占用。低存储、长期/2 GiB 导入压力仍属于 B2 未完成门禁。
 
 目录树的 DOM 渲染与当前书的章节内查找由后端冻结后的 EPUB.js 适配层完成；同系列/多卷搜索由 B2 后端索引 Command 提供。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个 CFI 最大 4,096 字符。
 

@@ -12,6 +12,7 @@ pub mod open_book;
 pub mod relocate_book;
 pub mod save_book_image;
 pub mod save_reading_progress;
+pub mod search;
 pub mod select_epub_sources;
 pub mod settings;
 
@@ -20,4 +21,5 @@ pub struct AppState {
     pub db: Mutex<Connection>,
     pub cover_cache_dir: PathBuf,
     pub source_manager: crate::source::SourceManager,
+    pub search_tasks: crate::services::SearchTaskRegistry,
 }

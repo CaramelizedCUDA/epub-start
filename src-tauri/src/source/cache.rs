@@ -3,6 +3,8 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 
+#[cfg(any(target_os = "android", test))]
+use std::io;
 #[cfg(target_os = "android")]
 use std::io::{Read, Seek, SeekFrom, Write};
 
@@ -146,23 +148,22 @@ impl SourceManager {
         cache_path: &Path,
     ) -> Result<(), String> {
         let temp_path = self.cache_dir.join(format!("{book_id}.source.tmp"));
-        let mut target = File::create(&temp_path)
-            .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: source cache cannot be created".to_string())?;
+        let mut target =
+            File::create(&temp_path).map_err(|error| source_cache_io_error("create", &error))?;
         source
             .seek(SeekFrom::Start(0))
             .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: Android source cannot be rewound".to_string())?;
         let mut limited = source.take(MAX_SOURCE_SIZE + 1);
         let copied = std::io::copy(&mut limited, &mut target)
-            .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: source cache copy failed".to_string())?;
+            .map_err(|error| source_cache_io_error("copy", &error))?;
         target
             .flush()
-            .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: source cache flush failed".to_string())?;
+            .map_err(|error| source_cache_io_error("flush", &error))?;
         if copied > MAX_SOURCE_SIZE {
             remove_if_exists(&temp_path);
             return Err("BOOK_RESOURCE_LIMIT_EXCEEDED: compressed source is too large".into());
         }
-        fs::rename(&temp_path, cache_path)
-            .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: source cache commit failed".to_string())
+        fs::rename(&temp_path, cache_path).map_err(|error| source_cache_io_error("commit", &error))
     }
 
     #[cfg(target_os = "android")]
@@ -228,6 +229,21 @@ fn cleanup_temporary_files(cache_dir: &Path) {
 
 fn remove_if_exists(path: &Path) {
     let _ = fs::remove_file(path);
+}
+
+#[cfg(any(target_os = "android", test))]
+fn source_cache_io_error(operation: &str, error: &io::Error) -> String {
+    if is_storage_exhausted(error) {
+        return format!(
+            "BOOK_RESOURCE_LIMIT_EXCEEDED: source cache {operation} failed because device storage is full"
+        );
+    }
+    format!("BOOK_SOURCE_UNAVAILABLE: source cache {operation} failed")
+}
+
+#[cfg(any(target_os = "android", test))]
+fn is_storage_exhausted(error: &io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(28 | 122 | 112))
 }
 
 #[cfg(target_os = "android")]
@@ -322,5 +338,17 @@ mod tests {
         assert!(!dir.join("stale.tmp").exists());
         assert!(dir.join("keep.source").exists());
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn storage_write_errors_use_resource_limit_prefix() {
+        let error = io::Error::from_raw_os_error(28);
+        assert!(source_cache_io_error("copy", &error).starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:"));
+    }
+
+    #[test]
+    fn non_storage_write_errors_remain_source_errors() {
+        let error = io::Error::from(io::ErrorKind::PermissionDenied);
+        assert!(source_cache_io_error("copy", &error).starts_with("BOOK_SOURCE_UNAVAILABLE:"));
     }
 }
