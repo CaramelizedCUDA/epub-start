@@ -102,11 +102,15 @@ mod tests {
         writer.start_file("item/book.opf", options).unwrap();
         writer
             .write_all(
-                br#"<?xml version="1.0"?><package><metadata><title>T</title></metadata><manifest><item href="chapter.xhtml" media-type="application/xhtml+xml"/><item href="img.png" media-type="image/png"/></manifest></package>"#,
+                br#"<?xml version="1.0"?><package><metadata><title>T</title></metadata><manifest><item href="chapter.xhtml" media-type="application/xhtml+xml"/><item href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item href="toc.ncx" media-type="application/x-dtbncx+xml"/><item href="img.png" media-type="image/png"/></manifest></package>"#,
             )
             .unwrap();
         writer.start_file("item/chapter.xhtml", options).unwrap();
         writer.write_all(b"<html>hello</html>").unwrap();
+        writer.start_file("item/nav.xhtml", options).unwrap();
+        writer.write_all(b"<html><nav/></html>").unwrap();
+        writer.start_file("item/toc.ncx", options).unwrap();
+        writer.write_all(b"<ncx/>").unwrap();
         writer.start_file("item/img.png", options).unwrap();
         writer.write_all(b"\x89PNGfake").unwrap();
         writer.finish().unwrap().into_inner()
@@ -134,6 +138,27 @@ mod tests {
         .unwrap();
         assert_eq!(resource.mime, "image/png");
         assert_eq!(resource.body, b"\x89PNGfake");
+    }
+
+    #[test]
+    fn read_book_resource_serves_epub_control_and_navigation_documents() {
+        let cases: [(&str, &str, &[u8]); 4] = [
+            ("META-INF/container.xml", "application/xml", b"<?xml version=\"1.0\"?><container><rootfiles><rootfile full-path=\"item/book.opf\"/></rootfiles></container>"),
+            ("item/book.opf", "application/oebps-package+xml", b"<?xml version=\"1.0\"?><package><metadata><title>T</title></metadata><manifest><item href=\"chapter.xhtml\" media-type=\"application/xhtml+xml\"/><item href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/><item href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/><item href=\"img.png\" media-type=\"image/png\"/></manifest></package>"),
+            ("item/nav.xhtml", "application/xhtml+xml", b"<html><nav/></html>"),
+            ("item/toc.ncx", "application/x-dtbncx+xml", b"<ncx/>"),
+        ];
+
+        for (entry_path, expected_mime, expected_body) in cases {
+            let resource = read_book_resource(
+                &book(),
+                Box::new(std::io::Cursor::new(epub_bytes())),
+                entry_path,
+            )
+            .unwrap();
+            assert_eq!(resource.mime, expected_mime, "entry {entry_path}");
+            assert_eq!(resource.body, expected_body, "entry {entry_path}");
+        }
     }
 
     #[test]

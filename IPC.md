@@ -109,7 +109,7 @@ export interface ReadingProgress {
 | `select_epub_sources` | 无 | `SelectedSource[]` | Windows/Linux 调起官方 Dialog 并返回绝对路径；Android 调起项目自有 SAF 插件，只有 `takePersistableUriPermission` 成功才返回 `content://` URI。用户取消统一返回空数组。前端传给导入。 |
 | `import_book` | `{ source: SelectedSource }` | `Book` | 校验并解析 EPUB；优先更新同来源图书，否则仅在 `missing/error` 记录中按重新定位指纹规则恢复唯一匹配的原 `book_id`，零匹配时创建新书，多匹配时返回 `VALIDATION_ERROR:` 且不猜测。解析失败将记录为 `error`。前端刷新书架并显示失败原因。 |
 | `list_books` | 无 | `BookSummary[]` | 不隐式验证所有来源；不含 `source_locator`/`source_kind` 敏感字段。前端按 `status` 显示状态。 |
-| `open_book` | Rust：`book_id`; TS：`{ bookId: string }` | `OpenBookResult` | 校验来源；Android 必须在应用重启后重新确认持久读取权限和 Provider 可访问性。失效时更新 `missing` 并返回不可用错误。成功返回 `epub_root_url` 与图书。 |
+| `open_book` | Rust：`book_id`; TS：`{ bookId: string }` | `OpenBookResult` | 校验来源；Android 必须在应用重启后重新确认持久读取权限和 Provider 可访问性。失效时更新 `missing` 并返回不可用错误。成功返回以 `/` 结尾的 `epub_root_url` 与图书；EPUB.js 从该根地址相对请求 `META-INF/container.xml`，再请求 OPF、NAV/NCX、spine 与关联资源。 |
 | `relocate_book` | Rust：`book_id`, `source`; TS：`{ bookId: string, source: SelectedSource }` | `Book` | 候选必须已通过平台权限校验。完整大小/mtime 指纹匹配，或在元数据不完整时匹配非空 OPF 标识符，才更新原记录。Android 失败候选应尽力释放新授权；前端仅在成功后重试打开。 |
 | `get_reading_progress` | Rust：`book_id`; TS：`{ bookId: string }` | `ReadingProgress \| null` | 只读；前端将 EPUB CFI 交给 EPUB.js。 |
 | `save_reading_progress` | Rust：`book_id`, `location_cfi`, `progression`; TS：`{ bookId: string, locationCfi: string, progression: number }` | `ReadingProgress` | 校验 EPUB 和 progression 范围，upsert 进度。前端在定位变化后节流调用。 |
@@ -137,6 +137,8 @@ export type SaveBookImageArgs = {
 };
 ```
 
+`epub_root_url` 是受控资源根地址，不是来源路径，也不是可直接下载的 EPUB 文件。资源协议必须通过 `book_id -> SourceLease -> ActiveFormat -> ResourceProvider` 提供目录与阅读链所需条目，并保持以下 MIME：`container.xml` 为 `application/xml`、OPF 为 `application/oebps-package+xml`、EPUB 3 NAV/XHTML 为 `application/xhtml+xml`、EPUB 2 NCX 为 `application/x-dtbncx+xml`。协议层继续为 CSS、图片和字体返回各自 MIME，并应用现有路径规范化、ZIP 预算、CORS 与 Range 规则；不新增“目录 Command”，也不向前端返回 ZIP 字节或宿主路径。
+
 `select_epub_sources` 在 Phase 1 只选择 EPUB；未来格式不可借用该 Command。批注、设置、系列与标签基础 Command 可以保留并继续审计；系列全文搜索 Command 必须由 TODO 的 B2 搜索任务连同真实后台任务、取消和预算一起交付，不得添加空实现。
 
 P3 解锁后，通用来源选择、导入检查与导入提交必须使用新的契约，不能偷偷扩展 `select_epub_sources`/`import_book` 改变 Phase 1 EPUB 语义。规划模型至少应区分 `ImportCandidate`、候选真实格式、是否为漫画图片归档、单书/多书和需要用户选择的歧义；具体 Command 在 P3.0 评审后确定。ZIP 不得加入 `BookFormat`，图片 ZIP 成功导入后返回 `cbz`，单书 ZIP 返回内部真实格式。
@@ -163,7 +165,8 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `list_series` | 无 | `Series[]` | 按名称排序。 |
 | `create_series` / `update_series` | `{ series: CreateSeriesInput }` / `{ series: UpdateSeriesInput }` | `Series` | 名称修剪后 1–200 字符；Rust 管理 UUID/时间戳。 |
 | `delete_series` | `{ seriesId }` | `void` | 删除归属和系列标签关系，不删除图书。 |
-| `set_book_series` / `clear_book_series` | `{ assignment: BookSeries }` / `{ bookId }` | `BookSeries` / `void` | `book_id` 主键保证每本书最多一个系列；卷标最多 200 字符。 |
+| `set_book_series` / `clear_book_series` | `{ assignment: BookSeries }` / `{ bookId }` | `BookSeries` / `void` | `book_id` 主键保证每本书最多一个系列；卷标修剪后最多 200 字符。 |
+| `list_series_books` | `{ seriesId }` | `BookSeries[]` | 返回目标系列的完整归属、卷标与排序，按 `sort_order, book_id` 排序；系列不存在返回 `SERIES_NOT_FOUND:`。 |
 | `reorder_series_books` | `{ seriesId, positions }` | `BookSeries[]` | ID 必须唯一且全部属于目标系列；事务更新后返回完整有序列表。 |
 | `list_tag_groups` | 无 | `TagGroup[]` | 按 `sort_order` 和名称排序。 |
 | `create_tag_group` / `update_tag_group` | `{ group: CreateTagGroupInput }` / `{ group: UpdateTagGroupInput }` | `TagGroup` | Rust 管理 UUID/时间戳。 |
@@ -181,11 +184,11 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `ensure_series_search_index` / `rebuild_search_index` | `{ seriesId }` | `SearchTaskStatus` | 启动惰性增量索引或强制重建；返回任务 ID、状态和进度。来源指纹变化时自动重建；同一系列已有活动任务时返回 `SEARCH_INDEX_UNAVAILABLE:`，不启动竞争任务。 |
 | `get_search_index_status` | `{ seriesId }` | `SearchIndexStatus` | 返回系列聚合状态、已索引/总章节、部分结果错误和更新时间；即使状态为 `ready`，也保留章节超限等部分结果明细。 |
 | `cancel_search_index` | `{ taskId }` | `void` | 设置取消标记；任务在章节边界安全停止并保留已提交的部分结果。 |
-| `search_series` | `{ seriesId, query, limit? }` | `SearchResult[]` | 查询最大 200 字符，默认最多 100 条；少于 3 个字符使用参数化 `LIKE` 并将 `%`、`_`、反斜杠按字面匹配，否则使用 FTS5 trigram。 |
+| `search_series` | `{ seriesId, query, limit? }` | `SearchResult[]` | 查询最大 200 字符，默认最多 100 条；少于 3 个字符使用参数化 `LIKE` 并将 `%`、`_`、反斜杠按字面匹配，否则使用 FTS5 trigram。`href` 是 OPF manifest 中供 EPUB.js 定位的章节 href；B2 不伪造 DOM 位置，返回的 `cfi` 固定为 `null`。 |
 
 以上 Command 已有真实 Rust 后台实现；当前 APK 已在黑鲨 Android 9 验证取消、进程终止恢复、系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和来源授权撤销后的 `BOOK_SOURCE_UNAVAILABLE`，并记录过一次 135/135 重建的主库与 rollback journal 占用。低存储、长期/2 GiB 导入压力仍属于 B2 未完成门禁。
 
-目录树的 DOM 渲染与当前书的章节内查找由后端冻结后的 EPUB.js 适配层完成；同系列/多卷搜索由 B2 后端索引 Command 提供。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个 CFI 最大 4,096 字符。
+目录树解析、DOM 渲染、当前书的章节内查找与搜索命中的精确 CFI 生成由后端冻结后的 EPUB.js 适配层完成；同系列/多卷搜索由 B2 后端索引 Command 提供。跨卷命中先按 `book_id` 打开图书，再用 `href` 导航；后端不得根据 spine 序号拼接伪 CFI。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个由前端提交保存的 CFI 最大 4,096 字符。
 
 ## 错误契约
 
@@ -202,7 +205,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `SERIES_NOT_FOUND:` | `series_id` 无对应记录 | 刷新系列列表。 |
 | `TAG_NOT_FOUND:` | `tag_id` 无对应记录 | 刷新标签列表。 |
 | `TAG_GROUP_NOT_FOUND:` | `group_id` 无对应记录 | 刷新标签组与标签列表。 |
-| `VALIDATION_ERROR:` | 参数格式或值不合法 | 保留当前 UI，显示可操作错误。 |
+| `VALIDATION_ERROR:` | 参数格式/值不合法，或系列等唯一名称冲突 | 保留当前 UI，显示可操作错误。 |
 | `BOOK_RESOURCE_NOT_FOUND:` | 请求的 EPUB 内部条目不存在或路径无效 | 资源加载失败或图片导出提示条目缺失；不暴露宿主路径。 |
 | `BOOK_RESOURCE_LIMIT_EXCEEDED:` | EPUB 或搜索索引超过安全预算 | 停止读取或索引，提示文件过大或压缩异常。 |
 | `FORMAT_NOT_SUPPORTED:` | 当前 Phase 未实现该格式 | 返回书架并保留图书记录。 |
@@ -210,3 +213,5 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `INTERNAL_ERROR:` | 已脱敏的内部错误 | 显示通用重试提示，不展示内部详情。 |
 
 错误发生时不得把 Rust 堆栈、原始 SQL 或完整敏感 URI 传给前端。任何 Command 签名、模型字段或错误前缀变更必须同步修改本文件及前端镜像。
+
+`epub_root_url` 资源协议的稳定 HTTP 状态映射为：`BOOK_SOURCE_UNAVAILABLE:` / `BOOK_RESOURCE_NOT_FOUND:` → 404，`VALIDATION_ERROR:` → 400（路径穿越在路由校验阶段为 403），`BOOK_RESOURCE_LIMIT_EXCEEDED:` → 413，`BOOK_PARSE_FAILED:` → 422，`FORMAT_NOT_SUPPORTED:` → 501，未知或 `INTERNAL_ERROR:` → 500。来源错误正文只保留白名单前缀与脱敏详情。

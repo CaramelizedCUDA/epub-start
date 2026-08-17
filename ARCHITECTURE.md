@@ -105,11 +105,15 @@ commands/  -> IPC 薄适配
 
 后端业务新记录的 UUID 与时间戳由 `services/` 生成；Command 不接受前端伪造的审计字段。`notes_service` 负责批注长度、颜色、归属与缺失状态校验，`settings_service` 负责全局/单书设置解析，`catalog_service` 负责系列、标签组/标签和关系事务；搜索/索引服务负责任务状态、取消和预算；`db/` 只执行参数化持久化与级联约束。
 
-`BookFormat` 继续位于数据库共享模型中，禁止在 `formats/` 重复定义。后端能力接口拆分为 `MetadataProvider`、`TocProvider`、`TextContentProvider` 与 `ResourceProvider`；接口不得以默认空值、`todo!`、`unimplemented!` 或 panic 伪装不支持的能力。当前 `ActiveFormat` 只有 EPUB 实现，其他枚举值由注册表返回稳定的 `FORMAT_NOT_SUPPORTED:`，不创建空目录或占位处理器。目录树的 DOM 渲染和视口交互留给后端冻结后的前端阶段；搜索索引、任务状态和资源预算属于后端，不能由前端本地数组替代。
+系列模块的公开 seam 位于 `catalog_service`：它统一完成名称/卷标校验、实体存在性、单系列归属、完整有序关系读取和重排编排；Command 不拼接关系写入。`book_series.book_id` 主键与单条 UPSERT 保证每本书最多一个系列，批量重排由仓储在 `BEGIN IMMEDIATE` 事务内完成，语句失败或 `COMMIT` 失败都必须回滚并释放事务。
+
+`BookFormat` 继续位于数据库共享模型中，禁止在 `formats/` 重复定义。B2 当前真实能力接口为 `MetadataProvider`、`ResourceProvider` 与 `SearchContentProvider`；不得声明没有实现的 `TocProvider`/`TextContentProvider` 占位接口，也不得以默认空值、`todo!`、`unimplemented!` 或 panic 伪装支持。`ResourceProvider` 统一提供 EPUB.js 打开目录与正文所需的 `container.xml`、OPF、NAV/NCX、spine XHTML 及其 CSS/图片/字体资源；目录树的解析、DOM 渲染和当前位置推导由后端冻结后的 EPUB.js 统一导航模型完成，Rust 不重复构造目录模型。`SearchContentProvider` 只提取有预算的 spine 纯文本供后端索引，不合成 CFI。当前 `ActiveFormat` 只有 EPUB 实现，其他枚举值由注册表返回稳定的 `FORMAT_NOT_SUPPORTED:`；搜索索引、任务状态和资源预算属于后端，不能由前端本地数组替代。
 
 CFI 的 DOM 解析、高亮 range 生成和渲染继续属于后端冻结后的前端 EPUB.js 适配层；Rust 只保存经过长度校验的透明 CFI 字符串。PDF/CBZ/CBR 的页面能力接口、Cargo Feature 隔离和相关依赖留待 P3 技术选型，不在 B1–B3 提前冻结。
 
 `protocol/` 禁止依赖 `formats::epub::*`。资源请求必须按 `book_id -> SourceLease -> ActiveFormat -> ResourceProvider -> Response` 流转；来源租约存活期间缓存不得被淘汰，每个请求使用独立 Reader，禁止共享可变 `ZipArchive`。
+
+搜索索引必须按 `book_id -> SourceLease -> ActiveFormat -> SearchContentProvider -> search_service` 流转；`search_service` 不得直接依赖 `formats::epub::*`。后端结果以 `book_id + spine_index + OPF manifest href` 标识命中章节，B2 的 `cfi` 固定为 `null`；精确 CFI 只能在打开目标图书后由 EPUB.js 根据真实 package/DOM 生成。
 
 ## P3 多格式目标边界（冻结设计）
 

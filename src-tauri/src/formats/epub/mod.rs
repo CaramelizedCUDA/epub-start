@@ -7,7 +7,10 @@ use std::io::{Read, Seek};
 use std::path::Path;
 use zip::ZipArchive;
 
-use super::capabilities::{FormatMetadata, MetadataProvider, ResourceContent, ResourceProvider};
+use super::capabilities::{
+    FormatMetadata, MetadataProvider, ResourceContent, ResourceProvider, SearchContentProvider,
+    SearchDocument, SearchExtraction,
+};
 use crate::source::ReadSeek;
 
 pub struct EpubFormatHandler;
@@ -55,6 +58,22 @@ impl ResourceProvider for EpubFormatHandler {
     }
 }
 
+impl SearchContentProvider for EpubFormatHandler {
+    fn extract_search_documents(
+        &self,
+        reader: Box<dyn ReadSeek>,
+        cancelled: &mut dyn FnMut() -> bool,
+    ) -> Result<SearchExtraction, String> {
+        extract_search_documents(reader, cancelled).map_err(|error| {
+            if error.starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:") {
+                error
+            } else {
+                "BOOK_PARSE_FAILED: cannot extract searchable EPUB content".to_string()
+            }
+        })
+    }
+}
+
 // ── Resource budgets (ZIP bomb defence) ─────────────────────────
 
 /// Maximum decompressed size for a single ZIP entry (50 MiB).
@@ -75,25 +94,6 @@ pub struct EpubMetadata {
     pub authors: Vec<String>,
     pub package_identifier: Option<String>,
     pub cover_entry_path: Option<String>,
-}
-
-/// A bounded plain-text document extracted from one EPUB spine item.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SearchDocument {
-    pub spine_index: i64,
-    pub href: String,
-    pub title: String,
-    pub body: String,
-    pub cfi: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SearchExtraction {
-    pub documents: Vec<SearchDocument>,
-    pub total_documents: i64,
-    pub bytes_extracted: u64,
-    pub errors: Vec<String>,
-    pub cancelled: bool,
 }
 
 pub const MAX_SEARCH_CHAPTER_SIZE: u64 = 8 * 1024 * 1024;
@@ -664,7 +664,7 @@ pub fn extract_search_documents<R: Read + Seek, F: FnMut() -> bool>(
                             parsed_title
                         },
                         body,
-                        cfi: Some(format!("epubcfi(/6/{})", (index + 1) * 2)),
+                        cfi: None,
                     });
                 }
             }
@@ -1038,6 +1038,7 @@ mod tests {
         assert_eq!(extraction.documents[0].spine_index, 0);
         assert!(extraction.documents[0].body.contains("你好世界"));
         assert_eq!(extraction.documents[0].title, "第一章");
+        assert_eq!(extraction.documents[0].cfi, None);
         assert_eq!(extraction.documents[1].spine_index, 1);
     }
 

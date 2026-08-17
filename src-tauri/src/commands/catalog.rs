@@ -39,6 +39,13 @@ pub fn clear_book_series(state: tauri::State<AppState>, book_id: String) -> Resu
     services::clear_book_series(&state.db, &book_id)
 }
 #[tauri::command]
+pub fn list_series_books(
+    state: tauri::State<AppState>,
+    series_id: String,
+) -> Result<Vec<BookSeries>, String> {
+    services::list_series_books(&state.db, &series_id)
+}
+#[tauri::command]
 pub fn reorder_series_books(
     state: tauri::State<AppState>,
     series_id: String,

@@ -333,5 +333,6 @@ pub struct SearchResult {
     pub href: String,
     pub title: String,
     pub snippet: String,
+    /// B2 keeps this null; EPUB.js resolves an exact CFI after opening `href`.
     pub cfi: Option<String>,
 }

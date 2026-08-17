@@ -229,7 +229,13 @@ fn replace_tags(
 
 fn finish_transaction(conn: &Connection, result: SqliteResult<()>) -> SqliteResult<()> {
     match result {
-        Ok(()) => conn.execute_batch("COMMIT;"),
+        Ok(()) => match conn.execute_batch("COMMIT;") {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(error)
+            }
+        },
         Err(error) => {
             let _ = conn.execute_batch("ROLLBACK;");
             Err(error)
@@ -478,6 +484,29 @@ mod tests {
         conn.execute_batch("ROLLBACK;").unwrap();
         // 回滚后 "doomed" 行不存在。
         assert!(find_series(&conn, "doomed").unwrap().is_none());
+    }
+
+    #[test]
+    fn finish_transaction_rolls_back_and_releases_when_commit_fails() {
+        let conn = database();
+        conn.execute_batch(
+            "CREATE TABLE deferred_parent (id INTEGER PRIMARY KEY);
+             CREATE TABLE deferred_child (
+               parent_id INTEGER REFERENCES deferred_parent(id) DEFERRABLE INITIALLY DEFERRED
+             );
+             BEGIN IMMEDIATE;
+             INSERT INTO deferred_child (parent_id) VALUES (1);",
+        )
+        .unwrap();
+
+        let outcome = finish_transaction(&conn, Ok(()));
+        assert!(outcome.is_err());
+
+        conn.execute_batch("BEGIN IMMEDIATE; ROLLBACK;").unwrap();
+        let child_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM deferred_child", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(child_count, 0);
     }
 
     #[test]

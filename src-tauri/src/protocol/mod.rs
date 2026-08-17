@@ -161,10 +161,10 @@ fn serve_entry(
     let (lease, _) = state
         .source_manager
         .acquire(app, &book.id, &book.source_locator)
-        .map_err(|error| (StatusCode::NOT_FOUND, sanitize_source_error(&error)))?;
+        .map_err(|error| map_source_error(&error))?;
     let reader = lease
         .open_reader()
-        .map_err(|error| (StatusCode::NOT_FOUND, sanitize_source_error(&error)))?;
+        .map_err(|error| map_source_error(&error))?;
 
     crate::services::read_book_resource(&book, reader, &entry_path)
         .map(|resource| (resource.body, resource.mime))
@@ -174,8 +174,14 @@ fn serve_entry(
 fn map_resource_error(error: String) -> (StatusCode, String) {
     let status = if error.starts_with("BOOK_RESOURCE_NOT_FOUND:") {
         StatusCode::NOT_FOUND
+    } else if error.starts_with("BOOK_SOURCE_UNAVAILABLE:") {
+        StatusCode::NOT_FOUND
     } else if error.starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:") {
         StatusCode::PAYLOAD_TOO_LARGE
+    } else if error.starts_with("BOOK_PARSE_FAILED:") {
+        StatusCode::UNPROCESSABLE_ENTITY
+    } else if error.starts_with("VALIDATION_ERROR:") {
+        StatusCode::BAD_REQUEST
     } else if error.starts_with("FORMAT_NOT_SUPPORTED:") {
         StatusCode::NOT_IMPLEMENTED
     } else {
@@ -184,10 +190,21 @@ fn map_resource_error(error: String) -> (StatusCode, String) {
     (status, error)
 }
 
+fn map_source_error(error: &str) -> (StatusCode, String) {
+    map_resource_error(sanitize_source_error(error))
+}
+
 fn sanitize_source_error(error: &str) -> String {
-    error
-        .split_once(':')
-        .map(|(prefix, _)| format!("{prefix}: source is unavailable"))
+    const SAFE_PREFIXES: [&str; 3] = [
+        "BOOK_SOURCE_UNAVAILABLE",
+        "BOOK_RESOURCE_LIMIT_EXCEEDED",
+        "INTERNAL_ERROR",
+    ];
+
+    SAFE_PREFIXES
+        .into_iter()
+        .find(|prefix| error.starts_with(&format!("{prefix}:")))
+        .map(|prefix| format!("{prefix}: source is unavailable"))
         .unwrap_or_else(|| "BOOK_SOURCE_UNAVAILABLE: source is unavailable".to_string())
 }
 
@@ -250,6 +267,10 @@ mod tests {
             "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
         );
         assert_eq!(
+            sanitize_source_error("provider failure: content://secret/details"),
+            "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
+        );
+        assert_eq!(
             sanitize_source_error("raw failure without prefix"),
             "BOOK_SOURCE_UNAVAILABLE: source is unavailable"
         );
@@ -268,6 +289,18 @@ mod tests {
         assert_eq!(
             map_resource_error("FORMAT_NOT_SUPPORTED: x".into()).0,
             StatusCode::NOT_IMPLEMENTED
+        );
+        assert_eq!(
+            map_resource_error("BOOK_SOURCE_UNAVAILABLE: x".into()).0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            map_resource_error("BOOK_PARSE_FAILED: x".into()).0,
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            map_resource_error("VALIDATION_ERROR: x".into()).0,
+            StatusCode::BAD_REQUEST
         );
         assert_eq!(
             map_resource_error("unexpected".into()).0,

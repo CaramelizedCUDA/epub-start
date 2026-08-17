@@ -176,6 +176,10 @@ export async function clearBookSeries(args: BookIdArgs): Promise<void> {
   return invoke<void>('clear_book_series', args).catch(mapError);
 }
 
+export async function listSeriesBooks(args: SeriesIdArgs): Promise<BookSeries[]> {
+  return invoke<BookSeries[]>('list_series_books', args).catch(mapError);
+}
+
 export async function reorderSeriesBooks(args: ReorderSeriesArgs): Promise<BookSeries[]> {
   return invoke<BookSeries[]>('reorder_series_books', args).catch(mapError);
 }

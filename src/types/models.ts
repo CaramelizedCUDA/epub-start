@@ -172,5 +172,5 @@ export interface SearchResult {
   href: string;
   title: string;
   snippet: string;
-  cfi: string | null;
+  cfi: string | null; // B2 always null; EPUB.js resolves an exact CFI after opening href.
 }

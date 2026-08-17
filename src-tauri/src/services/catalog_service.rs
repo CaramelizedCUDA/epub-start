@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, Error as SqlError};
 
 use crate::db::catalog_repository;
 use crate::db::models::{
@@ -25,7 +25,7 @@ pub fn create_series(db: &Mutex<Connection>, input: CreateSeriesInput) -> Result
     };
     let conn = lock_db(db)?;
     catalog_repository::insert_series(&conn, &series)
-        .map_err(|_| "INTERNAL_ERROR: series insert failed".to_string())?;
+        .map_err(|error| map_series_write_error("insert", error))?;
     Ok(series)
 }
 
@@ -39,7 +39,7 @@ pub fn update_series(db: &Mutex<Connection>, input: UpdateSeriesInput) -> Result
     let conn = lock_db(db)?;
     require_entity(&conn, "series", &series.id, "series")?;
     catalog_repository::update_series(&conn, &series)
-        .map_err(|_| "INTERNAL_ERROR: series update failed".to_string())?;
+        .map_err(|error| map_series_write_error("update", error))?;
     catalog_repository::find_series(&conn, &series.id)
         .map_err(|_| "INTERNAL_ERROR: series query failed".to_string())?
         .ok_or_else(|| "INTERNAL_ERROR: updated series disappeared".to_string())
@@ -54,8 +54,9 @@ pub fn delete_series(db: &Mutex<Connection>, series_id: &str) -> Result<(), Stri
 
 pub fn set_book_series(
     db: &Mutex<Connection>,
-    assignment: BookSeries,
+    mut assignment: BookSeries,
 ) -> Result<BookSeries, String> {
+    assignment.volume_label = assignment.volume_label.trim().to_string();
     if assignment.volume_label.chars().count() > 200 {
         return Err("VALIDATION_ERROR: volume label is too long".into());
     }
@@ -72,6 +73,16 @@ pub fn clear_book_series(db: &Mutex<Connection>, book_id: &str) -> Result<(), St
     require_entity(&conn, "books", book_id, "book")?;
     catalog_repository::clear_book_series(&conn, book_id)
         .map_err(|_| "INTERNAL_ERROR: series assignment delete failed".to_string())
+}
+
+pub fn list_series_books(
+    db: &Mutex<Connection>,
+    series_id: &str,
+) -> Result<Vec<BookSeries>, String> {
+    let conn = lock_db(db)?;
+    require_entity(&conn, "series", series_id, "series")?;
+    catalog_repository::list_book_series(&conn, series_id)
+        .map_err(|_| "INTERNAL_ERROR: series query failed".to_string())
 }
 
 pub fn reorder_series_books(
@@ -275,6 +286,17 @@ fn validate_name(value: &str, label: &str) -> Result<String, String> {
     Ok(value.to_string())
 }
 
+fn map_series_write_error(operation: &str, error: SqlError) -> String {
+    if matches!(
+        error,
+        SqlError::SqliteFailure(ref failure, _)
+            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+    ) {
+        return "VALIDATION_ERROR: series name already exists".to_string();
+    }
+    format!("INTERNAL_ERROR: series {operation} failed")
+}
+
 fn ensure_unique_ids<'a>(ids: impl Iterator<Item = &'a str>) -> Result<(), String> {
     let mut seen = HashSet::new();
     if ids.into_iter().any(|id| id.is_empty() || !seen.insert(id)) {
@@ -322,6 +344,74 @@ mod tests {
         Mutex::new(conn)
     }
 
+    fn insert_test_book(db: &Mutex<Connection>, id: &str) {
+        let conn = db.lock().unwrap();
+        conn.execute(
+            "INSERT INTO books VALUES (?1,?2,'[]','epub',NULL,?3,'desktop_path',1,2,NULL,'available',NULL,3,4)",
+            rusqlite::params![id, id, format!("/{id}.epub")],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn list_series_books_reports_order_and_single_ownership() {
+        let db = test_db();
+        insert_test_book(&db, "b2");
+        let first = create_series(
+            &db,
+            CreateSeriesInput {
+                name: "First".into(),
+            },
+        )
+        .unwrap();
+        let second = create_series(
+            &db,
+            CreateSeriesInput {
+                name: "Second".into(),
+            },
+        )
+        .unwrap();
+
+        for (book_id, volume_label, sort_order) in [("b", "II", 2), ("b2", "I", 1)] {
+            set_book_series(
+                &db,
+                BookSeries {
+                    book_id: book_id.into(),
+                    series_id: first.id.clone(),
+                    volume_label: volume_label.into(),
+                    sort_order,
+                },
+            )
+            .unwrap();
+        }
+
+        let assigned = list_series_books(&db, &first.id).unwrap();
+        assert_eq!(assigned.len(), 2);
+        assert_eq!(assigned[0].book_id, "b2");
+        assert_eq!(assigned[0].volume_label, "I");
+        assert_eq!(assigned[1].book_id, "b");
+
+        set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: second.id.clone(),
+                volume_label: "Moved".into(),
+                sort_order: 3,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(list_series_books(&db, &first.id).unwrap().len(), 1);
+        let moved = list_series_books(&db, &second.id).unwrap();
+        assert_eq!(moved.len(), 1);
+        assert_eq!(moved[0].book_id, "b");
+        assert_eq!(moved[0].volume_label, "Moved");
+
+        let error = list_series_books(&db, "missing").unwrap_err();
+        assert!(error.starts_with("SERIES_NOT_FOUND:"));
+    }
+
     #[test]
     fn concurrent_series_creates_do_not_lose_rows() {
         let db = Arc::new(test_db());
@@ -367,6 +457,246 @@ mod tests {
         .unwrap_err();
         assert!(err.starts_with("VALIDATION_ERROR:"));
         assert_eq!(list_series(&db).unwrap()[0].name, "Original");
+    }
+
+    #[test]
+    fn duplicate_series_names_are_validation_errors_and_preserve_rows() {
+        let db = test_db();
+        create_series(
+            &db,
+            CreateSeriesInput {
+                name: "Alpha".into(),
+            },
+        )
+        .unwrap();
+
+        let create_error = create_series(
+            &db,
+            CreateSeriesInput {
+                name: " alpha ".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(
+            create_error.starts_with("VALIDATION_ERROR:"),
+            "unexpected error: {create_error}"
+        );
+
+        let beta = create_series(
+            &db,
+            CreateSeriesInput {
+                name: "Beta".into(),
+            },
+        )
+        .unwrap();
+        let update_error = update_series(
+            &db,
+            UpdateSeriesInput {
+                id: beta.id,
+                name: "ALPHA".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(
+            update_error.starts_with("VALIDATION_ERROR:"),
+            "unexpected error: {update_error}"
+        );
+
+        let names: Vec<_> = list_series(&db)
+            .unwrap()
+            .into_iter()
+            .map(|series| series.name)
+            .collect();
+        assert_eq!(names, ["Alpha", "Beta"]);
+    }
+
+    #[test]
+    fn series_crud_preserves_created_at_and_delete_keeps_book() {
+        let db = test_db();
+        let created = create_series(
+            &db,
+            CreateSeriesInput {
+                name: "  Original  ".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(created.name, "Original");
+
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let updated = update_series(
+            &db,
+            UpdateSeriesInput {
+                id: created.id.clone(),
+                name: "  Renamed  ".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.id, created.id);
+        assert_eq!(updated.name, "Renamed");
+        assert_eq!(updated.created_at, created.created_at);
+        assert!(updated.updated_at >= created.updated_at);
+
+        set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: updated.id.clone(),
+                volume_label: "1".into(),
+                sort_order: 1,
+            },
+        )
+        .unwrap();
+        delete_series(&db, &updated.id).unwrap();
+        assert!(list_series(&db).unwrap().is_empty());
+
+        let conn = db.lock().unwrap();
+        let book_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM books WHERE id='b'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let assignment_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM book_series", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(book_count, 1);
+        assert_eq!(assignment_count, 0);
+    }
+
+    #[test]
+    fn volume_label_limit_preserves_existing_assignment() {
+        let db = test_db();
+        let series = create_series(&db, CreateSeriesInput { name: "S".into() }).unwrap();
+        let accepted_label = "v".repeat(200);
+        set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: series.id.clone(),
+                volume_label: format!("  {accepted_label}  "),
+                sort_order: 1,
+            },
+        )
+        .unwrap();
+
+        let error = set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: series.id.clone(),
+                volume_label: "v".repeat(201),
+                sort_order: 2,
+            },
+        )
+        .unwrap_err();
+        assert!(error.starts_with("VALIDATION_ERROR:"));
+
+        let assignment = list_series_books(&db, &series.id).unwrap().remove(0);
+        assert_eq!(assignment.volume_label, accepted_label);
+        assert_eq!(assignment.sort_order, 1);
+    }
+
+    #[test]
+    fn reorder_rolls_back_when_a_late_update_fails() {
+        let db = test_db();
+        insert_test_book(&db, "b2");
+        let series = create_series(&db, CreateSeriesInput { name: "S".into() }).unwrap();
+        for (book_id, sort_order) in [("b", 1), ("b2", 2)] {
+            set_book_series(
+                &db,
+                BookSeries {
+                    book_id: book_id.into(),
+                    series_id: series.id.clone(),
+                    volume_label: book_id.into(),
+                    sort_order,
+                },
+            )
+            .unwrap();
+        }
+        {
+            let conn = db.lock().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER fail_second_reorder
+                 BEFORE UPDATE OF sort_order ON book_series
+                 WHEN OLD.book_id = 'b2' AND NEW.sort_order = 10
+                 BEGIN
+                   SELECT RAISE(ABORT, 'forced late reorder failure');
+                 END;",
+            )
+            .unwrap();
+        }
+
+        let error = reorder_series_books(
+            &db,
+            &series.id,
+            vec![
+                SeriesBookPosition {
+                    book_id: "b".into(),
+                    sort_order: 20,
+                },
+                SeriesBookPosition {
+                    book_id: "b2".into(),
+                    sort_order: 10,
+                },
+            ],
+        )
+        .unwrap_err();
+        assert!(error.starts_with("INTERNAL_ERROR:"));
+
+        let positions: Vec<_> = list_series_books(&db, &series.id)
+            .unwrap()
+            .into_iter()
+            .map(|assignment| (assignment.book_id, assignment.sort_order))
+            .collect();
+        assert_eq!(positions, [("b".into(), 1), ("b2".into(), 2)]);
+    }
+
+    #[test]
+    fn reorder_rejects_duplicate_and_outside_ids_without_changes() {
+        let db = test_db();
+        insert_test_book(&db, "b2");
+        let series = create_series(&db, CreateSeriesInput { name: "S".into() }).unwrap();
+        set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: series.id.clone(),
+                volume_label: "I".into(),
+                sort_order: 1,
+            },
+        )
+        .unwrap();
+
+        let duplicate_error = reorder_series_books(
+            &db,
+            &series.id,
+            vec![
+                SeriesBookPosition {
+                    book_id: "b".into(),
+                    sort_order: 2,
+                },
+                SeriesBookPosition {
+                    book_id: "b".into(),
+                    sort_order: 3,
+                },
+            ],
+        )
+        .unwrap_err();
+        assert!(duplicate_error.starts_with("VALIDATION_ERROR:"));
+
+        let outside_error = reorder_series_books(
+            &db,
+            &series.id,
+            vec![SeriesBookPosition {
+                book_id: "b2".into(),
+                sort_order: 4,
+            }],
+        )
+        .unwrap_err();
+        assert!(outside_error.starts_with("VALIDATION_ERROR:"));
+
+        let assignment = list_series_books(&db, &series.id).unwrap().remove(0);
+        assert_eq!(assignment.book_id, "b");
+        assert_eq!(assignment.sort_order, 1);
     }
 
     #[test]

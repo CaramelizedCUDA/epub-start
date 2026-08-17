@@ -16,6 +16,24 @@ pub struct ResourceContent {
     pub mime: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchDocument {
+    pub spine_index: i64,
+    pub href: String,
+    pub title: String,
+    pub body: String,
+    pub cfi: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchExtraction {
+    pub documents: Vec<SearchDocument>,
+    pub total_documents: i64,
+    pub bytes_extracted: u64,
+    pub errors: Vec<String>,
+    pub cancelled: bool,
+}
+
 pub trait MetadataProvider {
     fn parse_metadata(
         &self,
@@ -32,20 +50,10 @@ pub trait ResourceProvider {
     ) -> Result<ResourceContent, String>;
 }
 
-#[allow(dead_code)]
-pub trait TocProvider {
-    type Toc;
-
-    fn read_toc(&self, reader: Box<dyn ReadSeek>) -> Result<Self::Toc, String>;
-}
-
-#[allow(dead_code)]
-pub trait TextContentProvider {
-    type TextContent;
-
-    fn read_text_content(
+pub trait SearchContentProvider {
+    fn extract_search_documents(
         &self,
         reader: Box<dyn ReadSeek>,
-        entry_path: &str,
-    ) -> Result<Self::TextContent, String>;
+        cancelled: &mut dyn FnMut() -> bool,
+    ) -> Result<SearchExtraction, String>;
 }

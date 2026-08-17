@@ -187,6 +187,10 @@ CREATE TABLE search_index_state (
 
 V2 CRUD 中的 UUID、`created_at` 与 `updated_at` 由 Rust 服务层生成，渲染层不得提供或覆盖这些审计字段。系列、标签组与标签更新必须保留原始 `created_at`；批注更新必须保留原始 `book_id` 与 `created_at`。删除图书时，`source_cache_entries`、`book_series`、`book_tags`、`book_reading_settings`、`search_documents` 与 `search_index_state` 和 V1 的进度/笔记一起级联删除；系列与标签定义保留。
 
+`book_series.book_id` 主键是单系列归属的数据库保证。设置归属使用单条 UPSERT；`list_series_books` 按 `sort_order, book_id` 返回卷标与排序；重排输入由服务层校验 ID 非空、唯一且属于目标系列，仓储在单个 `BEGIN IMMEDIATE` 事务内更新，任一语句或 `COMMIT` 失败都回滚。删除系列依靠外键级联删除 `book_series`/`series_tags` 关系，但不删除 `books`。该收口复用 V2 Schema，不新增或改写迁移。
+
+`search_documents.href` 保存 OPF manifest 中的章节 href，供打开图书后的 EPUB.js 导航；它不是 `epub_root_url` 下已经规范化的协议条目路径。B2 EPUB 索引不得根据 spine 序号合成 CFI，写入与查询返回的 `cfi` 均为 `NULL`；该可空列保留为未来经可靠格式/DOM 适配生成精确位置时的追加能力，不得把非空值当作当前完成条件。
+
 ### B2 存储预算规划（部分实现：搜索索引账面预算已实现，其余待完成）
 
 `source_cache_entries.cache_size_bytes` 和 `last_accessed_at` 是来源缓存预算与真实 LRU 的现有数据基础。B2 实现必须在成功取得缓存租约时更新 `last_accessed_at`，并保证缓存文件写入、元数据更新、失败清理与淘汰之间不存在把半成品记录为可用缓存的状态。删除图书后，数据库级联删除缓存记录，文件清理由服务层尽力完成；后续清理任务必须能够识别数据库无对应记录的孤儿文件。

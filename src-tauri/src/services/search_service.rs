@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager, Runtime};
 use crate::commands::AppState;
 use crate::db::models::{SearchIndexStatus, SearchResult, SearchTaskStatus};
 use crate::db::repository;
-use crate::formats::epub::{extract_search_documents, SearchExtraction};
+use crate::formats::SearchExtraction;
 
 pub const MAX_QUERY_LENGTH: usize = 200;
 pub const DEFAULT_RESULT_LIMIT: i64 = 100;
@@ -279,7 +279,7 @@ pub fn search_series(
         let mut stmt = conn
             .prepare(
                 "SELECT d.book_id, d.spine_index, d.href, d.title,
-                        substr(d.body, 1, 240), d.cfi
+                        substr(d.body, 1, 240), NULL
                  FROM search_documents d JOIN book_series bs ON bs.book_id=d.book_id
                  JOIN search_index_state s ON s.book_id=d.book_id
                  WHERE bs.series_id=?1 AND s.status='ready'
@@ -299,7 +299,7 @@ pub fn search_series(
         let mut stmt = conn
             .prepare(
                 "SELECT d.book_id, d.spine_index, d.href, d.title,
-                        snippet(search_documents_fts, 1, '[', ']', '…', 24), d.cfi
+                        snippet(search_documents_fts, 1, '[', ']', '…', 24), NULL
                  FROM search_documents_fts
                  JOIN search_documents d ON d.id=search_documents_fts.rowid
                  JOIN book_series bs ON bs.book_id=d.book_id
@@ -388,18 +388,20 @@ fn build_series_index<R: Runtime>(
                 continue;
             }
         };
-        let extraction =
-            match extract_search_documents(reader, || cancelled.load(Ordering::Acquire)) {
-                Ok(extraction) => extraction,
-                Err(error) => {
-                    if error.starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:") {
-                        mark_budget_error_preserving_documents(db, &book.id, &error)?;
-                    } else {
-                        persist_error(db, &book.id, &error)?;
-                    }
-                    continue;
+        let extraction = match crate::formats::active_format(&book.format).and_then(|format| {
+            let mut is_cancelled = || cancelled.load(Ordering::Acquire);
+            format.extract_search_documents(reader, &mut is_cancelled)
+        }) {
+            Ok(extraction) => extraction,
+            Err(error) => {
+                if error.starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:") {
+                    mark_budget_error_preserving_documents(db, &book.id, &error)?;
+                } else {
+                    persist_error(db, &book.id, &error)?;
                 }
-            };
+                continue;
+            }
+        };
         task_bytes = match checked_search_task_total(task_bytes, extraction.bytes_extracted) {
             Ok(value) => value,
             Err(error) => {
@@ -428,7 +430,7 @@ fn persist_documents(
     db: &Mutex<Connection>,
     book_id: &str,
     fingerprint_json: &str,
-    extraction: &crate::formats::epub::SearchExtraction,
+    extraction: &SearchExtraction,
 ) -> Result<(), String> {
     persist_documents_with_budget(
         db,
@@ -564,7 +566,7 @@ fn enforce_index_budget_with_limit(
     Ok(())
 }
 
-fn extraction_bytes(extraction: &crate::formats::epub::SearchExtraction) -> Result<u64, String> {
+fn extraction_bytes(extraction: &SearchExtraction) -> Result<u64, String> {
     extraction
         .documents
         .iter()
@@ -742,7 +744,7 @@ fn now_ms() -> i64 {
 mod tests {
     use super::*;
     use crate::db::migrations::run_migrations;
-    use crate::formats::epub::SearchDocument;
+    use crate::formats::capabilities::SearchDocument;
 
     fn seeded_db() -> Mutex<Connection> {
         let conn = Connection::open_in_memory().unwrap();
@@ -782,7 +784,7 @@ mod tests {
         let result = search_series(&db, "s1", "你好".into(), None).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].book_id, "b1");
-        assert_eq!(result[0].cfi.as_deref(), Some("epubcfi(/6/2)"));
+        assert_eq!(result[0].cfi, None);
     }
 
     #[test]
@@ -836,6 +838,7 @@ mod tests {
         let result = search_series(&db, "s1", "你好世".into(), Some(1)).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].book_id, "b1");
+        assert_eq!(result[0].cfi, None);
     }
 
     #[test]

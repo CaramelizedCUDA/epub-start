@@ -80,6 +80,7 @@ pub fn run() {
             commands::catalog::delete_series,
             commands::catalog::set_book_series,
             commands::catalog::clear_book_series,
+            commands::catalog::list_series_books,
             commands::catalog::reorder_series_books,
             commands::catalog::list_tag_groups,
             commands::catalog::create_tag_group,
