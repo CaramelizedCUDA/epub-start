@@ -65,7 +65,7 @@ P4 外部网盘解锁前，`source_kind` 不追加远程枚举，Schema 不新�
 
 `file_size_bytes` 与 `last_modified_ts` 是重新定位的辅助指纹，不是安全哈希。桌面来源应保存实际值；Android SAF Provider 无法提供某项元数据时，该字段保存 `0` 表示“未知”，严禁以导入时间或当前时间伪造修改时间。对 EPUB，`package_identifier` 由 OPF 解析；它可为空，但在 SAF 辅助元数据不完整时是重新定位所需的稳定回退标识。`status_detail` 存放面向诊断的简短错误描述，不存放敏感来源内容。
 
-`reading_progress.location_cfi` 仅承载 EPUB CFI；对未来格式保持 `NULL`。`progression` 是可选的 0 到 1 数值，可供所有格式采用，但不得用它伪造精确位置。`notes` 的 CFI 字段为 EPUB 专用，Phase 1 只创建表，不提供 UI 或 IPC 写入。
+`reading_progress.location_cfi` 仅承载 EPUB CFI；对未来格式保持 `NULL`。`progression` 是可选的 0 到 1 数值，可供所有格式采用，但不得用它伪造精确位置。`notes.cfi_start`/`cfi_end` 为 EPUB 必填定位字段，V2 追加的 `cfi_range` 可空以兼容升级前批注；新写入的空白 range 归一为 `NULL`。服务层先修剪外层空白，再按字符限制单个 CFI 4,096、`selected_text` 10,000、`content` 20,000；选中文本和正文按字面纯文本保存，不解释 HTML，颜色统一为小写 `#RRGGBB`。批注更新保留原始 `book_id`/`created_at`，重启依靠 `id/book_id/CFI/selected_text/content/color/created_at/updated_at` 完整恢复；删除图书由外键级联删除批注。
 
 P3.0 必须通过追加迁移设计多格式位置模型，不能复用 `location_cfi` 存放 TXT 偏移、PDF 页码或漫画页码。规划方向为显式 `location_kind` 与受校验 payload：EPUB CFI、TXT 文本锚点、固定页面页码及必要页内坐标；最终字段和约束须在实现前重新评审。文本排版设置与固定页面设置也必须分表或分类型约束，避免漫画继承字体/行距或 EPUB 继承页面缩放。
 

@@ -181,6 +181,8 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 
 `CreateNoteInput` 不含 `id/created_at/updated_at`；`UpdateNoteInput` 不含 `book_id/created_at/updated_at`。`ReadingSettingsInput` 不含 `updated_at`，`BookReadingSettingsInput` 不含 `updated_at`。系列、标签组与标签的 Create 输入不含 ID/时间戳，Update 输入仅包含 ID 和可编辑字段。
 
+批注创建与更新会修剪所有文本字段的外层空白；`cfi_start`/`cfi_end` 修剪后必须非空，空白 `cfi_range` 归一为 `null`。单个 CFI 最多 4,096 个字符，`selected_text` 最多 10,000 个字符，`content` 最多 20,000 个字符；三项按 Unicode 字符而非 UTF-8 字节计数。选中文本与正文只作为字面纯文本往返，不解析 HTML；颜色接受修剪后的 `#RRGGBB` 并返回小写形式。更新保留原始 `book_id`/`created_at`，删除图书级联删除批注。
+
 `ReadingSettings` / `ReadingSettingsInput` 的阅读排版字段为：`font_size_px`（12–32）、`line_height_multiplier`（1.0–3.0）、`paragraph_spacing_multiplier`（0–2.0）、`text_indent_em`（0–4.0）、`margin_top_px` / `margin_bottom_px`（0–100）、`margin_left_percent` / `margin_right_percent`（0–20）、`max_column_width_px`（300–1200）。`BookReadingSettings` / `BookReadingSettingsInput` 使用同名可空字段逐项覆盖；主题、字体、flow、spread 契约保持不变。前端保存异步执行，失败重试一次；第二次失败显示错误但不得回滚已应用的阅读预览。
 
 | `ensure_series_search_index` / `rebuild_search_index` | `{ seriesId }` | `SearchTaskStatus` | 启动惰性增量索引或强制重建；返回任务 ID、状态和进度。来源指纹变化时自动重建；同一系列已有活动任务时返回 `SEARCH_INDEX_UNAVAILABLE:`，不启动竞争任务。 |

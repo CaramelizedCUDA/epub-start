@@ -85,6 +85,8 @@ connect-src 'self' ipc: http://ipc.localhost epub: http://epub.localhost
 
 EPUB.js 默认禁用 iframe 中的脚本执行和弹窗。EPUB XHTML 内容渲染在独立的 `<iframe>` 中，与主 WebView 分离。
 
+批注 `selected_text` 与 `content` 只作为字面纯文本保存并通过 React 文本节点/`textarea` 显示，不进入 HTML 解析接口；类似标签或脚本的字符串保持文本语义。后端同时修剪外层空白、限制字符长度，并把颜色约束为 `#RRGGBB`，避免把任意样式值带入高亮渲染。该结论已由服务层自动化与前端静态审查覆盖；桌面和 Android WebView 的实际选区/高亮交互仍属于 B3/F2 运行态门禁。
+
 ### 来源校验
 
 - 桌面：强制绝对路径 + 文件存在性 + 可读性 + 扩展名验证
@@ -93,7 +95,7 @@ EPUB.js 默认禁用 iframe 中的脚本执行和弹窗。EPUB XHTML 内容渲�
 
 ### 数据库迁移事务
 
-V1、V2、V3、V4 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，错误分支执行回滚，避免半完成状态导致永久启动失败。当前绿色套件覆盖空库、V1 升级、重复启动、V2 冲突回滚、V1/V3/V4 回滚断言和图书拥有关系的级联删除。V1/V3/V4 回滚测试已完成“在目标失败分支注入 `COMMIT` 或提交步骤失败→目标断言变红→恢复→变绿”的自证，详细断言见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.10。未覆盖：真实损坏数据库恢复、磁盘写满/断电等运行态故障。
+V1、V2、V3、V4 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，错误分支执行回滚，避免半完成状态导致永久启动失败。当前绿色套件覆盖空库、V1 升级、重复启动、V2 冲突回滚、V1/V3/V4 回滚断言和图书拥有关系的级联删除。V1/V3/V4 回滚测试已完成“在目标失败分支注入 `COMMIT` 或提交步骤失败→目标断言变红→恢复→变绿”的自证，详细断言见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.11。未覆盖：真实损坏数据库恢复、磁盘写满/断电等运行态故障。
 
 ### 错误脱敏
 
