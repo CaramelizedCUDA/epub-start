@@ -225,6 +225,27 @@ DROP TABLE global_reading_settings;
 ALTER TABLE global_reading_settings_v3 RENAME TO global_reading_settings;
 "#;
 
+// V3 preserves legacy margin values during upgrades. A database created from
+// scratch also passes through the V2 seed row, so V4 normalizes only that
+// untouched seed row to the documented V3 defaults without rewriting a user's
+// existing settings.
+const V4_SCHEMA: &str = r#"
+UPDATE global_reading_settings SET
+  margin_left_percent = 3,
+  margin_right_percent = 3
+WHERE singleton_id = 1
+  AND theme = 'dark'
+  AND font_family = 'publisher'
+  AND font_size_percent = 100
+  AND line_height_percent = 150
+  AND margin_percent = 5
+  AND flow = 'paginated'
+  AND spread = 'auto'
+  AND updated_at = 0
+  AND margin_left_percent = 5
+  AND margin_right_percent = 5;
+"#;
+
 pub fn run_migrations(conn: &Connection) -> SqliteResult<()> {
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
@@ -335,6 +356,34 @@ pub fn run_migrations(conn: &Connection) -> SqliteResult<()> {
         }
     }
 
+    let current: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM _migrations",
+        [],
+        |row| row.get(0),
+    )?;
+    if current < 4 {
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let result = (|| -> SqliteResult<()> {
+            conn.execute_batch(V4_SCHEMA)?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as i64)
+                .unwrap_or(0);
+            conn.execute(
+                "INSERT INTO _migrations (version, applied_at) VALUES (4, ?1)",
+                [now],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => conn.execute_batch("COMMIT;")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(error);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -408,7 +457,7 @@ mod tests {
             conn.query_row("SELECT MAX(version) FROM _migrations", [], |row| row
                 .get::<_, i64>(0))
                 .unwrap(),
-            3
+            4
         );
     }
 
@@ -426,7 +475,7 @@ mod tests {
         conn.execute("INSERT INTO _migrations VALUES (2, 0)", [])
             .unwrap();
         conn.execute(
-            "UPDATE global_reading_settings SET font_size_percent=175, line_height_percent=250, margin_percent=20",
+            "UPDATE global_reading_settings SET theme='sepia', font_family='sans', font_size_percent=175, line_height_percent=250, margin_percent=20, flow='scrolled', spread='always', updated_at=99",
             [],
         )
         .unwrap();
@@ -436,29 +485,57 @@ mod tests {
         )
         .unwrap();
         conn.execute(
-            "INSERT INTO book_reading_settings (book_id,font_size_percent,line_height_percent,margin_percent,updated_at) VALUES ('b',125,NULL,7,1)",
+            "INSERT INTO book_reading_settings (book_id,theme,font_family,font_size_percent,line_height_percent,margin_percent,flow,spread,updated_at) VALUES ('b','light','system',125,NULL,7,'paginated','none',11)",
             [],
         )
         .unwrap();
 
         run_migrations(&conn).unwrap();
 
-        let global: (i64, f64, i64, i64) = conn
-            .query_row(
-                "SELECT font_size_px,line_height_multiplier,margin_left_percent,margin_right_percent FROM global_reading_settings",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .unwrap();
-        assert_eq!(global, (28, 2.5, 20, 20));
-        let book: (Option<i64>, Option<f64>, Option<i64>, Option<i64>) = conn
-            .query_row(
-                "SELECT font_size_px,line_height_multiplier,margin_left_percent,margin_right_percent FROM book_reading_settings WHERE book_id='b'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .unwrap();
-        assert_eq!(book, (Some(20), None, Some(7), Some(7)));
+        conn.query_row(
+            "SELECT theme,font_family,font_size_px,line_height_multiplier,paragraph_spacing_multiplier,text_indent_em,margin_top_px,margin_bottom_px,margin_left_percent,margin_right_percent,max_column_width_px,flow,spread,updated_at FROM global_reading_settings",
+            [],
+            |row| {
+                assert_eq!(row.get::<_, String>(0)?, "sepia");
+                assert_eq!(row.get::<_, String>(1)?, "sans");
+                assert_eq!(row.get::<_, i64>(2)?, 28);
+                assert_eq!(row.get::<_, f64>(3)?, 2.5);
+                assert_eq!(row.get::<_, f64>(4)?, 0.5);
+                assert_eq!(row.get::<_, f64>(5)?, 2.0);
+                assert_eq!(row.get::<_, i64>(6)?, 48);
+                assert_eq!(row.get::<_, i64>(7)?, 48);
+                assert_eq!(row.get::<_, i64>(8)?, 20);
+                assert_eq!(row.get::<_, i64>(9)?, 20);
+                assert_eq!(row.get::<_, i64>(10)?, 720);
+                assert_eq!(row.get::<_, String>(11)?, "scrolled");
+                assert_eq!(row.get::<_, String>(12)?, "always");
+                assert_eq!(row.get::<_, i64>(13)?, 99);
+                Ok(())
+            },
+        )
+        .unwrap();
+        conn.query_row(
+            "SELECT theme,font_family,font_size_px,line_height_multiplier,paragraph_spacing_multiplier,text_indent_em,margin_top_px,margin_bottom_px,margin_left_percent,margin_right_percent,max_column_width_px,flow,spread,updated_at FROM book_reading_settings WHERE book_id='b'",
+            [],
+            |row| {
+                assert_eq!(row.get::<_, String>(0)?, "light");
+                assert_eq!(row.get::<_, String>(1)?, "system");
+                assert_eq!(row.get::<_, Option<i64>>(2)?, Some(20));
+                assert_eq!(row.get::<_, Option<f64>>(3)?, None);
+                assert_eq!(row.get::<_, Option<f64>>(4)?, None);
+                assert_eq!(row.get::<_, Option<f64>>(5)?, None);
+                assert_eq!(row.get::<_, Option<i64>>(6)?, None);
+                assert_eq!(row.get::<_, Option<i64>>(7)?, None);
+                assert_eq!(row.get::<_, Option<i64>>(8)?, Some(7));
+                assert_eq!(row.get::<_, Option<i64>>(9)?, Some(7));
+                assert_eq!(row.get::<_, Option<i64>>(10)?, None);
+                assert_eq!(row.get::<_, Option<String>>(11)?, Some("paginated".into()));
+                assert_eq!(row.get::<_, Option<String>>(12)?, Some("none".into()));
+                assert_eq!(row.get::<_, i64>(13)?, 11);
+                Ok(())
+            },
+        )
+        .unwrap();
         let line_height_default: String = conn
             .query_row(
                 "SELECT dflt_value FROM pragma_table_info('global_reading_settings') WHERE name='line_height_multiplier'",
@@ -680,5 +757,40 @@ mod tests {
             )
             .unwrap();
         assert_eq!(v3_column_count, 0);
+    }
+
+    #[test]
+    fn test_v4_default_normalization_rolls_back_after_commit_step_failure() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute("DELETE FROM _migrations WHERE version = 4", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE global_reading_settings SET margin_left_percent=5, margin_right_percent=5",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_v4_migration BEFORE INSERT ON _migrations
+             WHEN NEW.version = 4
+             BEGIN SELECT RAISE(ABORT, 'forced v4 failure'); END;",
+        )
+        .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+        assert_eq!(
+            conn.query_row("SELECT MAX(version) FROM _migrations", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            3
+        );
+        let margins: (i64, i64) = conn
+            .query_row(
+                "SELECT margin_left_percent,margin_right_percent FROM global_reading_settings",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(margins, (5, 5));
     }
 }

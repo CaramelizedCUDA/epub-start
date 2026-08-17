@@ -157,11 +157,11 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `create_note` | `{ note: CreateNoteInput }` | `Note` | Rust 生成 `id/created_at/updated_at`；高亮是 `content` 为空的 Note。 |
 | `update_note` | `{ note: UpdateNoteInput }` | `Note` | 不允许改变 `book_id/created_at`；缺失笔记返回 `NOTE_NOT_FOUND:`。 |
 | `delete_note` | `{ noteId }` | `void` | 缺失笔记返回 `NOTE_NOT_FOUND:`。 |
-| `get_reading_settings` | `{ bookId }` | `ReadingSettingsResult` | 返回 `effective/global/book_override`；不改变阅读进度契约。 |
+| `get_reading_settings` | `{ bookId }` | `ReadingSettingsResult` | 返回 `effective/global/book_override`；逐字段按单书非空覆盖全局值；图书不存在返回 `BOOK_NOT_FOUND:`。 |
 | `get_global_reading_settings` | 无 | `ReadingSettings` | 供书架设置入口读取全局默认值；不要求当前打开图书，不读取或修改单书覆盖。 |
-| `save_global_reading_settings` | `{ settings: ReadingSettingsInput }` | `ReadingSettings` | Rust 写入 `updated_at`。 |
-| `save_book_reading_settings` | `{ settings: BookReadingSettingsInput }` | `BookReadingSettings` | 保存可空的逐字段覆盖；Rust 写入 `updated_at`。 |
-| `clear_book_reading_settings` | `{ bookId }` | `void` | 删除单书覆盖，恢复全局设置。 |
+| `save_global_reading_settings` | `{ settings: ReadingSettingsInput }` | `ReadingSettings` | 校验所有范围/枚举后整行持久化；Rust 写入 `updated_at`；非法值返回 `VALIDATION_ERROR:`。 |
+| `save_book_reading_settings` | `{ settings: BookReadingSettingsInput }` | `BookReadingSettings` | 保存可空的逐字段覆盖，`NULL` 表示继承；Rust 写入 `updated_at`；图书不存在返回 `BOOK_NOT_FOUND:`，非法值返回 `VALIDATION_ERROR:`。 |
+| `clear_book_reading_settings` | `{ bookId }` | `void` | 删除单书覆盖，恢复全局设置；图书不存在返回 `BOOK_NOT_FOUND:`。 |
 | `list_series` | 无 | `Series[]` | 按名称排序。 |
 | `create_series` / `update_series` | `{ series: CreateSeriesInput }` / `{ series: UpdateSeriesInput }` | `Series` | 名称修剪后 1–200 字符；Rust 管理 UUID/时间戳。 |
 | `delete_series` | `{ seriesId }` | `void` | 删除归属和系列标签关系，不删除图书。 |

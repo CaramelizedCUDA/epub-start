@@ -105,6 +105,8 @@ commands/  -> IPC 薄适配
 
 后端业务新记录的 UUID 与时间戳由 `services/` 生成；Command 不接受前端伪造的审计字段。`notes_service` 负责批注长度、颜色、归属与缺失状态校验，`settings_service` 负责全局/单书设置解析，`catalog_service` 负责系列、标签组/标签和关系事务；搜索/索引服务负责任务状态、取消和预算；`db/` 只执行参数化持久化与级联约束。
 
+阅读设置的公开 seam 是 `settings_service`：全局设置读取/保存整行，单书设置以可空字段逐项覆盖，全局与单书值在服务层合并为 `effective`；`NULL` 只表示继承，不由渲染层自行解释。单书清除通过删除覆盖行恢复全局值；图书存在性、范围/枚举校验和服务生成的 `updated_at` 均在写入前完成，Command 只负责 IPC 参数适配。
+
 系列模块的公开 seam 位于 `catalog_service`：它统一完成名称/卷标校验、实体存在性、单系列归属、完整有序关系读取和重排编排；Command 不拼接关系写入。`book_series.book_id` 主键与单条 UPSERT 保证每本书最多一个系列，批量重排由仓储在 `BEGIN IMMEDIATE` 事务内完成，语句失败或 `COMMIT` 失败都必须回滚并释放事务。
 
 标签模块复用同一 `catalog_service` seam：它统一完成标签组/标签输入校验、稳定唯一冲突映射、系列标签读取、书籍直接标签与系列继承标签合并，以及按全部所选有效标签筛选书籍。Command 不组合直接/继承关系，也不在渲染层本地筛选；筛选只返回 `BookSummary`，不得暴露 `source_locator`/`source_kind`。关系替换由仓储在单个事务中完成，直接关系与继承关系重复时只保留直接关系语义。
