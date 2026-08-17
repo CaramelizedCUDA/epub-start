@@ -23,7 +23,7 @@
 
 ### 0.2 生产代码健康审计
 
-- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 426 行（共 433 次调用），当前 B2 标签收口测试后复核，全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:106` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
+- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 445 行（共 452 次调用），当前 B2 阅读设置收口测试后复核，全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:106` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
 - [x] 审计 44 个 `#[tauri::command]`：全部为薄适配；3 个历史缺口已关闭，B2 搜索 5 个 Command、系列关系读取和标签读取/筛选 Command 已接入真实服务，见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 注册清单。
 - [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
 - [x] 生成 Command 注册清单并三方比对：Rust 44 == IPC.md 44 == `tauri.ts` 44，命名一致；B2 搜索 5 个 Command 已接入真实服务；21 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行、系列关系读取以及标签读取/筛选契约的文档缺口。
@@ -61,9 +61,9 @@
 
 ### 3. B1 完成标准
 
-- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 150/150；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8；桌面对话框类运行态与 Android Kotlin/WebView 行为按三类口径标注，不计入自动覆盖）。
-- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 150/150；测试数 85→150，B2 搜索、目录/搜索、系列及标签收口测试均完成变红自证）。
-- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、模型镜像和预算/未验证边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 426 行/433 次）。
+- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 155/155；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8，阅读设置见 0.2.9；桌面对话框类运行态与 Android Kotlin/WebView 行为按三类口径标注，不计入自动覆盖）。
+- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 155/155；测试数 85→155，B2 搜索、目录/搜索、系列、标签及阅读设置收口测试均完成变红自证）。
+- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、模型镜像和预算/未验证边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 445 行/452 次）。
 
 ## B2 后端业务能力（当前阶段）
 
@@ -85,7 +85,7 @@
 - [x] 固定目录/搜索所需的后端资源与错误契约（2026-08-17）：目录链统一使用 `open_book.epub_root_url -> ResourceProvider` 提供 `container.xml`、OPF、NAV/NCX、spine 与关联资源，不新增目录 Command；搜索提取改经 `ActiveFormat -> SearchContentProvider`，删除未实现的 `TocProvider`/`TextContentProvider` 占位接口；后端返回 `book_id + spine_index + OPF href`，提取及 LIKE/trigram 查询的 `cfi` 固定为 `null`，精确 CFI 留给 EPUB.js；资源协议补齐脱敏与 400/404/413/422/500/501 稳定映射。已测（辅助逻辑/自动化）：四类控制/导航资源正文与 MIME、格式分派与解析错误、来源前缀脱敏、协议状态、旧伪 CFI 不再返回，新增 2 个及强化 5 个测试均完成目标变红→恢复变绿，完整 `cargo test` 139/139、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 EPUB.js 的完整 NCX/NAV 运行态链（待人工验证）；Android WebView 同链路与版本矩阵（阻塞至 B3 设备回归）。
 - [x] 完成系列 CRUD、单系列归属、卷标、排序和关系事务（2026-08-17）：新增 `list_series_books` 只读 Command/服务 seam，按 `sort_order, book_id` 返回完整关系；系列名称冲突稳定映射为 `VALIDATION_ERROR:`，卷标修剪后限制 200 字符；单书归属由 `book_series.book_id` 主键与 UPSERT 保证，重排语句失败或 `COMMIT` 失败均回滚并释放事务。已测（辅助逻辑/自动化）：CRUD/名称修剪/审计字段保留、大小写不敏感重复名、缺失实体、并发创建、单系列替换、关系读取与排序、卷标 200/201 边界、重复/越界重排拒绝、成功重排、后段更新失败回滚、提交失败回滚释放、删系列仅级联关系不删书；新增 7 个测试及卷标强化均完成目标变红自证，完整 `cargo test` 146/146、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell 对系列 Command 的实际运行态消费（待 B3/F2 人工验证）；Android 同链路与 OEM/进程恢复矩阵（阻塞至 B3 设备回归）；当前应用只有单进程 `Mutex<Connection>`，未声称多进程/多连接并发语义。
 - [x] 完成标签组/标签 CRUD、书籍直接标签、系列继承标签、筛选查询和删除关系语义（2026-08-17）：新增 `list_series_tags` 与 `filter_books_by_tags`，筛选按全部所选有效标签（直接或系列继承）匹配并以 `COUNT(DISTINCT tag_id)` 去重，返回无来源字段的 `BookSummary[]`，按 `updated_at DESC, title NOCASE, id` 稳定排序；标签组/同组标签 NOCASE 冲突映射为 `VALIDATION_ERROR:`，关系替换保持单事务，删除标签组只取消分组，删除标签只级联关系。已测（辅助逻辑/自动化）：CRUD、名称/颜色规范化、审计字段保留、同组冲突/跨组同名、缺失实体、系列标签读取排序、直接/继承标记与去重、AND 筛选、空/重复/缺失筛选 ID、书籍/系列关系失败保留、标签组/标签删除后的定义/关系/所有者语义；新增 4 个测试均完成目标变红自证，catalog 专项 24/24、完整 `cargo test` 150/150、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell 对标签 Command 的实际运行态消费（待 B3/F2 人工验证）；Android 同链路与 OEM/进程恢复矩阵（阻塞至 B3 设备回归）；当前应用只有单进程 `Mutex<Connection>`，未声称多进程/多连接并发语义。
-- [ ] 完成全局/单书阅读设置的持久化、逐字段覆盖、默认值和迁移回归。
+- [x] 完成全局/单书阅读设置的持久化、逐字段覆盖、默认值和迁移回归（2026-08-17）：`settings_service` 负责全局整行保存、单书可空字段覆盖、有效值合并和清除恢复；补充 V4 只归一未修改 V2 默认行，保留已保存旧值。已测（辅助逻辑/自动化）：全字段默认值、全局/单书保存与写入后重新读取、逐字段继承、全局变更后的继承更新、清除覆盖、空覆盖清空字段、未知图书错误、全局验证失败保留旧值、V3 旧字段全量转换、单书 NULL 保持继承、V4 默认值修正及提交步骤失败回滚；新增 4 个设置测试与 1 个迁移回滚测试均完成目标变红→恢复变绿，完整 `cargo test`、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell 的设置运行态与 EPUB.js 重排消费（待 B3/F2 人工验证）；Android WebView/设备矩阵与进程恢复运行态（阻塞至 B3）；真实损坏数据库、断电/满盘恢复；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
 - [ ] 完成批注数据契约的最终审计：纯文本、CFI、长度、颜色、重启恢复所需字段和删除级联。
 
 ### 6. Android 制品与运行时存储预算

@@ -23,7 +23,7 @@
 
 ### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：B2 第五节第三项收口后 150/150 通过，exit 0（当前工作区）。已测：既有 B1/B2 搜索、目录资源和系列覆盖；本次新增标签组/标签 CRUD 与审计字段、NOCASE 唯一冲突、系列标签读取与稳定排序、直接/继承标签合并、AND 筛选与稳定书架排序、空/重复/缺失 ID、原子关系替换和标签/标签组删除关系语义；新增 4 个测试均完成目标变红自证。未测：桌面 legacy shell 与 Android 前端对目录/系列/标签 Command 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 导入压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
+- `cargo test`：B2 第五节第四项收口后 155/155 通过，exit 0（当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签和本次阅读设置/迁移覆盖；本次新增全局默认值、单书逐字段继承、覆盖清除、未知图书错误、V3 全量转换和 V4 默认归一回滚测试均完成目标变红自证。未测：桌面 legacy shell 与 Android 前端对目录/系列/标签/设置 Command 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 导入压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
 - `cargo fmt --check`、`cargo check` 与 `npm.cmd run build`：当前工作区通过（2026-08-17）。
 
 ### Android 环境（B1 首次门禁已完成）
@@ -40,7 +40,7 @@
 ### 0.2.1 panic/unwrap/expect 与锁生命周期 — 通过
 
 - `panic!`、`todo!`、`unimplemented!`、`unreachable!`：生产代码 0 处（grep 全量确认）。
-- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 426 行（共 433 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
+- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 445 行（共 452 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
 - `.expect()`：生产代码仅 1 处，`lib.rs:106` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B2 保留现状即可。
 - 安全 unwrap 变体（`unwrap_or`/`unwrap_or_else`/`unwrap_or_default`）：43 处，均为带默认值的非 panic 形式，合格。
 - 锁与生命周期：`AppState.db: Mutex<Connection>`，服务层统一经 `lock_db` 辅助函数获取并把 poisoning 映射为错误；`source/cache.rs` 的 `active: Mutex<HashMap<String, Weak<()>>>` 同样映射 poisoning，租约由 `Arc<()>` 守护。未发现手动 `spawn` 线程或生命周期漏洞。
@@ -97,19 +97,27 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - 已测（辅助逻辑/自动化）：标签组/标签 CRUD、名称/颜色规范化、`created_at` 保留、同组 NOCASE 冲突及跨组同名、缺失实体、系列标签读取与稳定排序、直接/继承标记和重复去重、AND 筛选、书架隐私模型与稳定排序、空/重复/缺失筛选 ID、书籍/系列关系原子替换失败保留、删除标签组后定义/关系保留、删除标签后两类关系清理且图书/系列保留。新增 4 个测试均完成变红自证：缺失两个公开接口时先编译失败；临时恢复内部错误映射、覆盖 `created_at`、删除组内标签、倒置系列标签/书籍排序、把 AND 改为任意匹配、移除空/重复/缺失 ID 校验、只删除书籍直接关系后，目标断言分别失败。恢复后 catalog 专项 24/24、完整 150/150 通过。
 - 未测：桌面 legacy shell 对标签 Command 的实际运行态消费，标记“待 B3/F2 人工验证”；Android 同链路、OEM 进程恢复和设备矩阵，标记“阻塞至 B3 设备回归”；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
 
-### 0.2.9 数据库迁移清单 — 通过（V1/V3 已补变红自证）
+### 0.2.9 B2 阅读设置、字段覆盖与迁移回归 — 辅助逻辑已验证，运行态待 B3/F2
+
+- `settings_service` 是阅读设置的公开 seam：全局设置整行保存，单书设置保存可空字段并按字段合并；`NULL` 只表示继承，清除覆盖删除单书行；服务层负责图书存在性、范围/枚举校验和 `updated_at`，Command 只做薄 IPC 适配。
+- V2 的旧百分比字段经不可改写的 V3 转换为新字段；V4 只把仍保持 V2 原始默认值且 `updated_at = 0` 的未修改种子行左右边距归一为文档默认 3%，已保存旧值不被重写。V4 与 V1/V2/V3 一样使用 `BEGIN IMMEDIATE ... COMMIT/ROLLBACK`。
+- 已测（辅助逻辑/自动化）：全字段默认值、全局整行保存、单书逐字段覆盖与有效值合并、全局变更后继承字段更新、清除覆盖、空覆盖清空字段、未知图书稳定错误、验证失败保留旧值、V3 全量旧字段转换、单书旧 NULL 继续继承、V4 默认值修正及提交步骤失败回滚。新增 4 个设置测试与 1 个 V4 回滚测试均完成目标变红自证：分别临时破坏一个继承字段映射与 V4 默认赋值，目标断言变红后恢复；完整 `cargo test` 155/155 通过。
+- 未测：桌面 legacy shell 的设置运行态与 EPUB.js 重排消费，标记“待 B3/F2 人工验证”；Android WebView/设备矩阵与进程恢复运行态，标记“阻塞至 B3 设备回归”；真实损坏数据库、断电/满盘恢复；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
+
+### 0.2.10 数据库迁移清单 — 通过（V1/V3/V4 已补变红自证）
 
 | 迁移 | 内容 | 幂等 | 失败回滚 | 测试 |
 | --- | --- | --- | --- | --- |
 | V1 | books/reading_progress/notes + 4 索引 | 版本表 `_migrations` 门控 | BEGIN IMMEDIATE…COMMIT/ROLLBACK | 建表、升级保留数据、索引、幂等；回滚测试已完成变红自证 |
 | V2 | source_cache_entries/series/标签/设置/search_documents + FTS5 trigram/search_index_state + notes.cfi_range | 同上 | 同上 | 冲突回滚、级联删除 |
 | V3 | 阅读设置新字段 + 数据转换 + 表重建 | 同上 | 同上 | 旧值转换、默认值；回滚测试已完成变红自证 |
+| V4 | 未修改 V2 阅读设置种子行的左右边距默认值归一 | 同上 | 同上 | 默认值回归、提交步骤失败回滚；已完成变红自证 |
 
 - 外键级联：`PRAGMA foreign_keys = ON` 在迁移入口开启；`test_v2_cascade_removes_all_book_owned_rows` 覆盖 books 删除后 8 张子表级联清空，系列/标签定义保留。
 - FTS5 trigram 虚拟表已在 V2 建立（仅 Schema），索引逻辑按 TODO B2 交付，无假进度。
-- `test_v1_failure_rolls_back_every_v1_object` 与 `test_v3_failure_rolls_back_every_v3_object` 已完成变红自证（2026-08-14 补证）：将对应失败分支的 `ROLLBACK;` 临时替换为 `COMMIT;` 破坏事务回滚——V1 测试变红且失败断言为 `books was not rolled back`（migrations.rs:640，证明失败发生在 V1 的 `notes` 冲突步骤之后）；V3 测试变红且失败断言为 `font_size_px` 列存在（left: 1，migrations.rs:682，证明失败发生在 V3 的 `global_reading_settings_v3` 冲突步骤之后）；恢复实现后 `cargo test db::migrations` 9/9 通过、完整 `cargo test` 通过（见修复记录）。
+- `test_v1_failure_rolls_back_every_v1_object` 与 `test_v3_failure_rolls_back_every_v3_object` 已完成变红自证（2026-08-14 补证）：将对应失败分支的 `ROLLBACK;` 临时替换为 `COMMIT;` 破坏事务回滚——V1 测试变红且失败断言为 `books was not rolled back`（证明失败发生在 V1 的 `notes` 冲突步骤之后）；V3 测试变红且失败断言为 `font_size_px` 列存在（证明失败发生在 V3 的 `global_reading_settings_v3` 冲突步骤之后）。本次 `test_v4_default_normalization_rolls_back_after_commit_step_failure` 在 V4 数据更新后用 `_migrations` 提交触发器制造目标步骤失败，确认左右边距更新回滚；恢复实现后迁移专项与完整套件通过。
 
-### 0.2.10 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
+### 0.2.11 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
 
 | 边界 | 实现位置 | 状态 |
 | --- | --- | --- |

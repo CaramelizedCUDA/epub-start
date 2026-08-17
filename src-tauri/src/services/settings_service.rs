@@ -274,6 +274,227 @@ mod tests {
         }
     }
 
+    fn empty_book_input(book_id: &str) -> BookReadingSettingsInput {
+        BookReadingSettingsInput {
+            book_id: book_id.into(),
+            theme: None,
+            font_family: None,
+            font_size_px: None,
+            line_height_multiplier: None,
+            paragraph_spacing_multiplier: None,
+            text_indent_em: None,
+            margin_top_px: None,
+            margin_bottom_px: None,
+            margin_left_percent: None,
+            margin_right_percent: None,
+            max_column_width_px: None,
+            flow: None,
+            spread: None,
+        }
+    }
+
+    #[test]
+    fn fresh_database_returns_all_documented_defaults() {
+        let db = test_db();
+        let global = get_global_reading_settings(&db).unwrap();
+
+        assert_eq!(global.theme, "dark");
+        assert_eq!(global.font_family, "publisher");
+        assert_eq!(global.font_size_px, 16);
+        assert_eq!(global.line_height_multiplier, 1.5);
+        assert_eq!(global.paragraph_spacing_multiplier, 0.5);
+        assert_eq!(global.text_indent_em, 2.0);
+        assert_eq!(global.margin_top_px, 48);
+        assert_eq!(global.margin_bottom_px, 48);
+        assert_eq!(global.margin_left_percent, 3);
+        assert_eq!(global.margin_right_percent, 3);
+        assert_eq!(global.max_column_width_px, 720);
+        assert_eq!(global.flow, "paginated");
+        assert_eq!(global.spread, "auto");
+        assert_eq!(global.updated_at, 0);
+
+        let result = get_reading_settings(&db, "b").unwrap();
+        assert!(result.book_override.is_none());
+        assert_eq!(result.effective.theme, global.theme);
+        assert_eq!(result.effective.font_family, global.font_family);
+        assert_eq!(result.effective.font_size_px, global.font_size_px);
+        assert_eq!(
+            result.effective.line_height_multiplier,
+            global.line_height_multiplier
+        );
+        assert_eq!(
+            result.effective.paragraph_spacing_multiplier,
+            global.paragraph_spacing_multiplier
+        );
+        assert_eq!(result.effective.text_indent_em, global.text_indent_em);
+        assert_eq!(result.effective.margin_top_px, global.margin_top_px);
+        assert_eq!(result.effective.margin_bottom_px, global.margin_bottom_px);
+        assert_eq!(
+            result.effective.margin_left_percent,
+            global.margin_left_percent
+        );
+        assert_eq!(
+            result.effective.margin_right_percent,
+            global.margin_right_percent
+        );
+        assert_eq!(
+            result.effective.max_column_width_px,
+            global.max_column_width_px
+        );
+        assert_eq!(result.effective.flow, global.flow);
+        assert_eq!(result.effective.spread, global.spread);
+    }
+
+    #[test]
+    fn global_and_book_settings_persist_with_fieldwise_inheritance() {
+        let db = test_db();
+        let mut global_input = valid_input("light");
+        global_input.font_family = "sans".into();
+        global_input.font_size_px = 18;
+        global_input.line_height_multiplier = 1.25;
+        global_input.paragraph_spacing_multiplier = 0.75;
+        global_input.text_indent_em = 1.0;
+        global_input.margin_top_px = 60;
+        global_input.margin_bottom_px = 64;
+        global_input.margin_left_percent = 4;
+        global_input.margin_right_percent = 8;
+        global_input.max_column_width_px = 640;
+        global_input.flow = "scrolled".into();
+        global_input.spread = "always".into();
+        let saved_global = save_global_reading_settings(&db, global_input).unwrap();
+        assert!(saved_global.updated_at > 0);
+
+        let book = save_book_reading_settings(
+            &db,
+            BookReadingSettingsInput {
+                book_id: "b".into(),
+                theme: Some("sepia".into()),
+                font_family: None,
+                font_size_px: Some(24),
+                line_height_multiplier: Some(2.25),
+                paragraph_spacing_multiplier: None,
+                text_indent_em: Some(3.5),
+                margin_top_px: None,
+                margin_bottom_px: Some(12),
+                margin_left_percent: Some(9),
+                margin_right_percent: None,
+                max_column_width_px: Some(960),
+                flow: Some("paginated".into()),
+                spread: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(book.theme.as_deref(), Some("sepia"));
+        assert_eq!(book.font_family, None);
+        assert_eq!(book.font_size_px, Some(24));
+        assert_eq!(book.line_height_multiplier, Some(2.25));
+        assert_eq!(book.paragraph_spacing_multiplier, None);
+        assert_eq!(book.text_indent_em, Some(3.5));
+        assert!(book.updated_at > 0);
+
+        let result = get_reading_settings(&db, "b").unwrap();
+        assert_eq!(result.effective.theme, "sepia");
+        assert_eq!(result.effective.font_family, "sans");
+        assert_eq!(result.effective.font_size_px, 24);
+        assert_eq!(result.effective.line_height_multiplier, 2.25);
+        assert_eq!(result.effective.paragraph_spacing_multiplier, 0.75);
+        assert_eq!(result.effective.text_indent_em, 3.5);
+        assert_eq!(result.effective.margin_top_px, 60);
+        assert_eq!(result.effective.margin_bottom_px, 12);
+        assert_eq!(result.effective.margin_left_percent, 9);
+        assert_eq!(result.effective.margin_right_percent, 8);
+        assert_eq!(result.effective.max_column_width_px, 960);
+        assert_eq!(result.effective.flow, "paginated");
+        assert_eq!(result.effective.spread, "always");
+
+        let mut next_global = valid_input("dark");
+        next_global.font_family = "system".into();
+        next_global.font_size_px = 22;
+        next_global.line_height_multiplier = 1.75;
+        next_global.paragraph_spacing_multiplier = 1.25;
+        next_global.text_indent_em = 0.5;
+        next_global.margin_top_px = 20;
+        next_global.margin_bottom_px = 30;
+        next_global.margin_left_percent = 2;
+        next_global.margin_right_percent = 5;
+        next_global.max_column_width_px = 560;
+        next_global.flow = "paginated".into();
+        next_global.spread = "none".into();
+        let next_global = save_global_reading_settings(&db, next_global).unwrap();
+        let result = get_reading_settings(&db, "b").unwrap();
+        assert_eq!(result.effective.theme, "sepia");
+        assert_eq!(result.effective.font_family, "system");
+        assert_eq!(result.effective.font_size_px, 24);
+        assert_eq!(result.effective.line_height_multiplier, 2.25);
+        assert_eq!(result.effective.paragraph_spacing_multiplier, 1.25);
+        assert_eq!(result.effective.text_indent_em, 3.5);
+        assert_eq!(result.effective.margin_top_px, 20);
+        assert_eq!(result.effective.margin_bottom_px, 12);
+        assert_eq!(result.effective.margin_left_percent, 9);
+        assert_eq!(result.effective.margin_right_percent, 5);
+        assert_eq!(result.effective.max_column_width_px, 960);
+        assert_eq!(result.effective.flow, "paginated");
+        assert_eq!(result.effective.spread, "none");
+        assert_eq!(result.global.updated_at, next_global.updated_at);
+
+        clear_book_reading_settings(&db, "b").unwrap();
+        let result = get_reading_settings(&db, "b").unwrap();
+        assert!(result.book_override.is_none());
+        assert_eq!(result.effective.theme, "dark");
+        assert_eq!(result.effective.font_family, "system");
+        assert_eq!(result.effective.font_size_px, 22);
+        assert_eq!(result.effective.line_height_multiplier, 1.75);
+        assert_eq!(result.effective.paragraph_spacing_multiplier, 1.25);
+        assert_eq!(result.effective.text_indent_em, 0.5);
+        assert_eq!(result.effective.margin_top_px, 20);
+        assert_eq!(result.effective.margin_bottom_px, 30);
+        assert_eq!(result.effective.margin_left_percent, 2);
+        assert_eq!(result.effective.margin_right_percent, 5);
+        assert_eq!(result.effective.max_column_width_px, 560);
+        assert_eq!(result.effective.flow, "paginated");
+        assert_eq!(result.effective.spread, "none");
+    }
+
+    #[test]
+    fn empty_book_override_clears_existing_field_overrides() {
+        let db = test_db();
+        save_book_reading_settings(
+            &db,
+            BookReadingSettingsInput {
+                book_id: "b".into(),
+                theme: Some("sepia".into()),
+                font_family: None,
+                font_size_px: Some(24),
+                line_height_multiplier: None,
+                paragraph_spacing_multiplier: None,
+                text_indent_em: None,
+                margin_top_px: None,
+                margin_bottom_px: None,
+                margin_left_percent: None,
+                margin_right_percent: None,
+                max_column_width_px: None,
+                flow: None,
+                spread: None,
+            },
+        )
+        .unwrap();
+
+        save_book_reading_settings(&db, empty_book_input("b")).unwrap();
+        let result = get_reading_settings(&db, "b").unwrap();
+        assert!(result.book_override.is_some());
+        assert_eq!(result.effective.theme, "dark");
+        assert_eq!(result.effective.font_size_px, 16);
+    }
+
+    #[test]
+    fn reading_and_clearing_settings_reject_unknown_book() {
+        let db = test_db();
+        let read_error = get_reading_settings(&db, "ghost").unwrap_err();
+        assert!(read_error.starts_with("BOOK_NOT_FOUND:"));
+        let clear_error = clear_book_reading_settings(&db, "ghost").unwrap_err();
+        assert!(clear_error.starts_with("BOOK_NOT_FOUND:"));
+    }
+
     #[test]
     fn failed_global_save_keeps_previous_settings() {
         let db = test_db();

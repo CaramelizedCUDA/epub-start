@@ -219,6 +219,29 @@ ALTER TABLE global_reading_settings ADD COLUMN max_column_width_px INTEGER NOT N
 
 `book_reading_settings` 追加同名可空字段及相同范围约束；`NULL` 继续表示继承全局值。升级时全局值按 `round(font_size_percent / 100 * 16)`、`line_height_percent / 100.0` 和旧 `margin_percent` 转换并 clamp；单书字段仅在旧覆盖非空时转换，其余新字段使用全局默认或保持单书 `NULL`。
 
+## V4 Schema（阅读设置默认值修正）
+
+V4 仍是追加迁移，不能改写 V3。V2 的全局种子行会在 V3 转换后暂时保留旧的 5% 左右边距；V4 只把“仍为 V2 原始默认值且 `updated_at = 0`”的未修改种子行归一为 V3 文档默认的 3%，已保存过的旧用户值继续按 V3 转换结果保留。
+
+```sql
+UPDATE global_reading_settings SET
+  margin_left_percent = 3,
+  margin_right_percent = 3
+WHERE singleton_id = 1
+  AND theme = 'dark'
+  AND font_family = 'publisher'
+  AND font_size_percent = 100
+  AND line_height_percent = 150
+  AND margin_percent = 5
+  AND flow = 'paginated'
+  AND spread = 'auto'
+  AND updated_at = 0
+  AND margin_left_percent = 5
+  AND margin_right_percent = 5;
+```
+
+全局保存由 `settings_service` 一次性更新整行；单书设置以可空字段保存，`NULL` 表示该字段继承全局值。清除单书设置删除覆盖行并恢复全局有效值。所有设置写入和读取均通过服务/仓储的参数化 SQL 完成。
+
 ## 来源失效与重新定位
 
 打开前，Rust 比对当前来源的可读性及可获取的大小、修改时间。来源失效或 Android 持久授权缺失时，在事务中把 `books.status` 设为 `missing`、更新 `status_detail` 和 `updated_at`，随后返回 IPC 定义的不可用错误。
