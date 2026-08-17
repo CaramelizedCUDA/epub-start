@@ -169,13 +169,15 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `list_series_books` | `{ seriesId }` | `BookSeries[]` | 返回目标系列的完整归属、卷标与排序，按 `sort_order, book_id` 排序；系列不存在返回 `SERIES_NOT_FOUND:`。 |
 | `reorder_series_books` | `{ seriesId, positions }` | `BookSeries[]` | ID 必须唯一且全部属于目标系列；事务更新后返回完整有序列表。 |
 | `list_tag_groups` | 无 | `TagGroup[]` | 按 `sort_order` 和名称排序。 |
-| `create_tag_group` / `update_tag_group` | `{ group: CreateTagGroupInput }` / `{ group: UpdateTagGroupInput }` | `TagGroup` | Rust 管理 UUID/时间戳。 |
+| `create_tag_group` / `update_tag_group` | `{ group: CreateTagGroupInput }` / `{ group: UpdateTagGroupInput }` | `TagGroup` | 名称修剪后 1–200 字符并按 NOCASE 唯一；冲突返回 `VALIDATION_ERROR:`；Rust 管理 UUID/时间戳。 |
 | `delete_tag_group` | `{ groupId }` | `void` | 标签通过 `ON DELETE SET NULL` 变为未分组。 |
-| `list_tags` | 无 | `Tag[]` | 返回直接可管理的标签定义。 |
-| `create_tag` / `update_tag` | `{ tag: CreateTagInput }` / `{ tag: UpdateTagInput }` | `Tag` | 名称修剪，颜色规范为小写 `#RRGGBB`；Rust 管理 UUID/时间戳。 |
+| `list_tags` | 无 | `Tag[]` | 返回直接可管理的标签定义，按名称 NOCASE、ID 稳定排序。 |
+| `create_tag` / `update_tag` | `{ tag: CreateTagInput }` / `{ tag: UpdateTagInput }` | `Tag` | 名称修剪后 1–200 字符；同一非空标签组内按 NOCASE 唯一，冲突返回 `VALIDATION_ERROR:`；颜色规范为小写 `#RRGGBB`；Rust 管理 UUID/时间戳。 |
 | `delete_tag` | `{ tagId }` | `void` | 删除书籍/系列关系，不删除图书。 |
 | `set_book_tags` / `set_series_tags` | `{ bookId, tagIds }` / `{ seriesId, tagIds }` | `BookTag[]` / `void` | 原子替换，ID 非空、唯一且必须存在。 |
-| `list_book_tags` | `{ bookId }` | `BookTag[]` | 直接标签优先；与系列重复的继承标签去重。 |
+| `list_series_tags` | `{ seriesId }` | `Tag[]` | 返回系列直接标签，按名称 NOCASE、ID 稳定排序；缺失系列返回 `SERIES_NOT_FOUND:`。 |
+| `list_book_tags` | `{ bookId }` | `BookTag[]` | 返回直接与系列继承标签；同一标签直接关系优先、继承关系去重，按名称 NOCASE、ID 稳定排序。 |
+| `filter_books_by_tags` | `{ tagIds }` | `BookSummary[]` | `tagIds` 必须非空、唯一且全部存在；书籍必须同时具有全部所选有效标签（直接或系列继承），直接/继承重复按同一标签计数一次；结果按 `updated_at DESC, title NOCASE, id` 稳定排序且不返回来源定位符。 |
 
 `CreateNoteInput` 不含 `id/created_at/updated_at`；`UpdateNoteInput` 不含 `book_id/created_at/updated_at`。`ReadingSettingsInput` 不含 `updated_at`，`BookReadingSettingsInput` 不含 `updated_at`。系列、标签组与标签的 Create 输入不含 ID/时间戳，Update 输入仅包含 ID 和可编辑字段。
 
@@ -205,7 +207,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `SERIES_NOT_FOUND:` | `series_id` 无对应记录 | 刷新系列列表。 |
 | `TAG_NOT_FOUND:` | `tag_id` 无对应记录 | 刷新标签列表。 |
 | `TAG_GROUP_NOT_FOUND:` | `group_id` 无对应记录 | 刷新标签组与标签列表。 |
-| `VALIDATION_ERROR:` | 参数格式/值不合法，或系列等唯一名称冲突 | 保留当前 UI，显示可操作错误。 |
+| `VALIDATION_ERROR:` | 参数格式/值不合法，或系列、标签组、同组标签等唯一名称冲突 | 保留当前 UI，显示可操作错误。 |
 | `BOOK_RESOURCE_NOT_FOUND:` | 请求的 EPUB 内部条目不存在或路径无效 | 资源加载失败或图片导出提示条目缺失；不暴露宿主路径。 |
 | `BOOK_RESOURCE_LIMIT_EXCEEDED:` | EPUB 或搜索索引超过安全预算 | 停止读取或索引，提示文件过大或压缩异常。 |
 | `FORMAT_NOT_SUPPORTED:` | 当前 Phase 未实现该格式 | 返回书架并保留图书记录。 |

@@ -1,7 +1,8 @@
 use crate::commands::AppState;
 use crate::db::models::{
-    BookSeries, BookTag, CreateSeriesInput, CreateTagGroupInput, CreateTagInput, Series,
-    SeriesBookPosition, Tag, TagGroup, UpdateSeriesInput, UpdateTagGroupInput, UpdateTagInput,
+    BookSeries, BookSummary, BookTag, CreateSeriesInput, CreateTagGroupInput, CreateTagInput,
+    Series, SeriesBookPosition, Tag, TagGroup, UpdateSeriesInput, UpdateTagGroupInput,
+    UpdateTagInput,
 };
 use crate::services;
 
@@ -108,9 +109,23 @@ pub fn set_series_tags(
     services::set_series_tags(&state.db, &series_id, tag_ids)
 }
 #[tauri::command]
+pub fn list_series_tags(
+    state: tauri::State<AppState>,
+    series_id: String,
+) -> Result<Vec<Tag>, String> {
+    services::list_series_tags(&state.db, &series_id)
+}
+#[tauri::command]
 pub fn list_book_tags(
     state: tauri::State<AppState>,
     book_id: String,
 ) -> Result<Vec<BookTag>, String> {
     services::list_book_tags(&state.db, &book_id)
+}
+#[tauri::command]
+pub fn filter_books_by_tags(
+    state: tauri::State<AppState>,
+    tag_ids: Vec<String>,
+) -> Result<Vec<BookSummary>, String> {
+    services::filter_books_by_tags(&state.db, tag_ids)
 }

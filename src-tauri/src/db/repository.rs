@@ -7,7 +7,7 @@ use super::models::{
 
 // ── Row mapping helpers ──────────────────────────────────────────
 
-fn row_to_book(row: &rusqlite::Row) -> SqliteResult<Book> {
+pub(super) fn row_to_book(row: &rusqlite::Row) -> SqliteResult<Book> {
     let authors_json: String = row.get("authors_json")?;
     let authors: Vec<String> = serde_json::from_str(&authors_json).unwrap_or_default();
 

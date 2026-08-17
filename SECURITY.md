@@ -100,6 +100,7 @@ V1、V2、V3 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，错误分�
 - 所有 Rust Command 返回 `Result<T, String>`，禁止泄露堆栈、原始 SQL 或完整 URI
 - 前端 `tauri.ts` 通过 `mapError` 集中转换所有错误为 `Error` 对象
 - `libraryStore.ts` 的 `userFacingError` 对已知错误前缀映射用户友好中文提示
+- 书架列表与标签筛选只返回 `BookSummary`，不把 `source_locator` 或 `source_kind` 暴露给渲染层；标签筛选 SQL 只动态生成占位符编号，所有标签 ID 与计数仍通过参数绑定
 
 ## 漏洞报告
 
