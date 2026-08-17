@@ -42,6 +42,7 @@ import type {
   SeriesIdArgs,
   SetBookTagsArgs,
   SetSeriesTagsArgs,
+  FilterBooksByTagsArgs,
   CreateTagArgs,
   UpdateTagArgs,
   CreateTagGroupArgs,
@@ -224,8 +225,16 @@ export async function setSeriesTags(args: SetSeriesTagsArgs): Promise<void> {
   return invoke<void>('set_series_tags', args).catch(mapError);
 }
 
+export async function listSeriesTags(args: SeriesIdArgs): Promise<Tag[]> {
+  return invoke<Tag[]>('list_series_tags', args).catch(mapError);
+}
+
 export async function listBookTags(args: BookIdArgs): Promise<BookTag[]> {
   return invoke<BookTag[]>('list_book_tags', args).catch(mapError);
+}
+
+export async function filterBooksByTags(args: FilterBooksByTagsArgs): Promise<BookSummary[]> {
+  return invoke<BookSummary[]>('filter_books_by_tags', args).catch(mapError);
 }
 
 export async function ensureSeriesSearchIndex(

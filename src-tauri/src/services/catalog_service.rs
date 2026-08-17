@@ -5,8 +5,9 @@ use rusqlite::{Connection, Error as SqlError};
 
 use crate::db::catalog_repository;
 use crate::db::models::{
-    BookSeries, BookTag, CreateSeriesInput, CreateTagGroupInput, CreateTagInput, Series,
-    SeriesBookPosition, Tag, TagGroup, UpdateSeriesInput, UpdateTagGroupInput, UpdateTagInput,
+    BookSeries, BookSummary, BookTag, CreateSeriesInput, CreateTagGroupInput, CreateTagInput,
+    Series, SeriesBookPosition, Tag, TagGroup, UpdateSeriesInput, UpdateTagGroupInput,
+    UpdateTagInput,
 };
 
 pub fn list_series(db: &Mutex<Connection>) -> Result<Vec<Series>, String> {
@@ -128,7 +129,7 @@ pub fn create_tag_group(
     };
     let conn = lock_db(db)?;
     catalog_repository::insert_tag_group(&conn, &group)
-        .map_err(|_| "INTERNAL_ERROR: tag group insert failed".to_string())?;
+        .map_err(|error| map_tag_group_write_error("insert", error))?;
     Ok(group)
 }
 
@@ -146,7 +147,7 @@ pub fn update_tag_group(
     let conn = lock_db(db)?;
     require_entity(&conn, "tag_groups", &group.id, "tag group")?;
     catalog_repository::update_tag_group(&conn, &group)
-        .map_err(|_| "INTERNAL_ERROR: tag group update failed".to_string())?;
+        .map_err(|error| map_tag_group_write_error("update", error))?;
     catalog_repository::find_tag_group(&conn, &group.id)
         .map_err(|_| "INTERNAL_ERROR: tag group query failed".to_string())?
         .ok_or_else(|| "INTERNAL_ERROR: updated tag group disappeared".to_string())
@@ -180,7 +181,7 @@ pub fn create_tag(db: &Mutex<Connection>, input: CreateTagInput) -> Result<Tag, 
         require_entity(&conn, "tag_groups", group_id, "tag group")?;
     }
     catalog_repository::insert_tag(&conn, &tag)
-        .map_err(|_| "INTERNAL_ERROR: tag insert failed".to_string())?;
+        .map_err(|error| map_tag_write_error("insert", error))?;
     Ok(tag)
 }
 
@@ -200,7 +201,7 @@ pub fn update_tag(db: &Mutex<Connection>, input: UpdateTagInput) -> Result<Tag, 
         require_entity(&conn, "tag_groups", group_id, "tag group")?;
     }
     catalog_repository::update_tag(&conn, &tag)
-        .map_err(|_| "INTERNAL_ERROR: tag update failed".to_string())?;
+        .map_err(|error| map_tag_write_error("update", error))?;
     catalog_repository::find_tag(&conn, &tag.id)
         .map_err(|_| "INTERNAL_ERROR: tag query failed".to_string())?
         .ok_or_else(|| "INTERNAL_ERROR: updated tag disappeared".to_string())
@@ -234,11 +235,35 @@ pub fn set_series_tags(
     })
 }
 
+pub fn list_series_tags(db: &Mutex<Connection>, series_id: &str) -> Result<Vec<Tag>, String> {
+    let conn = lock_db(db)?;
+    require_entity(&conn, "series", series_id, "series")?;
+    catalog_repository::list_series_tags(&conn, series_id)
+        .map_err(|_| "INTERNAL_ERROR: series tags query failed".to_string())
+}
+
 pub fn list_book_tags(db: &Mutex<Connection>, book_id: &str) -> Result<Vec<BookTag>, String> {
     let conn = lock_db(db)?;
     require_entity(&conn, "books", book_id, "book")?;
     catalog_repository::list_book_tags(&conn, book_id)
         .map_err(|_| "INTERNAL_ERROR: book tags query failed".to_string())
+}
+
+pub fn filter_books_by_tags(
+    db: &Mutex<Connection>,
+    tag_ids: Vec<String>,
+) -> Result<Vec<BookSummary>, String> {
+    if tag_ids.is_empty() {
+        return Err("VALIDATION_ERROR: tag filter requires at least one tag id".into());
+    }
+    ensure_unique_ids(tag_ids.iter().map(String::as_str))?;
+    let conn = lock_db(db)?;
+    for tag_id in &tag_ids {
+        require_entity(&conn, "tags", tag_id, "tag")?;
+    }
+    catalog_repository::filter_books_by_effective_tags(&conn, &tag_ids)
+        .map(|books| books.into_iter().map(BookSummary::from).collect())
+        .map_err(|_| "INTERNAL_ERROR: tag filter query failed".to_string())
 }
 
 fn set_tags(
@@ -287,14 +312,32 @@ fn validate_name(value: &str, label: &str) -> Result<String, String> {
 }
 
 fn map_series_write_error(operation: &str, error: SqlError) -> String {
-    if matches!(
-        error,
-        SqlError::SqliteFailure(ref failure, _)
-            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
-    ) {
+    if is_unique_constraint(&error) {
         return "VALIDATION_ERROR: series name already exists".to_string();
     }
     format!("INTERNAL_ERROR: series {operation} failed")
+}
+
+fn map_tag_group_write_error(operation: &str, error: SqlError) -> String {
+    if is_unique_constraint(&error) {
+        return "VALIDATION_ERROR: tag group name already exists".to_string();
+    }
+    format!("INTERNAL_ERROR: tag group {operation} failed")
+}
+
+fn map_tag_write_error(operation: &str, error: SqlError) -> String {
+    if is_unique_constraint(&error) {
+        return "VALIDATION_ERROR: tag name already exists in this group".to_string();
+    }
+    format!("INTERNAL_ERROR: tag {operation} failed")
+}
+
+fn is_unique_constraint(error: &SqlError) -> bool {
+    matches!(
+        error,
+        SqlError::SqliteFailure(failure, _)
+            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+    )
 }
 
 fn ensure_unique_ids<'a>(ids: impl Iterator<Item = &'a str>) -> Result<(), String> {
@@ -330,7 +373,10 @@ fn lock_db(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connectio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::{BookSeries, CreateSeriesInput, UpdateSeriesInput};
+    use crate::db::models::{
+        BookSeries, CreateSeriesInput, CreateTagGroupInput, CreateTagInput, UpdateSeriesInput,
+        UpdateTagGroupInput, UpdateTagInput,
+    };
     use std::sync::Arc;
 
     fn test_db() -> Mutex<Connection> {
@@ -345,12 +391,33 @@ mod tests {
     }
 
     fn insert_test_book(db: &Mutex<Connection>, id: &str) {
+        insert_test_book_with_metadata(db, id, id, 4);
+    }
+
+    fn insert_test_book_with_metadata(
+        db: &Mutex<Connection>,
+        id: &str,
+        title: &str,
+        updated_at: i64,
+    ) {
         let conn = db.lock().unwrap();
         conn.execute(
-            "INSERT INTO books VALUES (?1,?2,'[]','epub',NULL,?3,'desktop_path',1,2,NULL,'available',NULL,3,4)",
-            rusqlite::params![id, id, format!("/{id}.epub")],
+            "INSERT INTO books VALUES (?1,?2,'[]','epub',NULL,?3,'desktop_path',1,2,NULL,'available',NULL,3,?4)",
+            rusqlite::params![id, title, format!("/{id}.epub"), updated_at],
         )
         .unwrap();
+    }
+
+    fn create_test_tag(db: &Mutex<Connection>, group_id: Option<String>, name: &str) -> Tag {
+        create_tag(
+            db,
+            CreateTagInput {
+                group_id,
+                name: name.into(),
+                color: "#AABBCC".into(),
+            },
+        )
+        .unwrap()
     }
 
     #[test]
@@ -750,5 +817,264 @@ mod tests {
         validate_tag(&mut tag).unwrap();
         assert_eq!(tag.name, "Fantasy");
         assert_eq!(tag.color, "#aabbcc");
+    }
+
+    #[test]
+    fn tag_group_and_tag_crud_preserve_audit_fields_and_map_name_conflicts() {
+        let db = test_db();
+        let group = create_tag_group(
+            &db,
+            CreateTagGroupInput {
+                name: "  Genres  ".into(),
+                sort_order: 2,
+            },
+        )
+        .unwrap();
+        assert_eq!(group.name, "Genres");
+
+        let duplicate_group_error = create_tag_group(
+            &db,
+            CreateTagGroupInput {
+                name: "genres".into(),
+                sort_order: 3,
+            },
+        )
+        .unwrap_err();
+        assert!(duplicate_group_error.starts_with("VALIDATION_ERROR:"));
+
+        let other_group = create_tag_group(
+            &db,
+            CreateTagGroupInput {
+                name: "Other".into(),
+                sort_order: 4,
+            },
+        )
+        .unwrap();
+        let group_update_error = update_tag_group(
+            &db,
+            UpdateTagGroupInput {
+                id: other_group.id.clone(),
+                name: "GENRES".into(),
+                sort_order: 5,
+            },
+        )
+        .unwrap_err();
+        assert!(group_update_error.starts_with("VALIDATION_ERROR:"));
+
+        let created = create_test_tag(&db, Some(group.id.clone()), "  Fantasy  ");
+        assert_eq!(created.name, "Fantasy");
+        assert_eq!(created.color, "#aabbcc");
+
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let updated = update_tag(
+            &db,
+            UpdateTagInput {
+                id: created.id.clone(),
+                group_id: Some(group.id.clone()),
+                name: "  Adventure  ".into(),
+                color: "#112233".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.created_at, created.created_at);
+        assert!(updated.updated_at >= created.updated_at);
+
+        let duplicate_tag_error = create_tag(
+            &db,
+            CreateTagInput {
+                group_id: Some(group.id.clone()),
+                name: "adventure".into(),
+                color: "#445566".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(duplicate_tag_error.starts_with("VALIDATION_ERROR:"));
+
+        let other_in_same_group = create_test_tag(&db, Some(group.id.clone()), "Mystery");
+        let tag_update_error = update_tag(
+            &db,
+            UpdateTagInput {
+                id: other_in_same_group.id.clone(),
+                group_id: Some(group.id.clone()),
+                name: "ADVENTURE".into(),
+                color: "#778899".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(tag_update_error.starts_with("VALIDATION_ERROR:"));
+        assert!(list_tags(&db)
+            .unwrap()
+            .iter()
+            .any(|tag| tag.id == other_in_same_group.id && tag.name == "Mystery"));
+
+        let same_name_other_group = create_test_tag(&db, Some(other_group.id.clone()), "Adventure");
+        assert_eq!(same_name_other_group.group_id, Some(other_group.id));
+
+        let names: Vec<_> = list_tag_groups(&db)
+            .unwrap()
+            .into_iter()
+            .map(|group| group.name)
+            .collect();
+        assert_eq!(names, ["Genres", "Other"]);
+
+        set_book_tags(&db, "b", vec![updated.id.clone()]).unwrap();
+        delete_tag_group(&db, &group.id).unwrap();
+        let ungrouped = list_tags(&db)
+            .unwrap()
+            .into_iter()
+            .find(|tag| tag.id == updated.id)
+            .unwrap();
+        assert_eq!(ungrouped.group_id, None);
+        let related = list_book_tags(&db, "b").unwrap();
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].tag.id, updated.id);
+
+        let missing_group_error = delete_tag_group(&db, "missing").unwrap_err();
+        assert!(missing_group_error.starts_with("TAG_GROUP_NOT_FOUND:"));
+        let missing_tag_error = delete_tag(&db, "missing").unwrap_err();
+        assert!(missing_tag_error.starts_with("TAG_NOT_FOUND:"));
+    }
+
+    #[test]
+    fn series_tags_are_readable_in_stable_order_and_inherited_by_books() {
+        let db = test_db();
+        let series = create_series(&db, CreateSeriesInput { name: "S".into() }).unwrap();
+        set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: series.id.clone(),
+                volume_label: String::new(),
+                sort_order: 0,
+            },
+        )
+        .unwrap();
+        let zeta = create_test_tag(&db, None, "Zeta");
+        let alpha = create_test_tag(&db, None, "Alpha");
+
+        set_series_tags(&db, &series.id, vec![zeta.id.clone(), alpha.id.clone()]).unwrap();
+
+        let series_tags = list_series_tags(&db, &series.id).unwrap();
+        assert_eq!(
+            series_tags
+                .iter()
+                .map(|tag| tag.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Alpha", "Zeta"]
+        );
+        let effective = list_book_tags(&db, "b").unwrap();
+        assert_eq!(effective.len(), 2);
+        assert!(effective.iter().all(|tag| tag.inherited_from_series));
+
+        let missing_error = list_series_tags(&db, "missing").unwrap_err();
+        assert!(missing_error.starts_with("SERIES_NOT_FOUND:"));
+    }
+
+    #[test]
+    fn tag_filter_requires_all_effective_tags_and_returns_stable_shelf_results() {
+        let db = test_db();
+        {
+            let conn = db.lock().unwrap();
+            conn.execute(
+                "UPDATE books SET title='Original', updated_at=4 WHERE id='b'",
+                [],
+            )
+            .unwrap();
+        }
+        insert_test_book_with_metadata(&db, "b2", "Direct A", 5);
+        insert_test_book_with_metadata(&db, "b3", "Inherited B", 6);
+        insert_test_book_with_metadata(&db, "b4", "Both", 7);
+
+        let tag_a = create_test_tag(&db, None, "A");
+        let tag_b = create_test_tag(&db, None, "B");
+        let series = create_series(&db, CreateSeriesInput { name: "S".into() }).unwrap();
+        for book_id in ["b", "b3"] {
+            set_book_series(
+                &db,
+                BookSeries {
+                    book_id: book_id.into(),
+                    series_id: series.id.clone(),
+                    volume_label: String::new(),
+                    sort_order: 0,
+                },
+            )
+            .unwrap();
+        }
+        set_series_tags(&db, &series.id, vec![tag_b.id.clone()]).unwrap();
+        set_book_tags(&db, "b", vec![tag_a.id.clone(), tag_b.id.clone()]).unwrap();
+        set_book_tags(&db, "b2", vec![tag_a.id.clone()]).unwrap();
+        set_book_tags(&db, "b4", vec![tag_a.id.clone(), tag_b.id.clone()]).unwrap();
+
+        let both = filter_books_by_tags(&db, vec![tag_a.id.clone(), tag_b.id.clone()]).unwrap();
+        assert_eq!(
+            both.iter().map(|book| book.id.as_str()).collect::<Vec<_>>(),
+            ["b4", "b"]
+        );
+        let tag_b_books = filter_books_by_tags(&db, vec![tag_b.id.clone()]).unwrap();
+        assert_eq!(
+            tag_b_books
+                .iter()
+                .map(|book| book.id.as_str())
+                .collect::<Vec<_>>(),
+            ["b4", "b3", "b"]
+        );
+
+        let empty_error = filter_books_by_tags(&db, Vec::new()).unwrap_err();
+        assert!(empty_error.starts_with("VALIDATION_ERROR:"));
+        let duplicate_error =
+            filter_books_by_tags(&db, vec![tag_a.id.clone(), tag_a.id]).unwrap_err();
+        assert!(duplicate_error.starts_with("VALIDATION_ERROR:"));
+        let missing_error = filter_books_by_tags(&db, vec!["missing".into()]).unwrap_err();
+        assert!(missing_error.starts_with("TAG_NOT_FOUND:"));
+    }
+
+    #[test]
+    fn tag_replacement_validation_and_deletion_preserve_unrelated_rows() {
+        let db = test_db();
+        let series = create_series(&db, CreateSeriesInput { name: "S".into() }).unwrap();
+        set_book_series(
+            &db,
+            BookSeries {
+                book_id: "b".into(),
+                series_id: series.id.clone(),
+                volume_label: String::new(),
+                sort_order: 0,
+            },
+        )
+        .unwrap();
+        let first = create_test_tag(&db, None, "First");
+        let second = create_test_tag(&db, None, "Second");
+        set_book_tags(&db, "b", vec![first.id.clone()]).unwrap();
+        set_series_tags(&db, &series.id, vec![first.id.clone()]).unwrap();
+
+        let duplicate_error =
+            set_book_tags(&db, "b", vec![second.id.clone(), second.id.clone()]).unwrap_err();
+        assert!(duplicate_error.starts_with("VALIDATION_ERROR:"));
+        let missing_error =
+            set_series_tags(&db, &series.id, vec![second.id, "missing".into()]).unwrap_err();
+        assert!(missing_error.starts_with("TAG_NOT_FOUND:"));
+        assert_eq!(
+            list_book_tags(&db, "b")
+                .unwrap()
+                .into_iter()
+                .filter(|tag| !tag.inherited_from_series)
+                .map(|tag| tag.tag.id)
+                .collect::<Vec<_>>(),
+            [first.id.clone()]
+        );
+        assert_eq!(list_series_tags(&db, &series.id).unwrap()[0].id, first.id);
+
+        delete_tag(&db, &first.id).unwrap();
+        assert!(list_book_tags(&db, "b").unwrap().is_empty());
+        assert!(list_series_tags(&db, &series.id).unwrap().is_empty());
+        assert_eq!(list_series(&db).unwrap().len(), 1);
+        let book_count: i64 = db
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM books WHERE id='b'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(book_count, 1);
     }
 }

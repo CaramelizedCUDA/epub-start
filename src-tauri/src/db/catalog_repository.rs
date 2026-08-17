@@ -1,6 +1,7 @@
-use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult};
+use rusqlite::{params, Connection, OptionalExtension, Result as SqliteResult, ToSql};
 
-use super::models::{BookSeries, BookTag, Series, SeriesBookPosition, Tag, TagGroup};
+use super::models::{Book, BookSeries, BookTag, Series, SeriesBookPosition, Tag, TagGroup};
+use super::repository;
 
 pub fn list_series(conn: &Connection) -> SqliteResult<Vec<Series>> {
     let mut stmt = conn.prepare(
@@ -111,7 +112,7 @@ pub fn delete_tag_group(conn: &Connection, group_id: &str) -> SqliteResult<()> {
 }
 
 pub fn list_tags(conn: &Connection) -> SqliteResult<Vec<Tag>> {
-    let mut stmt = conn.prepare("SELECT id, group_id, name, color, created_at, updated_at FROM tags ORDER BY name COLLATE NOCASE")?;
+    let mut stmt = conn.prepare("SELECT id, group_id, name, color, created_at, updated_at FROM tags ORDER BY name COLLATE NOCASE, id")?;
     let rows = stmt.query_map([], row_to_tag)?;
     rows.collect()
 }
@@ -155,6 +156,60 @@ pub fn replace_series_tags(
     replace_tags(conn, "series_tags", "series_id", series_id, tag_ids)
 }
 
+pub fn list_series_tags(conn: &Connection, series_id: &str) -> SqliteResult<Vec<Tag>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.group_id, t.name, t.color, t.created_at, t.updated_at
+           FROM series_tags st
+           JOIN tags t ON t.id=st.tag_id
+          WHERE st.series_id=?1
+          ORDER BY t.name COLLATE NOCASE, t.id",
+    )?;
+    let rows = stmt.query_map(params![series_id], row_to_tag)?;
+    rows.collect()
+}
+
+pub fn filter_books_by_effective_tags(
+    conn: &Connection,
+    tag_ids: &[String],
+) -> SqliteResult<Vec<Book>> {
+    if tag_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = (1..=tag_ids.len())
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let count_parameter = tag_ids.len() + 1;
+    let sql = format!(
+        "WITH effective_tags AS (
+           SELECT book_id, tag_id FROM book_tags
+           UNION
+           SELECT bs.book_id, st.tag_id
+             FROM book_series bs
+             JOIN series_tags st ON st.series_id=bs.series_id
+         ), matching_books AS (
+           SELECT book_id
+             FROM effective_tags
+            WHERE tag_id IN ({placeholders})
+            GROUP BY book_id
+           HAVING COUNT(DISTINCT tag_id)=?{count_parameter}
+         )
+         SELECT b.*
+           FROM books b
+           JOIN matching_books matching ON matching.book_id=b.id
+          ORDER BY b.updated_at DESC, b.title COLLATE NOCASE, b.id"
+    );
+    let required_count = i64::try_from(tag_ids.len())
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+    let mut parameters: Vec<&dyn ToSql> =
+        tag_ids.iter().map(|tag_id| tag_id as &dyn ToSql).collect();
+    parameters.push(&required_count);
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(parameters.as_slice(), repository::row_to_book)?;
+    rows.collect()
+}
+
 pub fn list_book_tags(conn: &Connection, book_id: &str) -> SqliteResult<Vec<BookTag>> {
     let mut stmt = conn.prepare(
         "SELECT t.id, t.group_id, t.name, t.color, t.created_at, t.updated_at, inherited FROM (
@@ -167,7 +222,7 @@ pub fn list_book_tags(conn: &Connection, book_id: &str) -> SqliteResult<Vec<Book
               AND NOT EXISTS (
                 SELECT 1 FROM book_tags bt WHERE bt.book_id=?1 AND bt.tag_id=st.tag_id
               )
-         ) relations JOIN tags t ON t.id=relations.tag_id ORDER BY t.name COLLATE NOCASE, inherited",
+         ) relations JOIN tags t ON t.id=relations.tag_id ORDER BY t.name COLLATE NOCASE, t.id, inherited",
     )?;
     let rows = stmt.query_map(params![book_id], |row| {
         Ok(BookTag {

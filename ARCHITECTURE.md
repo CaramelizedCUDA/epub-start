@@ -107,6 +107,8 @@ commands/  -> IPC 薄适配
 
 系列模块的公开 seam 位于 `catalog_service`：它统一完成名称/卷标校验、实体存在性、单系列归属、完整有序关系读取和重排编排；Command 不拼接关系写入。`book_series.book_id` 主键与单条 UPSERT 保证每本书最多一个系列，批量重排由仓储在 `BEGIN IMMEDIATE` 事务内完成，语句失败或 `COMMIT` 失败都必须回滚并释放事务。
 
+标签模块复用同一 `catalog_service` seam：它统一完成标签组/标签输入校验、稳定唯一冲突映射、系列标签读取、书籍直接标签与系列继承标签合并，以及按全部所选有效标签筛选书籍。Command 不组合直接/继承关系，也不在渲染层本地筛选；筛选只返回 `BookSummary`，不得暴露 `source_locator`/`source_kind`。关系替换由仓储在单个事务中完成，直接关系与继承关系重复时只保留直接关系语义。
+
 `BookFormat` 继续位于数据库共享模型中，禁止在 `formats/` 重复定义。B2 当前真实能力接口为 `MetadataProvider`、`ResourceProvider` 与 `SearchContentProvider`；不得声明没有实现的 `TocProvider`/`TextContentProvider` 占位接口，也不得以默认空值、`todo!`、`unimplemented!` 或 panic 伪装支持。`ResourceProvider` 统一提供 EPUB.js 打开目录与正文所需的 `container.xml`、OPF、NAV/NCX、spine XHTML 及其 CSS/图片/字体资源；目录树的解析、DOM 渲染和当前位置推导由后端冻结后的 EPUB.js 统一导航模型完成，Rust 不重复构造目录模型。`SearchContentProvider` 只提取有预算的 spine 纯文本供后端索引，不合成 CFI。当前 `ActiveFormat` 只有 EPUB 实现，其他枚举值由注册表返回稳定的 `FORMAT_NOT_SUPPORTED:`；搜索索引、任务状态和资源预算属于后端，不能由前端本地数组替代。
 
 CFI 的 DOM 解析、高亮 range 生成和渲染继续属于后端冻结后的前端 EPUB.js 适配层；Rust 只保存经过长度校验的透明 CFI 字符串。PDF/CBZ/CBR 的页面能力接口、Cargo Feature 隔离和相关依赖留待 P3 技术选型，不在 B1–B3 提前冻结。

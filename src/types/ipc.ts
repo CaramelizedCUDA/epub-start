@@ -83,6 +83,7 @@ export type UpdateTagArgs = { tag: UpdateTagInput };
 export type TagIdArgs = { tagId: string };
 export type SetBookTagsArgs = { bookId: string; tagIds: string[] };
 export type SetSeriesTagsArgs = { seriesId: string; tagIds: string[] };
+export type FilterBooksByTagsArgs = { tagIds: string[] };
 export type SearchSeriesArgs = { seriesId: string; query: string; limit?: number };
 export type SearchIndexSeriesArgs = { seriesId: string };
 export type CancelSearchArgs = { taskId: string };

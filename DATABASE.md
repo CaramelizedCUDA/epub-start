@@ -189,6 +189,10 @@ V2 CRUD 中的 UUID、`created_at` 与 `updated_at` 由 Rust 服务层生成，�
 
 `book_series.book_id` 主键是单系列归属的数据库保证。设置归属使用单条 UPSERT；`list_series_books` 按 `sort_order, book_id` 返回卷标与排序；重排输入由服务层校验 ID 非空、唯一且属于目标系列，仓储在单个 `BEGIN IMMEDIATE` 事务内更新，任一语句或 `COMMIT` 失败都回滚。删除系列依靠外键级联删除 `book_series`/`series_tags` 关系，但不删除 `books`。该收口复用 V2 Schema，不新增或改写迁移。
 
+标签组名称由 `tag_groups.name COLLATE NOCASE UNIQUE` 保证唯一；同一非空标签组内的标签名称由 `UNIQUE(group_id, name)` 保证 NOCASE 唯一。SQLite 的 `NULL` 唯一语义允许多个未分组标签同名，标签定义始终以 `tag_id` 为稳定身份；不同标签组也允许同名。服务层把受约束的名称冲突映射为 `VALIDATION_ERROR:`，更新保留原始 `created_at`。删除标签组通过 `ON DELETE SET NULL` 取消分组，标签定义以及既有书籍/系列关系保留；删除标签通过外键级联清理 `book_tags`/`series_tags`，不删除图书或系列。
+
+书籍有效标签由 `book_tags` 直接关系与 `book_series JOIN series_tags` 继承关系动态合并，不复制继承记录；同一 `tag_id` 同时直接和继承时，关系读取以直接标签为准。`set_book_tags`/`set_series_tags` 先校验非空且唯一的关系 ID 与实体存在性，再在单个 `BEGIN IMMEDIATE` 事务内原子替换；失败保留旧关系。`filter_books_by_tags` 对所选有效标签使用 AND 语义，并以 `COUNT(DISTINCT tag_id)` 防止直接/继承重复影响匹配；返回顺序固定为 `books.updated_at DESC, title COLLATE NOCASE, id`。该收口复用 V2 表与 `idx_book_tags_tag`/`idx_series_tags_tag`，不新增迁移。
+
 `search_documents.href` 保存 OPF manifest 中的章节 href，供打开图书后的 EPUB.js 导航；它不是 `epub_root_url` 下已经规范化的协议条目路径。B2 EPUB 索引不得根据 spine 序号合成 CFI，写入与查询返回的 `cfi` 均为 `NULL`；该可空列保留为未来经可靠格式/DOM 适配生成精确位置时的追加能力，不得把非空值当作当前完成条件。
 
 ### B2 存储预算规划（部分实现：搜索索引账面预算已实现，其余待完成）
