@@ -2,7 +2,7 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选以及阅读设置后端收口；批注最终审计和 Android 制品/运行时存储预算仍按 [TODO.md](TODO.md) 顺序推进。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置以及批注数据契约的后端收口；Android 制品/运行时存储预算仍按 [TODO.md](TODO.md) 顺序推进。
 
 ## 文档导航
 

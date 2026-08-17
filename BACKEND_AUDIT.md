@@ -23,8 +23,8 @@
 
 ### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：B2 第五节第四项收口后 155/155 通过，exit 0（当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签和本次阅读设置/迁移覆盖；本次新增全局默认值、单书逐字段继承、覆盖清除、未知图书错误、V3 全量转换和 V4 默认归一回滚测试均完成目标变红自证。未测：桌面 legacy shell 与 Android 前端对目录/系列/标签/设置 Command 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 导入压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
-- `cargo fmt --check`、`cargo check` 与 `npm.cmd run build`：当前工作区通过（2026-08-17）。
+- `cargo test`：B2 第五节第五项收口后 158/158 通过，exit 0（当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移覆盖，以及本次批注纯文本、CFI 空白与长度、Unicode 精确边界、颜色、真实数据库重开恢复和删书级联；新增 3 个、强化 2 个批注测试均完成目标变红自证。未测：桌面 legacy shell/EPUB.js 与 Android WebView 对目录/系列/标签/设置/批注 Command 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 导入压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
+- `cargo fmt --check`、`cargo check` 与 `npm.cmd run build`：当前工作区通过（2026-08-18）。
 
 ### Android 环境（B1 首次门禁已完成）
 
@@ -40,7 +40,7 @@
 ### 0.2.1 panic/unwrap/expect 与锁生命周期 — 通过
 
 - `panic!`、`todo!`、`unimplemented!`、`unreachable!`：生产代码 0 处（grep 全量确认）。
-- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 445 行（共 452 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
+- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 455 行（共 462 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
 - `.expect()`：生产代码仅 1 处，`lib.rs:106` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B2 保留现状即可。
 - 安全 unwrap 变体（`unwrap_or`/`unwrap_or_else`/`unwrap_or_default`）：43 处，均为带默认值的非 panic 形式，合格。
 - 锁与生命周期：`AppState.db: Mutex<Connection>`，服务层统一经 `lock_db` 辅助函数获取并把 poisoning 映射为错误；`source/cache.rs` 的 `active: Mutex<HashMap<String, Weak<()>>>` 同样映射 poisoning，租约由 `Arc<()>` 守护。未发现手动 `spawn` 线程或生命周期漏洞。
@@ -75,36 +75,43 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - `formats/epub::extract_search_documents` 按 OPF spine 顺序读取 XHTML，受控解析相对路径、`..` 和百分号编码并拒绝越过 EPUB 根目录；单章节限制 8 MiB、单书限制 64 MiB，服务层以 `checked_add` 统计一次任务累计 2 GiB；不把整本 EPUB 读成一个 `Vec<u8>`。
 - `services/search_service.rs` 使用 V2 FTS5 trigram 外部内容表，短于 3 个字符走参数化、转义通配符的 `LIKE`；索引记录来源 `SourceFingerprint`，指纹变化会重建，章节损坏会保留已提取文档并记录部分结果错误；持久化文本账面硬上限为 256 MiB，既有文本按 UTF-8 字节数统计，计数溢出和超限均返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，超限重建回滚并保留原索引文档。
 - 已注册并实现 5 个 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。同一系列最多一个活动任务，后台线程在章节边界检查取消；错误状态清理/FTS 重建/状态更新在单事务内完成，`SQLITE_FULL` 使用稳定资源错误且回滚保留旧索引，单任务内部错误不再扩散清空整个系列。取消、来源不可用、资源超限均不会把错误原文或宿主路径返回给前端。
-- 自动化已测：spine 顺序、中日韩文本、相对/编码 href、取消、同系列任务去重、损坏章节部分结果、8 MiB 限制、短词 LIKE 与通配符字面查询、trigram 查询、结果上限、未就绪错误、进程重启状态恢复、ready/pending 聚合（含缺失状态和 ready 部分错误）、指纹失效判断、提取字节计数溢出、UTF-8 文本按字节计数、单任务 2 GiB 累计预算溢出/超限、索引预算超限稳定错误和超限回滚保留旧文档、错误状态事务失败回滚、真实 SQLite `SQLITE_FULL`/缓存存储错误映射、非满盘 SQLite I/O 保持内部错误；当前 150/150 全量测试通过。原搜索新增 5 个回归测试均按“恢复旧缺陷→目标测试变红→恢复修复→变绿”自证，本次目录/搜索契约补证见 0.2.6；SQLite 满盘使用受限 page_count 的真实写事务，缓存 OS 错误仍只构造内存错误对象，不填充设备存储。Android 当前 APK 真机复测：黑鲨 Android 9 单卷索引 34/34 并返回 trigram 摘要；七卷系列立即取消后保留 101/135 部分结果并进入 `error`；force-stop 后重启状态恢复为 `pending`（101/135），继续执行后恢复到 135/135 `ready`；系统 picker 导入 13.20 MiB EPUB 后，章节超限状态为 `ready`、0/1 且保留 `entry ... exceeds the size limit of 8388608 bytes`；一次性诊断探针调用现有 SAF `releasePermission` 后重建状态为 `error`，明细为 `BOOK_SOURCE_UNAVAILABLE: ... Persisted read permission is missing`；七卷 135/135 重建期间观测到 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`。未测：受控 Android 虚拟设备上的低存储、长期/2 GiB 导入压力和所有 WebView 版本。
+- 自动化已测：spine 顺序、中日韩文本、相对/编码 href、取消、同系列任务去重、损坏章节部分结果、8 MiB 限制、短词 LIKE 与通配符字面查询、trigram 查询、结果上限、未就绪错误、进程重启状态恢复、ready/pending 聚合（含缺失状态和 ready 部分错误）、指纹失效判断、提取字节计数溢出、UTF-8 文本按字节计数、单任务 2 GiB 累计预算溢出/超限、索引预算超限稳定错误和超限回滚保留旧文档、错误状态事务失败回滚、真实 SQLite `SQLITE_FULL`/缓存存储错误映射、非满盘 SQLite I/O 保持内部错误；当前 158/158 全量测试通过。原搜索新增 5 个回归测试均按“恢复旧缺陷→目标测试变红→恢复修复→变绿”自证，本次目录/搜索契约补证见 0.2.6；SQLite 满盘使用受限 page_count 的真实写事务，缓存 OS 错误仍只构造内存错误对象，不填充设备存储。Android 当前 APK 真机复测：黑鲨 Android 9 单卷索引 34/34 并返回 trigram 摘要；七卷系列立即取消后保留 101/135 部分结果并进入 `error`；force-stop 后重启状态恢复为 `pending`（101/135），继续执行后恢复到 135/135 `ready`；系统 picker 导入 13.20 MiB EPUB 后，章节超限状态为 `ready`、0/1 且保留 `entry ... exceeds the size limit of 8388608 bytes`；一次性诊断探针调用现有 SAF `releasePermission` 后重建状态为 `error`，明细为 `BOOK_SOURCE_UNAVAILABLE: ... Persisted read permission is missing`；七卷 135/135 重建期间观测到 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`。未测：受控 Android 虚拟设备上的低存储、长期/2 GiB 导入压力和所有 WebView 版本。
 
 ### 0.2.6 B2 目录/搜索资源与错误契约 — 辅助逻辑已验证，运行态待 B3
 
 - 当前真实格式接口为 `MetadataProvider`、`ResourceProvider`、`SearchContentProvider`；删除未实现的 `TocProvider`/`TextContentProvider` 占位接口。目录资源经 `ResourceProvider` 提供给 EPUB.js，搜索文本经 `ActiveFormat` 分派，`search_service` 不再直接依赖 `formats::epub::*`。
-- 已测（辅助逻辑/自动化）：`container.xml`、OPF、NAV、NCX 的正文和 MIME；未知来源错误前缀脱敏；来源不可用/资源缺失、参数、预算、解析、不支持、内部错误的协议状态映射；EPUB 提取、LIKE 与 trigram 查询均把 `cfi` 固定为 `null`，旧索引中的伪 CFI 不再返回。变红证据：新增接口前目标测试编译失败；临时将 NCX MIME 降为通用 XML 后目标断言失败；保留旧伪 CFI 时提取/LIKE/trigram 三条断言分别失败；旧来源前缀和 500 映射分别触发目标失败。当前完整 150/150 通过。
+- 已测（辅助逻辑/自动化）：`container.xml`、OPF、NAV、NCX 的正文和 MIME；未知来源错误前缀脱敏；来源不可用/资源缺失、参数、预算、解析、不支持、内部错误的协议状态映射；EPUB 提取、LIKE 与 trigram 查询均把 `cfi` 固定为 `null`，旧索引中的伪 CFI 不再返回。变红证据：新增接口前目标测试编译失败；临时将 NCX MIME 降为通用 XML 后目标断言失败；保留旧伪 CFI 时提取/LIKE/trigram 三条断言分别失败；旧来源前缀和 500 映射分别触发目标失败。当前完整 158/158 通过。
 - 未测：桌面端实际 EPUB.js 对 EPUB 2 NCX / EPUB 3 NAV 的完整运行态加载，标记为“待人工验证”；Android WebView 的同链路和版本矩阵，标记为“阻塞至 B3 设备回归”。当前只证明后端资源、分派和错误接口，不把 legacy shell 或构建通过写成目录体验完成。
 
 ### 0.2.7 B2 系列目录与关系事务 — 辅助逻辑已验证，运行态待 B3/F2
 
 - `catalog_service` 是系列模块的公开 seam：生成 UUID/时间戳，修剪并校验名称/卷标，验证实体存在性，编排 CRUD、单系列归属、完整有序关系读取和重排；新增 `list_series_books` 已同步 Rust Command、IPC 和 TypeScript wrapper。名称的 NOCASE 唯一冲突只映射为稳定 `VALIDATION_ERROR:`，其他 SQLite 原始错误不外泄。
 - 数据库语义：`book_series.book_id` 主键与单条 UPSERT 保证每书最多一个系列；列表按 `sort_order, book_id`；重排输入 ID 必须非空、唯一且属于目标系列，仓储使用 `BEGIN IMMEDIATE`，语句失败或 `COMMIT` 失败均回滚并释放；删除系列只级联关系，不删除图书。V2 Schema 足够，无新迁移。
-- 已测（辅助逻辑/自动化）：CRUD、名称修剪与 `created_at` 保留、大小写不敏感重复名、缺失实体、并发创建、单系列替换、关系列表/卷标/排序、卷标修剪及 200/201 边界、重复或系列外重排拒绝、成功重排、第二条更新触发失败后的全量回滚、延迟外键导致 `COMMIT` 失败后的回滚释放、删除系列后关系清理且图书保留。新增 7 个测试和 1 个卷标强化均完成目标变红自证：缺失读取接口先编译失败；旧重复名映射返回 `INTERNAL_ERROR`；旧提交失败路径留下活动事务；临时破坏 `created_at`、卷标上限、错误分支回滚、重复 ID 与成员校验后，目标断言分别失败。恢复后系列服务 11/11、目录仓储 9/9、当前完整 150/150 通过。
+- 已测（辅助逻辑/自动化）：CRUD、名称修剪与 `created_at` 保留、大小写不敏感重复名、缺失实体、并发创建、单系列替换、关系列表/卷标/排序、卷标修剪及 200/201 边界、重复或系列外重排拒绝、成功重排、第二条更新触发失败后的全量回滚、延迟外键导致 `COMMIT` 失败后的回滚释放、删除系列后关系清理且图书保留。新增 7 个测试和 1 个卷标强化均完成目标变红自证：缺失读取接口先编译失败；旧重复名映射返回 `INTERNAL_ERROR`；旧提交失败路径留下活动事务；临时破坏 `created_at`、卷标上限、错误分支回滚、重复 ID 与成员校验后，目标断言分别失败。恢复后系列服务 11/11、目录仓储 9/9、当前完整 158/158 通过。
 - 未测：桌面 legacy shell 对系列 Command 的实际运行态消费，标记“待 B3/F2 人工验证”；Android 同链路、OEM 进程恢复和设备矩阵，标记“阻塞至 B3 设备回归”；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
 
 ### 0.2.8 B2 标签目录、继承筛选与关系事务 — 辅助逻辑已验证，运行态待 B3/F2
 
 - `catalog_service` 是标签模块的公开 seam：统一校验和规范化标签组/标签输入，映射 NOCASE 唯一冲突，验证关系实体，读取系列标签，合并书籍直接/继承标签，并按全部所选有效标签筛选书籍。新增 `list_series_tags` 与 `filter_books_by_tags` 已同步 Rust Command、IPC 和 TypeScript wrapper；筛选返回 `BookSummary[]`，不暴露来源定位符。
 - 数据库语义：`book_tags` 与 `book_series JOIN series_tags` 动态组成有效标签，直接/继承重复时读取优先直接关系；筛选使用 AND 与 `COUNT(DISTINCT tag_id)`，按 `updated_at DESC, title NOCASE, id` 稳定排序。关系替换使用 `BEGIN IMMEDIATE`，输入在写前完成非空/唯一/存在性校验；标签组删除只将标签置为未分组并保留关系，标签删除级联清理书籍/系列关系但保留图书/系列。V2 表和索引足够，无新迁移；SQLite 允许未分组标签同名的 `NULL` 唯一语义已写入 DATABASE.md。
-- 已测（辅助逻辑/自动化）：标签组/标签 CRUD、名称/颜色规范化、`created_at` 保留、同组 NOCASE 冲突及跨组同名、缺失实体、系列标签读取与稳定排序、直接/继承标记和重复去重、AND 筛选、书架隐私模型与稳定排序、空/重复/缺失筛选 ID、书籍/系列关系原子替换失败保留、删除标签组后定义/关系保留、删除标签后两类关系清理且图书/系列保留。新增 4 个测试均完成变红自证：缺失两个公开接口时先编译失败；临时恢复内部错误映射、覆盖 `created_at`、删除组内标签、倒置系列标签/书籍排序、把 AND 改为任意匹配、移除空/重复/缺失 ID 校验、只删除书籍直接关系后，目标断言分别失败。恢复后 catalog 专项 24/24、完整 150/150 通过。
+- 已测（辅助逻辑/自动化）：标签组/标签 CRUD、名称/颜色规范化、`created_at` 保留、同组 NOCASE 冲突及跨组同名、缺失实体、系列标签读取与稳定排序、直接/继承标记和重复去重、AND 筛选、书架隐私模型与稳定排序、空/重复/缺失筛选 ID、书籍/系列关系原子替换失败保留、删除标签组后定义/关系保留、删除标签后两类关系清理且图书/系列保留。新增 4 个测试均完成变红自证：缺失两个公开接口时先编译失败；临时恢复内部错误映射、覆盖 `created_at`、删除组内标签、倒置系列标签/书籍排序、把 AND 改为任意匹配、移除空/重复/缺失 ID 校验、只删除书籍直接关系后，目标断言分别失败。恢复后 catalog 专项 24/24、完整 158/158 通过。
 - 未测：桌面 legacy shell 对标签 Command 的实际运行态消费，标记“待 B3/F2 人工验证”；Android 同链路、OEM 进程恢复和设备矩阵，标记“阻塞至 B3 设备回归”；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
 
 ### 0.2.9 B2 阅读设置、字段覆盖与迁移回归 — 辅助逻辑已验证，运行态待 B3/F2
 
 - `settings_service` 是阅读设置的公开 seam：全局设置整行保存，单书设置保存可空字段并按字段合并；`NULL` 只表示继承，清除覆盖删除单书行；服务层负责图书存在性、范围/枚举校验和 `updated_at`，Command 只做薄 IPC 适配。
 - V2 的旧百分比字段经不可改写的 V3 转换为新字段；V4 只把仍保持 V2 原始默认值且 `updated_at = 0` 的未修改种子行左右边距归一为文档默认 3%，已保存旧值不被重写。V4 与 V1/V2/V3 一样使用 `BEGIN IMMEDIATE ... COMMIT/ROLLBACK`。
-- 已测（辅助逻辑/自动化）：全字段默认值、全局整行保存、单书逐字段覆盖与有效值合并、全局变更后继承字段更新、清除覆盖、空覆盖清空字段、未知图书稳定错误、验证失败保留旧值、V3 全量旧字段转换、单书旧 NULL 继续继承、V4 默认值修正及提交步骤失败回滚。新增 4 个设置测试与 1 个 V4 回滚测试均完成目标变红自证：分别临时破坏一个继承字段映射与 V4 默认赋值，目标断言变红后恢复；完整 `cargo test` 155/155 通过。
+- 已测（辅助逻辑/自动化）：全字段默认值、全局整行保存、单书逐字段覆盖与有效值合并、全局变更后继承字段更新、清除覆盖、空覆盖清空字段、未知图书稳定错误、验证失败保留旧值、V3 全量旧字段转换、单书旧 NULL 继续继承、V4 默认值修正及提交步骤失败回滚。新增 4 个设置测试与 1 个 V4 回滚测试均完成目标变红自证：分别临时破坏一个继承字段映射与 V4 默认赋值，目标断言变红后恢复；完整 `cargo test` 158/158 通过。
 - 未测：桌面 legacy shell 的设置运行态与 EPUB.js 重排消费，标记“待 B3/F2 人工验证”；Android WebView/设备矩阵与进程恢复运行态，标记“阻塞至 B3 设备回归”；真实损坏数据库、断电/满盘恢复；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
 
-### 0.2.10 数据库迁移清单 — 通过（V1/V3/V4 已补变红自证）
+### 0.2.10 B2 批注数据契约 — 辅助逻辑已验证，运行态待 B3/F2
+
+- `notes_service` 是批注公开 seam：创建/更新先修剪 CFI、选中文本、正文和颜色的外层空白；`cfi_start`/`cfi_end` 修剪后必须非空，空白 `cfi_range` 归一为 `NULL`。单个 CFI、`selected_text`、`content` 分别限制为 4,096、10,000、20,000 个 Unicode 字符；类似 HTML 的字符串只按字面纯文本保存，颜色规范为小写 `#RRGGBB`。更新不接受 `book_id/created_at`，并保留原值；缺失图书/批注使用稳定 `BOOK_NOT_FOUND:`/`NOTE_NOT_FOUND:`。
+- 数据库语义：V1 `notes` 表保存起止 CFI、文本、颜色和审计字段，V2 仅追加可空 `cfi_range` 以兼容旧行；所有字段经参数绑定持久化。真实文件数据库关闭并重新打开后可恢复全部定位、文本、颜色和审计字段；删除图书依靠 `ON DELETE CASCADE` 清理批注。现有 V1/V2 Schema 足够，无新迁移或 Command。
+- 已测（辅助逻辑/自动化）：创建/更新/读取/删除、空白规范化与空白 CFI 拒绝、字面纯文本、4096/10000/20000 Unicode 精确边界和越界、CFI 完整往返、颜色合法性/小写化、`book_id/created_at` 保留、缺失图书/批注、失败更新保留、并发创建、真实数据库重开恢复全部字段，以及删书后通过服务 seam 得到 `NOTE_NOT_FOUND:`。新增 3 个测试、强化 2 个测试，共 5 组目标变红自证：分别临时保留外层空白、把 CFI 上限收紧为 4,095、丢弃重开读取的 `cfi_range`、跳过起始 CFI 修剪、关闭外键级联；目标断言均在对应行为处失败，恢复后 notes 专项 21/21、完整 `cargo test` 158/158 通过。
+- 未测：桌面 legacy shell/EPUB.js 的真实选区、创建、重绘、跳转和应用重启恢复，标记“待 B3/F2 人工验证”；Android WebView、OEM 进程恢复和设备矩阵，标记“阻塞至 B3/F2”；真实损坏数据库、断电/满盘恢复，以及多进程/多连接并发语义。
+
+### 0.2.11 数据库迁移清单 — 通过（V1/V3/V4 已补变红自证）
 
 | 迁移 | 内容 | 幂等 | 失败回滚 | 测试 |
 | --- | --- | --- | --- | --- |
@@ -117,7 +124,7 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - FTS5 trigram 虚拟表已在 V2 建立（仅 Schema），索引逻辑按 TODO B2 交付，无假进度。
 - `test_v1_failure_rolls_back_every_v1_object` 与 `test_v3_failure_rolls_back_every_v3_object` 已完成变红自证（2026-08-14 补证）：将对应失败分支的 `ROLLBACK;` 临时替换为 `COMMIT;` 破坏事务回滚——V1 测试变红且失败断言为 `books was not rolled back`（证明失败发生在 V1 的 `notes` 冲突步骤之后）；V3 测试变红且失败断言为 `font_size_px` 列存在（证明失败发生在 V3 的 `global_reading_settings_v3` 冲突步骤之后）。本次 `test_v4_default_normalization_rolls_back_after_commit_step_failure` 在 V4 数据更新后用 `_migrations` 提交触发器制造目标步骤失败，确认左右边距更新回滚；恢复实现后迁移专项与完整套件通过。
 
-### 0.2.11 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
+### 0.2.12 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
 
 | 边界 | 实现位置 | 状态 |
 | --- | --- | --- |
@@ -230,3 +237,4 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 - 2026-08-17：B2 第五节首项完成。目录链冻结为 `epub_root_url -> ResourceProvider`，覆盖 `container.xml`、OPF、NAV/NCX、spine 与关联资源；搜索提取改经 `ActiveFormat -> SearchContentProvider`，移除未实现的目录/文本占位接口；协议错误状态和来源脱敏固定，提取及 LIKE/trigram 查询不再生成或返回伪 CFI。新增 2 个、强化 5 个测试均完成目标变红自证，完整 `cargo test` 139/139；`audit:unwrap` 自动统计 354 行/361 次。桌面 EPUB.js 与 Android WebView 的完整 NAV/NCX 运行态分别保持待人工验证/阻塞至 B3。
 - 2026-08-17：B2 第五节第二项完成。系列模块新增 `list_series_books`，同步 Rust/IPC/TypeScript 并保持 Command 薄适配；修复重复系列名误报内部错误、卷标未修剪、`COMMIT` 失败后事务未释放三个缺口，补齐单系列归属、排序成员校验与后段失败回滚证据。新增 7 个测试和 1 个强化均完成目标变红自证；完整 `cargo test` 146/146，`audit:unwrap` 自动统计 388 行/395 次。桌面系列消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
 - 2026-08-17：B2 第五节第三项完成。标签模块新增 `list_series_tags` 与 `filter_books_by_tags`，同步 Rust/IPC/TypeScript 并保持 Command 薄适配；补齐系列标签重启读取、直接/继承标签 AND 筛选、稳定排序与书架隐私返回，修复标签组/同组标签唯一冲突误报内部错误。新增 4 个测试均完成目标变红自证；完整 `cargo test` 150/150，`audit:unwrap` 自动统计 426 行/433 次。桌面标签消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
+- 2026-08-18：B2 第五节第五项完成。`notes_service` 统一修剪创建/更新字段，拒绝空白起止 CFI、把空白 range 归一为 `NULL`，冻结 4,096/10,000/20,000 Unicode 字符边界、小写颜色和字面纯文本语义；新增真实文件数据库关闭重开后的全字段恢复测试，并把删书级联改为通过服务 seam 观察。新增 3 个、强化 2 个测试，5 组均完成目标变红自证；notes 专项 21/21、完整 `cargo test` 158/158，`audit:unwrap` 自动统计 455 行/462 次。桌面 EPUB.js 批注运行态待 B3/F2 人工验证，Android WebView/设备矩阵阻塞至 B3/F2。
