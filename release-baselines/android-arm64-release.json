@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "target": "aarch64-linux-android",
+  "recordedAt": "2026-08-18",
+  "basis": "First complete B2 Android storage closeout baseline; no earlier baseline was committed.",
+  "toolchain": {
+    "node": "22.22.2",
+    "npm": "10.9.7",
+    "rustc": "1.97.1",
+    "cargo": "1.97.1",
+    "jdk": "17.0.20",
+    "gradle": "8.14.3",
+    "androidGradlePlugin": "8.11.0",
+    "ndk": "27.3.13750724",
+    "compileSdk": 36,
+    "targetSdk": 36,
+    "tauriCli": "2.11.4",
+    "tauri": "2.11.5"
+  },
+  "limits": {
+    "apkBytes": 41943040,
+    "rustNativeBytes": 31457280,
+    "distBytes": 2097152,
+    "relativeGrowthPercent": 10
+  },
+  "artifacts": {
+    "apkBytes": 12212328,
+    "aabBytes": 11782026,
+    "rustNativeBytes": 14304656,
+    "packagedNativeBytes": 9606416,
+    "distBytes": 595644
+  }
+}

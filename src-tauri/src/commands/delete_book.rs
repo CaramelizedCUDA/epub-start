@@ -9,5 +9,11 @@ pub fn delete_book(
     state: tauri::State<AppState>,
     book_id: String,
 ) -> Result<String, String> {
-    services::delete_book(&app, &state.db, &state.source_manager, &book_id)
+    services::delete_book(
+        &app,
+        &state.db,
+        &state.cover_cache,
+        &state.source_manager,
+        &book_id,
+    )
 }

@@ -76,6 +76,9 @@
 - 至少保留一台较低配置/较旧系统设备与一台当前主流设备；Android DocumentsProvider 云端来源只用于 SAF 兼容测试，不代表 P4 网盘功能已经实现。
 - Android 体积报告必须分开记录 release APK/AAB、原生库、前端 `dist`、安装后 code 和应用 data/cache。debug 包与系统设置页的合计数字只可作诊断线索，不得作为发布大小结论。
 - 体积门禁优先使用现有构建工具和可复现脚本；不得为了缩小包体删除安全检查、错误诊断能力或用户数据，也不得把调试段、测试 EPUB、本机缓存、`.so` 或构建目录提交入库。
+- `npm run audit:android-release` 只读取当前 arm64 release 制品，并核对绝对/相对基线、工具链、ABI、ELF 调试段和禁止 payload；执行前必须先生成 APK/AAB 与 `dist`。脚本通过不等于 Gradle lint、签名发布或设备运行态通过。
+- Android build type 角色固定为：debug 使用 debug Rust/JNI 调试；profile 使用 release Rust、`applicationIdSuffix=.profile`、应用可调试、JNI 不可调试、R8 关闭和 debug 签名；release 使用 release Rust/R8 且不携带运行时调试段。为 AVD 暂存到已忽略 `jniLibs` 的本地 `.so` 只能用于 profile 打包，禁止提交或当作官方 release 构建链。
+- 破坏性存储验收必须先通过 `emulator-*` 序列号与 `ro.kernel.qemu=1` 双重检查，并按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 留存证据；未执行时统一标记 Android 环境“阻塞”。
 
 ## 依赖管理与白名单控制（最高优先级）
 

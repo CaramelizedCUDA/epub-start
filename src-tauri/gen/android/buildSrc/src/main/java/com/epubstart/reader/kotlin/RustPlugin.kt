@@ -47,7 +47,7 @@ open class RustPlugin : Plugin<Project> {
         }
 
         afterEvaluate {
-            for (profile in listOf("debug", "release")) {
+            for (profile in listOf("debug", "profile", "release")) {
                 val profileCapitalized = profile.replaceFirstChar { it.uppercase() }
                 val buildTask = tasks.maybeCreate(
                     "rustBuildUniversal$profileCapitalized",
@@ -71,7 +71,7 @@ open class RustPlugin : Plugin<Project> {
                         description = "Build dynamic library in $profile mode for $targetArch"
                         rootDirRel = config.rootDirRel
                         target = targetName
-                        release = profile == "release"
+                        release = profile != "debug"
                     }
 
                     buildTask.dependsOn(targetBuildTask)

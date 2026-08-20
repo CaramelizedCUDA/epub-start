@@ -15,6 +15,7 @@ val tauriProperties = Properties().apply {
 
 android {
     compileSdk = 36
+    ndkVersion = "27.3.13750724"
     namespace = "com.epubstart.reader"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
@@ -30,11 +31,6 @@ android {
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
-            packaging {                jniLibs.keepDebugSymbols.add("*/arm64-v8a/*.so")
-                jniLibs.keepDebugSymbols.add("*/armeabi-v7a/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86_64/*.so")
-            }
         }
         getByName("release") {
             isMinifyEnabled = true
@@ -43,6 +39,16 @@ android {
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
+        }
+        create("profile") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".profile"
+            versionNameSuffix = "-profile"
+            isDebuggable = true
+            isJniDebuggable = false
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
     kotlinOptions {

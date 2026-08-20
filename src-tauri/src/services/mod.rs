@@ -1,4 +1,5 @@
 mod catalog_service;
+mod cover_cache_service;
 mod format_service;
 mod image_service;
 mod library_service;
@@ -7,6 +8,7 @@ mod search_service;
 mod settings_service;
 
 pub use catalog_service::*;
+pub use cover_cache_service::CoverCache;
 pub use format_service::{normalize_entry_path, parse_book_metadata, read_book_resource};
 pub use image_service::save_book_image;
 pub use library_service::{

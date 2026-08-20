@@ -23,7 +23,7 @@
 
 ### 0.2 生产代码健康审计
 
-- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 455 行（共 462 次调用），当前 B2 批注数据契约收口测试后复核，全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs:106` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
+- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 550 行（共 563 次调用），当前 B2 Android 存储收口测试后复核，全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
 - [x] 审计 44 个 `#[tauri::command]`：全部为薄适配；3 个历史缺口已关闭，B2 搜索 5 个 Command、系列关系读取和标签读取/筛选 Command 已接入真实服务，见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 注册清单。
 - [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
 - [x] 生成 Command 注册清单并三方比对：Rust 44 == IPC.md 44 == `tauri.ts` 44，命名一致；B2 搜索 5 个 Command 已接入真实服务；21 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行、系列关系读取以及标签读取/筛选契约的文档缺口。
@@ -61,9 +61,9 @@
 
 ### 3. B1 完成标准
 
-- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 158/158；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8，阅读设置见 0.2.9，批注数据契约见 0.2.10；桌面对话框类运行态与 Android Kotlin/WebView 行为按三类口径标注，不计入自动覆盖）。
-- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 158/158；测试数 85→158，B2 搜索、目录/搜索、系列、标签、阅读设置及批注收口测试均完成变红自证）。
-- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、批注纯文本/CFI/长度/颜色/重启恢复契约、模型镜像和预算/未验证边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 455 行/462 次）。
+- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 175/175；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8，阅读设置见 0.2.9，批注数据契约见 0.2.10，Android 制品/缓存见 0.2.13；桌面对话框类运行态与 Android Kotlin/WebView/低存储行为按三类口径标注，不计入自动覆盖）。
+- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 175/175；测试数 85→175，B2 搜索、目录/搜索、系列、标签、阅读设置、批注及缓存收口测试均完成变红自证）。
+- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、批注纯文本/CFI/长度/颜色/重启恢复契约，以及 Android 制品/缓存预算与延期验收边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 550 行/563 次）。
 
 ## B2 后端业务能力（当前阶段）
 
@@ -78,7 +78,7 @@
 - [x] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。
 - [x] 在 Android 真实设备验证索引取消与应用进程被系统终止后的恢复：当前 APK 在黑鲨 Android 9 上七卷系列取消后保留 101/135 章节部分结果；force-stop 后重启状态恢复为 `pending`（101/135），重新执行后恢复到 135/135 `ready`。
 - [x] 在 Android 真实设备以系统 picker 导入 13.20 MiB EPUB，并验证大章节索引限制：章节超过 8 MiB 得到 `ready`、0/1 且保留超限明细；此前已持久 URI 重拷贝并恢复原 EPUB 到 34/34。该证据覆盖单次大文件导入，不等于长期/2 GiB 压力。
-- [ ] **硬件阻塞，延期至受控 Android 虚拟设备：** 验证 ENOSPC/SQLite 满盘、长期/2 GiB 导入压力、进程重启与清理恢复；固定 API/镜像和 `/data` 容量，记录初始/峰值/清理后占用与可复现命令。来源授权撤销已用黑鲨 Android 9 的一次性诊断探针验证，同一设备已记录一次 135/135 重建的 SQLite 主库/rollback journal 占用。虚拟设备例外只覆盖破坏性存储压力，不替代 SAF Provider、OEM 进程管理、性能或手势实机证据，也不能用桌面纯辅助逻辑替代。
+- [ ] **硬件阻塞，延期至受控 Android 虚拟设备：** 按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 验证 ENOSPC/SQLite 满盘、长期/2 GiB 导入压力、进程重启与清理恢复；固定 API/镜像和 `/data` 容量，记录初始/峰值/清理后占用与可复现命令。来源授权撤销已用黑鲨 Android 9 的一次性诊断探针验证，同一设备已记录一次 135/135 重建的 SQLite 主库/rollback journal 占用。虚拟设备例外只覆盖破坏性存储压力，不替代 SAF Provider、OEM 进程管理、性能或手势实机证据，也不能用桌面纯辅助逻辑替代。
 
 ### 5. 目录、系列、标签、设置和批注后端收口
 
@@ -90,13 +90,15 @@
 
 ### 6. Android 制品与运行时存储预算
 
-- [ ] 建立可重复的 arm64 release 体积报告，分别记录 APK/AAB、Rust 原生库和前端 `dist`；先关闭本机 release 测量遇到的 `tauri-plugin-fs/android/.tauri/tauri-api` 目录冲突，再记录干净构建命令、工具链版本与基线。不得删除 Cargo 全局缓存或提交本地构建绕过来制造通过。
-- [ ] 实施初始发布门禁：arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 MiB、前端 `dist` ≤ 2 MiB；相对已提交基线增长 >10% 必须解释。首次可靠 release 基线建立后只允许收紧；放宽预算需人工批准并同步路线图和安全文档。
-- [ ] 明确 debug/profile/release 用途：保留完整符号的 debug 包只用于 native 诊断；日常真机回归使用移除原生调试段的 profile；release 不得携带调试段、测试 EPUB、预置来源缓存或本机产物。记录空白安装后的 code 与 data/cache 分项，不用 Android 设置页单一数字代替制品测量。
-- [ ] 将 Android 来源缓存从当前 1 GiB 单一上限改为软上限 256 MiB、硬上限 512 MiB；缓存命中更新 `source_cache_entries.last_accessed_at`，按真实 LRU 淘汰，活动 `SourceLease` 受保护。若安全淘汰后仍无法满足硬上限，返回稳定资源限制错误，不静默超限。
-- [ ] 为封面缓存实施软上限 64 MiB、硬上限 128 MiB，并清理删书、导入失败、数据库不存在记录对应的孤儿文件；搜索索引在写入前确定独立预算，来源缓存、封面和索引等全部可重建数据的合计硬上限 ≤ 1 GiB。
-- [ ] 覆盖磁盘不足、中断写入、缓存命中更新时间、LRU 顺序、活动租约、进程重启、孤儿清理和重建测试；新增测试必须完成变红自证。Android 运行态按“空白安装→固定样本导入→触发淘汰→重启→清理”记录分项占用与未覆盖项。
-- [ ] 如需向前端暴露缓存统计/清理，先在 IPC.md 定义 Command、返回模型和错误语义，再实现并注册；本阶段不得预注册 stub。数据库优先复用 V2 的 `cache_size_bytes`/`last_accessed_at`，字段不足时只追加迁移。
+- [x] 建立 arm64 release 体积报告与首个完整 B2 基线：外部 Android 子项目 build 目录改到工程内，desktop dialog 依赖/Capability 从 Android 构建隔离，原 `tauri-plugin-fs/android/.tauri/tauri-api` 冲突关闭；记录 APK 12,212,328 B、AAB 11,782,026 B、Cargo `.so` 14,304,656 B、打包 `.so` 9,606,416 B、`dist` 595,644 B 与工具链。未删除 Cargo 全局缓存、未提交 `.so`/build 产物；基线文件随本次工作提交后才成为已提交基线。
+- [x] 实施初始静态发布门禁：`npm run audit:android-release` 检查 arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 MiB、前端 `dist` ≤ 2 MiB、相对基线增长 ≤10%、工具链/ABI、打包 ELF 调试段及禁止 payload；门禁已完成故意把 APK 基线改为 1 B 的变红→恢复变绿自证。放宽预算需人工批准并同步路线图和安全文档。
+- [x] 明确并实现 debug/profile/release 用途：debug 用于 native/JNI 诊断；profile 使用 release Rust、独立包名、可调试应用、关闭 JNI debug/R8 和 debug 签名；release 使用 release Rust/R8。arm64 与 x86_64 profile APK/AAB 已作制品级检查，未发现打包 ELF 调试/符号表或测试 EPUB；空白安装 code/data 不在本条声称范围。
+- [x] 将 Android 来源缓存实施为软上限 256 MiB、硬上限 512 MiB；命中以单调值更新 `source_cache_entries.last_accessed_at`，按持久化真实 LRU 淘汰，活动 `SourceLease` 受保护；启动协调孤儿/缺失/大小不符状态并重新执行预算，无法安全淘汰时返回稳定资源错误。
+- [x] 为封面缓存实施软上限 64 MiB、硬上限 128 MiB：原子候选、导入失败/替换/删书清理、启动时事务清除缺失/越界路径与孤儿；淘汰按 `books.updated_at, id`，不把不可观测 asset 命中冒充 LRU。来源 512 + 封面 128 + 搜索 256 = 896 MiB，合计硬上限低于 1 GiB。
+- [x] 自动化覆盖缓存命中时间、真实文件大小、持久 LRU、活动租约、硬上限、重启预算、孤儿/缺失协调、原子候选、失败清理与 ENOSPC 稳定映射；新增 17 个测试均完成目标步骤变红→恢复变绿，完整套件 175/175。未覆盖 Android 真实磁盘、进程和文件系统行为。
+- [x] 保持缓存统计/清理为后端内部维护，不新增公开 Command 或 stub；V2 字段足够，本次无迁移。
+- [ ] **外部环境阻塞：** 完整 Gradle arm64 release lint 需要下载 `emoji2-views-helper:1.2.0`、`emoji2:1.2.0`、`lifecycle-process:2.4.1`、`concurrent-futures:1.0.0`；正常联网重试在当前沙箱以 `Permission denied: getsockopt` 失败。跳过 lint model/vital 任务的 APK/AAB 仅用于体积/ELF 门禁，不签发完整 release 构建证明。
+- [ ] **Android 环境阻塞：** 当前无可运行 AVD，已连接设备为未授权真机，未执行写入。按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 在固定 x86_64 API 35、受控 `/data` 的可丢弃 AVD 完成空白安装、软/硬预算、活动读取、中断/重启、孤儿、ENOSPC、清理重建和长期/2 GiB 分项证据；不得用辅助逻辑或制品检查替代。
 
 ### 7. B2 完成标准
 
@@ -147,3 +149,4 @@
 - 2026-08-17：B2 第五节第二项完成。新增 `list_series_books` 并同步 Rust/IPC/TypeScript，补齐重启后可恢复的系列关系读取；重复系列名改为稳定校验错误，卷标修剪后限制 200 字符，关系事务在语句失败和 `COMMIT` 失败时都回滚释放。新增 7 个测试及 1 个卷标强化均完成目标变红自证；完整 `cargo test` 146/146，`audit:unwrap` 388 行/395 次。桌面消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
 - 2026-08-17：B2 第五节第三项完成。新增 `list_series_tags` 与 `filter_books_by_tags` 并同步 Rust/IPC/TypeScript；筛选按直接/继承有效标签的 AND 语义匹配、去重并返回稳定排序的 `BookSummary[]`，标签组/同组标签名称冲突改为稳定校验错误，删除与关系事务语义完成收口。新增 4 个测试均完成目标变红自证；完整 `cargo test` 150/150，`audit:unwrap` 426 行/433 次。桌面消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
 - 2026-08-18：B2 第五节第五项完成。批注创建/更新统一修剪文本字段，空白 CFI 拒绝、空白 range 归一为 `NULL`，冻结 4,096/10,000/20,000 字符上限、小写颜色与字面纯文本语义；新增真实 SQLite 文件关闭重开恢复测试，并把删书级联改为通过服务 seam 观察。新增 3 个测试、强化 2 个测试，5 组均完成目标变红自证；notes 专项 21/21、完整 `cargo test` 158/158，`audit:unwrap` 455 行/462 次。桌面 EPUB.js 批注运行态待 B3/F2 人工验证，Android WebView/设备矩阵阻塞至 B3/F2。
+- 2026-08-18：B2 Android 制品/存储代码收口完成。修复 desktop dialog/外部 Android 子项目 build 目录冲突，加入 profile 与 arm64 release 基线/审计门禁；来源缓存完成 256/512 MiB、持久 LRU、活动租约和重启协调，封面完成 64/128 MiB、原子候选、事务化元数据/孤儿清理，统一可重建数据硬上限 896 MiB。新增 17 个测试均完成目标变红自证，完整 `cargo test` 175/175，`audit:unwrap` 550 行/563 次。完整 Gradle lint 的四个 AndroidX 制品受当前沙箱网络权限阻塞；Android 低存储/中断/长期压力等待固定 AVD，故 B2 总完成标准保持未勾选。

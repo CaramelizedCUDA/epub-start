@@ -3,8 +3,8 @@
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use std::io::{Read, Seek};
-use std::path::Path;
+use std::io::{Read, Seek, Write};
+use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 use super::capabilities::{
@@ -28,7 +28,7 @@ impl MetadataProvider for EpubFormatHandler {
                 package_identifier: metadata.package_identifier,
                 cover_cache_path: metadata.cover_entry_path,
             })
-            .map_err(|error| format!("BOOK_PARSE_FAILED: {error}"))
+            .map_err(map_epub_metadata_error)
     }
 }
 
@@ -108,6 +108,7 @@ pub enum EpubError {
     OpfNotFound(String),
     OpfParse(String),
     CoverExtract(String),
+    ResourceLimit(String),
 }
 
 impl std::fmt::Display for EpubError {
@@ -119,7 +120,15 @@ impl std::fmt::Display for EpubError {
             EpubError::OpfNotFound(e) => write!(f, "OPF not found: {}", e),
             EpubError::OpfParse(e) => write!(f, "OPF parse error: {}", e),
             EpubError::CoverExtract(e) => write!(f, "cover extraction error: {}", e),
+            EpubError::ResourceLimit(e) => write!(f, "{e}"),
         }
+    }
+}
+
+fn map_epub_metadata_error(error: EpubError) -> String {
+    match error {
+        EpubError::ResourceLimit(message) => format!("BOOK_RESOURCE_LIMIT_EXCEEDED: {message}"),
+        error => format!("BOOK_PARSE_FAILED: {error}"),
     }
 }
 
@@ -724,12 +733,8 @@ pub fn parse_epub_reader<R: Read + Seek>(
                     .extension()
                     .and_then(|extension| extension.to_str())
                     .unwrap_or("jpg");
-                let cache_file = cover_cache_dir.join(format!("{}.{}", book_id, ext));
-
-                std::fs::create_dir_all(cover_cache_dir)
-                    .map_err(|error| EpubError::CoverExtract(error.to_string()))?;
-                std::fs::write(&cache_file, &cover_bytes)
-                    .map_err(|error| EpubError::CoverExtract(error.to_string()))?;
+                let cache_file =
+                    write_cover_candidate(cover_cache_dir, book_id, ext, &cover_bytes)?;
                 meta.cover_entry_path = Some(cache_file.to_string_lossy().to_string());
             }
             Err(_) => meta.cover_entry_path = None,
@@ -737,6 +742,48 @@ pub fn parse_epub_reader<R: Read + Seek>(
     }
 
     Ok(meta)
+}
+
+fn write_cover_candidate(
+    cover_cache_dir: &Path,
+    book_id: &str,
+    extension: &str,
+    cover_bytes: &[u8],
+) -> Result<PathBuf, EpubError> {
+    std::fs::create_dir_all(cover_cache_dir)
+        .map_err(|error| cover_cache_io_error("directory creation", &error))?;
+    let extension = match extension.to_ascii_lowercase().as_str() {
+        "jpg" | "jpeg" | "png" | "gif" | "svg" | "webp" => extension.to_ascii_lowercase(),
+        _ => "jpg".to_string(),
+    };
+    let token = uuid::Uuid::new_v4();
+    let candidate_path = cover_cache_dir.join(format!("{book_id}-{token}.{extension}"));
+    let temporary_path = cover_cache_dir.join(format!(".{book_id}-{token}.{extension}.tmp"));
+    let result = (|| -> Result<(), EpubError> {
+        let mut file = std::fs::File::create(&temporary_path)
+            .map_err(|error| cover_cache_io_error("write", &error))?;
+        file.write_all(cover_bytes)
+            .map_err(|error| cover_cache_io_error("write", &error))?;
+        file.flush()
+            .map_err(|error| cover_cache_io_error("flush", &error))?;
+        std::fs::rename(&temporary_path, &candidate_path)
+            .map_err(|error| cover_cache_io_error("commit", &error))?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+    Ok(candidate_path)
+}
+
+fn cover_cache_io_error(operation: &str, error: &std::io::Error) -> EpubError {
+    if matches!(error.raw_os_error(), Some(28 | 112 | 122)) {
+        return EpubError::ResourceLimit(format!(
+            "cover cache {operation} failed because device storage is full"
+        ));
+    }
+    EpubError::CoverExtract(format!("cover cache {operation} failed"))
 }
 
 /// Read a named entry from the ZIP as bytes (case-insensitive, public for protocol use).
@@ -1100,5 +1147,42 @@ mod tests {
             .contains("relative path chapter"));
         assert!(extraction.errors.is_empty());
         assert!(resolve_search_href("OPS/content.opf", "../../secret.xhtml").is_err());
+    }
+
+    #[test]
+    fn cover_write_creates_atomic_candidate_without_overwriting_previous_cover() {
+        let cache_dir =
+            std::env::temp_dir().join(format!("epub-cover-write-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        let previous_path = cache_dir.join("book-a.jpg");
+        std::fs::write(&previous_path, b"old-cover").unwrap();
+
+        let candidate_path =
+            write_cover_candidate(&cache_dir, "book-a", "jpg", b"new-cover").unwrap();
+
+        assert_ne!(candidate_path, previous_path);
+        assert_eq!(std::fs::read(&previous_path).unwrap(), b"old-cover");
+        assert_eq!(std::fs::read(&candidate_path).unwrap(), b"new-cover");
+        assert!(std::fs::read_dir(&cache_dir).unwrap().all(|entry| {
+            entry
+                .unwrap()
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                != Some("tmp")
+        }));
+        std::fs::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
+    fn cover_storage_exhaustion_maps_to_stable_resource_error() {
+        let error = std::io::Error::from_raw_os_error(28);
+
+        let mapped = map_epub_metadata_error(cover_cache_io_error("write", &error));
+
+        assert_eq!(
+            mapped,
+            "BOOK_RESOURCE_LIMIT_EXCEEDED: cover cache write failed because device storage is full"
+        );
     }
 }

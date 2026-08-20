@@ -190,7 +190,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `cancel_search_index` | `{ taskId }` | `void` | 设置取消标记；任务在章节边界安全停止并保留已提交的部分结果。 |
 | `search_series` | `{ seriesId, query, limit? }` | `SearchResult[]` | 查询最大 200 字符，默认最多 100 条；少于 3 个字符使用参数化 `LIKE` 并将 `%`、`_`、反斜杠按字面匹配，否则使用 FTS5 trigram。`href` 是 OPF manifest 中供 EPUB.js 定位的章节 href；B2 不伪造 DOM 位置，返回的 `cfi` 固定为 `null`。 |
 
-以上 Command 已有真实 Rust 后台实现；当前 APK 已在黑鲨 Android 9 验证取消、进程终止恢复、系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和来源授权撤销后的 `BOOK_SOURCE_UNAVAILABLE`，并记录过一次 135/135 重建的主库与 rollback journal 占用。低存储、长期/2 GiB 导入压力仍属于 B2 未完成门禁。
+以上 Command 已有真实 Rust 后台实现；当前 APK 已在黑鲨 Android 9 验证取消、进程终止恢复、系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和来源授权撤销后的 `BOOK_SOURCE_UNAVAILABLE`，并记录过一次 135/135 重建的主库与 rollback journal 占用。来源/封面缓存维护仍是后端内部生命周期，不需要也没有新增统计/清理 Command；未来若向前端暴露，必须先在本文件冻结模型与错误语义。低存储、长期/2 GiB 压力仍属于 B2 未完成运行态门禁，执行包见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
 
 目录树解析、DOM 渲染、当前书的章节内查找与搜索命中的精确 CFI 生成由后端冻结后的 EPUB.js 适配层完成；同系列/多卷搜索由 B2 后端索引 Command 提供。跨卷命中先按 `book_id` 打开图书，再用 `href` 导航；后端不得根据 spine 序号拼接伪 CFI。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个由前端提交保存的 CFI 最大 4,096 字符。
 
@@ -211,7 +211,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `TAG_GROUP_NOT_FOUND:` | `group_id` 无对应记录 | 刷新标签组与标签列表。 |
 | `VALIDATION_ERROR:` | 参数格式/值不合法，或系列、标签组、同组标签等唯一名称冲突 | 保留当前 UI，显示可操作错误。 |
 | `BOOK_RESOURCE_NOT_FOUND:` | 请求的 EPUB 内部条目不存在或路径无效 | 资源加载失败或图片导出提示条目缺失；不暴露宿主路径。 |
-| `BOOK_RESOURCE_LIMIT_EXCEEDED:` | EPUB 或搜索索引超过安全预算 | 停止读取或索引，提示文件过大或压缩异常。 |
+| `BOOK_RESOURCE_LIMIT_EXCEEDED:` | EPUB、来源/封面缓存或搜索索引超过安全预算，或受控写入遇到存储耗尽 | 停止当前导入、读取或索引，保留旧状态并提示释放空间、清理可重建缓存或选择较小文件。 |
 | `FORMAT_NOT_SUPPORTED:` | 当前 Phase 未实现该格式 | 返回书架并保留图书记录。 |
 | `SEARCH_INDEX_UNAVAILABLE:` | FTS5、来源或索引任务不可用 | 显示状态并允许稍后重试或重建。 |
 | `INTERNAL_ERROR:` | 已脱敏的内部错误 | 显示通用重试提示，不展示内部详情。 |

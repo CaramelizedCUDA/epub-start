@@ -13,7 +13,7 @@ pub fn import_book(
     services::import_book(
         &app,
         &state.db,
-        &state.cover_cache_dir,
+        &state.cover_cache,
         &state.source_manager,
         source,
     )

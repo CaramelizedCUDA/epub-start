@@ -9,15 +9,16 @@ use crate::db::models::{
     SourceKind,
 };
 use crate::db::repository;
+use crate::formats::FormatMetadata;
 use crate::platform;
 use crate::source::{ReadSeek, SourceManager};
 
-use super::parse_book_metadata;
+use super::{parse_book_metadata, CoverCache};
 
 pub fn import_book<R: Runtime>(
     app: &AppHandle<R>,
     db: &Mutex<Connection>,
-    cover_cache_dir: &Path,
+    cover_cache: &CoverCache,
     source_manager: &SourceManager,
     source: SelectedSource,
 ) -> Result<Book, String> {
@@ -68,31 +69,66 @@ pub fn import_book<R: Runtime>(
         .as_ref()
         .map(|book| book.id.clone())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let parsed = parse_import_metadata(
-        lease.open_reader()?,
-        &source.source_locator,
-        cover_cache_dir,
-        &book_id,
-    );
-
-    let old_locator = existing.as_ref().map(|book| book.source_locator.clone());
     let old_cover = existing
         .as_ref()
         .and_then(|book| book.cover_cache_path.clone());
+    let parsed = match parse_import_metadata(
+        lease.open_reader()?,
+        &source.source_locator,
+        cover_cache.directory(),
+        &book_id,
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            drop(lease);
+            source_manager.invalidate(&probe_id);
+            return Err(error);
+        }
+    };
+    let candidate_cover = parsed.cover_cache_path.clone();
+    if let Some(candidate_path) = candidate_cover.as_deref() {
+        if let Err(error) = cover_cache.admit_candidate(
+            Path::new(candidate_path),
+            old_cover.as_deref().map(Path::new),
+        ) {
+            let _ = cover_cache.discard_candidate(
+                Path::new(candidate_path),
+                old_cover.as_deref().map(Path::new),
+            );
+            drop(lease);
+            source_manager.invalidate(&probe_id);
+            return Err(error);
+        }
+    }
+
+    let old_locator = existing.as_ref().map(|book| book.source_locator.clone());
     let book = merge_imported_book(existing, book_id, source, &fingerprint, parsed, now);
 
-    let conn = lock_db(db)?;
-    if repository::find_book_by_id(&conn, &book.id)
-        .map_err(|_| "INTERNAL_ERROR: db query failed".to_string())?
-        .is_some()
-    {
-        repository::update_book_by_id(&conn, &book)
-            .map_err(|_| "INTERNAL_ERROR: db update failed".to_string())?;
-    } else {
-        repository::insert_book(&conn, &book)
-            .map_err(|_| "INTERNAL_ERROR: db insert failed".to_string())?;
+    let persist_result = (|| -> Result<(), String> {
+        let conn = lock_db(db)?;
+        if repository::find_book_by_id(&conn, &book.id)
+            .map_err(|_| "INTERNAL_ERROR: db query failed".to_string())?
+            .is_some()
+        {
+            repository::update_book_by_id(&conn, &book)
+                .map_err(|_| "INTERNAL_ERROR: db update failed".to_string())?;
+        } else {
+            repository::insert_book(&conn, &book)
+                .map_err(|_| "INTERNAL_ERROR: db insert failed".to_string())?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = persist_result {
+        if let Some(candidate_path) = candidate_cover.as_deref() {
+            let _ = cover_cache.discard_candidate(
+                Path::new(candidate_path),
+                old_cover.as_deref().map(Path::new),
+            );
+        }
+        drop(lease);
+        source_manager.invalidate(&probe_id);
+        return Err(error);
     }
-    drop(conn);
     drop(lease);
 
     if probe_id != book.id {
@@ -103,9 +139,8 @@ pub fn import_book<R: Runtime>(
     if let Some(locator) = old_locator.filter(|locator| locator != &book.source_locator) {
         let _ = platform::release_source_permission(app, &locator);
     }
-    if let Some(path) = old_cover.filter(|path| Some(path) != book.cover_cache_path.as_ref()) {
-        let _ = std::fs::remove_file(path);
-    }
+    let _ =
+        cover_cache.remove_replaced_cover(old_cover.as_deref(), book.cover_cache_path.as_deref());
 
     Ok(book)
 }
@@ -233,6 +268,7 @@ pub fn relocate_book<R: Runtime>(
 pub fn delete_book<R: Runtime>(
     app: &AppHandle<R>,
     db: &Mutex<Connection>,
+    cover_cache: &CoverCache,
     source_manager: &SourceManager,
     book_id: &str,
 ) -> Result<String, String> {
@@ -248,7 +284,7 @@ pub fn delete_book<R: Runtime>(
 
     source_manager.invalidate(book_id);
     if let Some(path) = cover_path {
-        let _ = std::fs::remove_file(path);
+        let _ = cover_cache.remove_stored_cover(&path);
     }
     let _ = platform::release_source_permission(app, &source_locator);
     Ok(book_id.to_string())
@@ -307,9 +343,19 @@ fn parse_import_metadata(
     source_locator: &str,
     cover_cache_dir: &Path,
     book_id: &str,
-) -> ParsedImportMetadata {
-    match parse_book_metadata(&BookFormat::Epub, reader, Some((cover_cache_dir, book_id))) {
-        Ok(metadata) => ParsedImportMetadata {
+) -> Result<ParsedImportMetadata, String> {
+    finish_import_metadata(
+        parse_book_metadata(&BookFormat::Epub, reader, Some((cover_cache_dir, book_id))),
+        source_locator,
+    )
+}
+
+fn finish_import_metadata(
+    result: Result<FormatMetadata, String>,
+    source_locator: &str,
+) -> Result<ParsedImportMetadata, String> {
+    match result {
+        Ok(metadata) => Ok(ParsedImportMetadata {
             title: if metadata.title.is_empty() {
                 fallback_title(source_locator)
             } else {
@@ -320,15 +366,16 @@ fn parse_import_metadata(
             cover_cache_path: metadata.cover_cache_path,
             status: BookStatus::Available,
             status_detail: None,
-        },
-        Err(error) => ParsedImportMetadata {
+        }),
+        Err(error) if error.starts_with("BOOK_RESOURCE_LIMIT_EXCEEDED:") => Err(error),
+        Err(error) => Ok(ParsedImportMetadata {
             title: fallback_title(source_locator),
             authors: Vec::new(),
             package_identifier: None,
             cover_cache_path: None,
             status: BookStatus::Error,
             status_detail: Some(error),
-        },
+        }),
     }
 }
 
@@ -598,5 +645,18 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.starts_with("VALIDATION_ERROR:"));
+    }
+
+    #[test]
+    fn resource_limit_metadata_error_is_not_downgraded_to_book_status() {
+        let result = finish_import_metadata(
+            Err("BOOK_RESOURCE_LIMIT_EXCEEDED: cover cache is full".to_string()),
+            "book.epub",
+        );
+
+        match result {
+            Err(error) => assert_eq!(error, "BOOK_RESOURCE_LIMIT_EXCEEDED: cover cache is full"),
+            Ok(_) => panic!("resource limit must abort the import"),
+        }
     }
 }

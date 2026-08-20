@@ -17,7 +17,7 @@ pub const MAX_SEARCH_TASK_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Hard cap for the reconstructable SQLite search payload. This is an
 /// accounting budget for indexed text, not a promise about SQLite page/WAL
 /// overhead; the runtime storage gate must measure the actual database too.
-pub const MAX_SEARCH_INDEX_BYTES: u64 = 256 * 1024 * 1024;
+pub const MAX_SEARCH_INDEX_BYTES: u64 = crate::resource_budget::SEARCH_INDEX_HARD_LIMIT_BYTES;
 
 #[derive(Debug, Clone)]
 struct SearchTaskControl {

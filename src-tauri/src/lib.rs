@@ -7,6 +7,7 @@ mod db;
 mod formats;
 mod platform;
 mod protocol;
+mod resource_budget;
 mod services;
 mod source;
 
@@ -14,13 +15,16 @@ use commands::AppState;
 use db::migrations;
 use protocol::epub_protocol;
 use rusqlite::Connection;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default();
+    #[cfg(not(target_os = "android"))]
+    let builder = builder.plugin(tauri_plugin_dialog::init());
+
+    builder
         .plugin(platform::init())
         .setup(|app| {
             let app_data_dir = app
@@ -31,24 +35,22 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)
                 .map_err(|e| format!("failed to create app data dir: {}", e))?;
 
-            let cover_cache_dir = app_data_dir.join("covers");
-            std::fs::create_dir_all(&cover_cache_dir)
-                .map_err(|e| format!("failed to create cover cache dir: {}", e))?;
-
-            let source_manager = source::SourceManager::new(app_data_dir.join("source-cache"))?;
-
             let db_path = app_data_dir.join("epubstart.db");
             let conn = Connection::open(&db_path)
                 .map_err(|e| format!("failed to open database: {}", e))?;
 
             migrations::run_migrations(&conn).map_err(|e| format!("migration failed: {}", e))?;
-            let db = Mutex::new(conn);
-            services::recover_interrupted_search_tasks(&db)
+            let db = Arc::new(Mutex::new(conn));
+            let cover_cache =
+                services::CoverCache::new(app_data_dir.join("covers"), Arc::clone(&db))?;
+            let source_manager =
+                source::SourceManager::new(app_data_dir.join("source-cache"), Arc::clone(&db))?;
+            services::recover_interrupted_search_tasks(db.as_ref())
                 .map_err(|e| format!("search recovery failed: {}", e))?;
 
             app.manage(AppState {
                 db,
-                cover_cache_dir,
+                cover_cache,
                 source_manager,
                 search_tasks: services::SearchTaskRegistry::default(),
             });

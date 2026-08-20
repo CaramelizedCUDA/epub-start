@@ -16,6 +16,17 @@ allprojects {
     }
 }
 
+subprojects {
+    val androidProjectRoot = rootProject.projectDir.toPath().normalize()
+    val subprojectRoot = project.projectDir.toPath().normalize()
+
+    if (!subprojectRoot.startsWith(androidProjectRoot)) {
+        layout.buildDirectory.set(
+            rootProject.layout.buildDirectory.dir("external/${project.name}")
+        )
+    }
+}
+
 tasks.register("clean").configure {
     delete("build")
 }

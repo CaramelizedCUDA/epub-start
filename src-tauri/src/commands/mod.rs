@@ -1,6 +1,5 @@
 use rusqlite::Connection;
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub mod catalog;
 pub mod delete_book;
@@ -18,8 +17,8 @@ pub mod settings;
 
 /// Application-wide state managed by Tauri.
 pub struct AppState {
-    pub db: Mutex<Connection>,
-    pub cover_cache_dir: PathBuf,
+    pub db: Arc<Mutex<Connection>>,
+    pub cover_cache: crate::services::CoverCache,
     pub source_manager: crate::source::SourceManager,
     pub search_tasks: crate::services::SearchTaskRegistry,
 }

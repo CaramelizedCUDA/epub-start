@@ -195,11 +195,15 @@ V2 CRUD 中的 UUID、`created_at` 与 `updated_at` 由 Rust 服务层生成，�
 
 `search_documents.href` 保存 OPF manifest 中的章节 href，供打开图书后的 EPUB.js 导航；它不是 `epub_root_url` 下已经规范化的协议条目路径。B2 EPUB 索引不得根据 spine 序号合成 CFI，写入与查询返回的 `cfi` 均为 `NULL`；该可空列保留为未来经可靠格式/DOM 适配生成精确位置时的追加能力，不得把非空值当作当前完成条件。
 
-### B2 存储预算规划（部分实现：搜索索引账面预算已实现，其余待完成）
+### B2 存储预算实现（复用 V2，无新增迁移）
 
-`source_cache_entries.cache_size_bytes` 和 `last_accessed_at` 是来源缓存预算与真实 LRU 的现有数据基础。B2 实现必须在成功取得缓存租约时更新 `last_accessed_at`，并保证缓存文件写入、元数据更新、失败清理与淘汰之间不存在把半成品记录为可用缓存的状态。删除图书后，数据库级联删除缓存记录，文件清理由服务层尽力完成；后续清理任务必须能够识别数据库无对应记录的孤儿文件。
+`source_cache_entries.cache_size_bytes` 和 `last_accessed_at` 是来源缓存预算与真实 LRU 的持久化基础。成功取得 Android 缓存租约时，服务以单调递增值更新 `last_accessed_at`；新文件经临时写入、flush、原子 rename 后才写入元数据，`cache_size_bytes` 取最终文件的真实 metadata。启动协调会删除数据库无对应记录的 `.source`/指纹孤儿，清除文件缺失或大小不符的行，并重新应用预算。删除图书仍由外键级联删除元数据，服务负责文件清理；活动 `SourceLease` 对应行在淘汰时受保护。
 
-初始来源缓存软/硬上限为 256/512 MiB，封面缓存软/硬上限为 64/128 MiB；B2 搜索索引文本账面硬上限已实现为 256 MiB，全部可重建数据合计硬上限仍不得超过 1 GiB。索引预算只统计持久化文本字段的 UTF-8 字节数；搜索错误状态的文档清理、FTS 重建和 `search_index_state` 更新必须在同一个 `BEGIN IMMEDIATE` 事务中完成，任一步失败回滚并保留旧索引，`SQLITE_FULL` 映射为 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷重建已记录主库 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`，但该样本不等于低存储/长期压力门禁。达到上限必须保持数据库一致性。`books`、阅读进度、批注、设置等持久业务数据不属于缓存预算，禁止为满足预算而删除。来源/封面真实 LRU、软硬淘汰和低存储闭环仍待后续实现；若现有字段不足以原子表达淘汰或恢复状态，只能追加 V4 或更高版本迁移；本规划不修改 V2 Schema。
+封面继续复用 `books.cover_cache_path`，不增加缓存表。`CoverCache` 只接受缓存目录的直接子文件；启动时在事务内把缺失或越界路径置为 `NULL`，随后删除无任何 `books` 行引用的孤儿。导入时先保护新候选与旧封面执行预算，数据库写入失败只清理候选，成功后才删除旧封面；删除图书后也经同一安全 seam 清理。淘汰顺序为 `books.updated_at, books.id`，被淘汰行的 `cover_cache_path` 置空。前端 asset 读取不经过 Rust，因此此字段不能表达封面命中时间，也不宣称封面是真实访问 LRU。
+
+来源缓存软/硬上限为 256/512 MiB，封面缓存软/硬上限为 64/128 MiB，搜索索引文本账面硬上限为 256 MiB；统一常量把全部可重建数据合计硬上限冻结为 896 MiB，不超过 1 GiB。索引预算只统计持久化 `title/body` 的 UTF-8 字节数；搜索错误状态的文档清理、FTS 重建和 `search_index_state` 更新在同一个 `BEGIN IMMEDIATE` 事务中完成，任一步失败回滚并保留旧索引，`SQLITE_FULL` 映射为 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷重建已记录主库 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`，但该样本不等于低存储/长期压力门禁。达到上限必须保持数据库一致性；`books`、阅读进度、批注、设置等持久业务数据不属于缓存预算，禁止为满足预算而删除。
+
+上述来源/封面事务、重启协调、软硬淘汰和错误语义已有辅助逻辑自动化与变红自证。Android ENOSPC、进程中断、长期/2 GiB 压力以及真实 page/journal/WAL 峰值仍按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 阻塞，不得由桌面测试外推。V2 字段足以表达当前实现；未来确有 Schema 缺口时只能追加 V5 或更高迁移，禁止回写 V2。
 
 ## V3 Schema（阅读设置扩展）
 

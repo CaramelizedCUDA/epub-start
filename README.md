@@ -2,11 +2,11 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置以及批注数据契约的后端收口；Android 制品/运行时存储预算仍按 [TODO.md](TODO.md) 顺序推进。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码收口；B2 总完成证明仍等待完整 Android release lint 依赖与受控虚拟设备上的破坏性存储验收，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前阶段为 B2 后端业务能力，并新增 Android 发布制品与运行时存储预算规划；前端 WebView 如何消费资源 URL 不属于 B0/B1 后端完成判定。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；完整 Gradle lint 因四个 Google Maven 制品无法在受限网络中取得而阻塞，低存储/长期压力则等待受控 AVD。前端 WebView 如何消费资源 URL 不属于 B0/B1 后端完成判定。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
@@ -17,6 +17,7 @@
 - [ROADMAP.md](ROADMAP.md)：阶段边界与冻结区。
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
 - [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论与缺口清单（2026-08-14）。
+- [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力延期验收包；当前未执行。
 
 若文档间存在冲突，以职责更专门的文档为准：依赖与命令以本文件为准，目录职责以架构文档为准，表字段以数据库文档为准，Command 签名和错误语义以 IPC 文档为准。
 
@@ -45,11 +46,17 @@ npm run dev
 # Rust 编译检查
 cd src-tauri && cargo check
 
+# 前端与静态审计
+cd ..
+npm run build
+npm run audit:unwrap
+npm run audit:android-release
+
 # 全局构建
 npm run tauri build
 ```
 
-需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建不能替代 Android 验收，普通模拟器也不能替代真实设备上的 SAF Provider、持久权限、OEM 进程回收、WebView、性能和手势证据。由于现有真机无法安全构造近满存储，B2 的 ENOSPC/SQLite 满盘、长期/2 GiB 压力及重启清理允许延期到固定 API、受控 `/data` 容量的可复现 Android 虚拟设备执行；该例外不外推到其他实机门禁。B1 首次真实设备来源链门禁已经完成；B2 已完成搜索任务的主要实现及 Android 取消/恢复、大文件单次导入和来源授权失效探查，低存储、长期压力和 SQLite page/WAL 运行态预算仍待验证，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
+需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。`audit:android-release` 只审计已经生成的 arm64 release APK/AAB、原生库与 `dist`，不会自行构建或证明 Android 运行态。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建不能替代 Android 验收，普通模拟器也不能替代真实设备上的 SAF Provider、持久权限、OEM 进程回收、WebView、性能和手势证据。由于现有真机无法安全构造近满存储，B2 的 ENOSPC/SQLite 满盘、长期/2 GiB 压力及重启清理允许延期到固定 API、受控 `/data` 容量的可复现 Android 虚拟设备执行；该例外不外推到其他实机门禁。B1 首次真实设备来源链门禁已经完成；B2 已完成搜索任务、缓存辅助逻辑与 Android 制品检查，低存储、长期压力和 SQLite page/WAL 运行态预算仍待按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 执行，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
 
 ## 测试 EPUB
 

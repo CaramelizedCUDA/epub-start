@@ -105,12 +105,14 @@ B0 的输出是缺口清单和每个缺口的验收标准。审计完成前，�
 B2 采用以下初始门禁，首次可重复 release 基线建立后只允许收紧；放宽必须记录原因并经人工批准：
 
 - arm64 release APK 不超过 40 MiB，Rust 原生库不超过 30 MiB，前端 `dist` 不超过 2 MiB；相对已提交基线增长超过 10% 即使仍低于绝对上限也必须解释；
-- debug APK 只用于诊断，不作为发布体积证明；日常真机回归应增加保留调试能力但移除原生调试符号的 profile，发布包不得携带 Rust/NDK 调试段、测试 EPUB 或预置来源缓存；
-- Android 来源缓存初始软上限 256 MiB、硬上限 512 MiB；封面缓存初始软上限 64 MiB、硬上限 128 MiB；搜索索引文本账面硬上限 256 MiB，所有可重建数据的合计硬上限不得超过 1 GiB；SQLite page/WAL 实际占用仍需运行态测量；
-- 缓存命中必须更新 `last_accessed_at`，淘汰使用真实 LRU；活动 `SourceLease` 不得被删除。无法在硬上限内安全完成写入时返回稳定的资源限制错误，不得静默突破上限；
+- debug APK 只用于诊断，不作为发布体积证明；profile 使用 release Rust、独立包名、可调试应用、关闭 JNI debug/R8 和 debug 签名，供日常诊断/AVD 验收；release 不得携带 Rust/NDK 运行时调试段、测试 EPUB 或预置来源缓存；
+- Android 来源缓存软上限 256 MiB、硬上限 512 MiB；封面缓存软上限 64 MiB、硬上限 128 MiB；搜索索引文本账面硬上限 256 MiB，当前统一常量合计 896 MiB、不超过 1 GiB；SQLite page/WAL 实际占用仍需运行态测量；
+- 来源缓存命中必须更新 `last_accessed_at` 并按持久化真实 LRU 淘汰，活动 `SourceLease` 不得被删除。封面按 `books.updated_at, id` 确定淘汰顺序；asset 读取不可观测，不宣称命中 LRU。无法在硬上限内安全完成写入时返回稳定资源限制错误，不得静默突破上限；
 - 记录空白安装、固定样本导入、触发淘汰、进程重启和清理后的分项占用；覆盖磁盘不足、中断写入、孤儿封面/索引清理和缓存重建。数据库与用户明确保存的内容不是缓存，不得为达成指标而删除。
 
 若需要暴露缓存统计或清理能力，先在 [IPC.md](IPC.md) 设计 Command、返回模型和错误语义，再实现和注册；本规划不授权预注册 stub。数据库应优先复用 `source_cache_entries.cache_size_bytes` 与 `last_accessed_at`，确有字段缺口时只能追加迁移。
+
+2026-08-18 收口状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误和 896 MiB 合计硬上限已实现并完成辅助逻辑变红自证；arm64 release 首个分项基线为 APK 12,212,328 B、AAB 11,782,026 B、Cargo release `.so` 14,304,656 B、打包 `.so` 9,606,416 B、`dist` 595,644 B，静态门禁脚本通过。该基线文件需随本次工作提交后才成为“已提交基线”。完整 Gradle release lint 仍因当前环境无法下载四个 AndroidX runtime 制品而阻塞；安装后 code/data、ENOSPC、重启中断和长期压力等待 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
 
 EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于 F 阶段；B 阶段只交付它们依赖的稳定数据和 IPC 契约，不提前实现 UI。
 
