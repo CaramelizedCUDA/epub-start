@@ -112,7 +112,7 @@ B2 采用以下初始门禁，首次可重复 release 基线建立后只允许�
 
 若需要暴露缓存统计或清理能力，先在 [IPC.md](IPC.md) 设计 Command、返回模型和错误语义，再实现和注册；本规划不授权预注册 stub。数据库应优先复用 `source_cache_entries.cache_size_bytes` 与 `last_accessed_at`，确有字段缺口时只能追加迁移。
 
-2026-08-18 收口状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误和 896 MiB 合计硬上限已实现并完成辅助逻辑变红自证；arm64 release 首个分项基线为 APK 12,212,328 B、AAB 11,782,026 B、Cargo release `.so` 14,304,656 B、打包 `.so` 9,606,416 B、`dist` 595,644 B，静态门禁脚本通过。该基线文件需随本次工作提交后才成为“已提交基线”。完整 Gradle release lint 仍因当前环境无法下载四个 AndroidX runtime 制品而阻塞；安装后 code/data、ENOSPC、重启中断和长期压力等待 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
+2026-08-22 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。完整 Gradle release lint 仍因 Google Maven 的四个 AndroidX runtime 制品发生 TLS 握手中断而阻塞；安装后 code/data、ENOSPC、重启中断和长期压力等待 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
 
 EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于 F 阶段；B 阶段只交付它们依赖的稳定数据和 IPC 契约，不提前实现 UI。
 

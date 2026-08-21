@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "target": "aarch64-linux-android",
-  "recordedAt": "2026-08-18",
-  "basis": "First complete B2 Android storage closeout baseline; no earlier baseline was committed.",
+  "recordedAt": "2026-08-22",
+  "basis": "Final B2 Android storage closeout static baseline after cache consistency and release-gate review; complete Gradle lint remains externally blocked.",
   "toolchain": {
     "node": "22.22.2",
     "npm": "10.9.7",
@@ -24,10 +24,10 @@
     "relativeGrowthPercent": 10
   },
   "artifacts": {
-    "apkBytes": 12212328,
-    "aabBytes": 11782026,
-    "rustNativeBytes": 14304656,
-    "packagedNativeBytes": 9606416,
+    "apkBytes": 11557632,
+    "aabBytes": 11365807,
+    "rustNativeBytes": 13040288,
+    "packagedNativeBytes": 8951720,
     "distBytes": 595644
   }
 }

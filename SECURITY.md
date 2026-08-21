@@ -54,9 +54,9 @@ B2 初始制品门禁为 arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 Mi
 ### Android release 与 profile 收口基线（2026-08-18）
 
 - desktop dialog 依赖/Capability 已从 Android 隔离，外部 Android 子项目的 build 目录重定向到工程 build 树，原 `tauri-plugin-fs/android/.tauri/tauri-api` 目录冲突不再出现；NDK 固定为 27.3.13750724。
-- arm64 release：APK 12,212,328 B（11.647 MiB）、AAB 11,782,026 B（11.236 MiB）、Cargo release `.so` 14,304,656 B（13.642 MiB）、打包运行时 `.so` 9,606,416 B（9.161 MiB）、前端 `dist` 595,644 B（0.568 MiB）。`npm run audit:android-release` 已检查 arm64-only、AArch64、无 `.debug*`/`.symtab`/`.strtab`、无测试 EPUB/缓存/宿主路径 payload，并通过绝对与当前基线门禁；基线文件需随工作树提交后才成为已提交基线。
-- profile 使用 release Rust、独立 `.profile` 包名、可调试应用、关闭 JNI debug/R8 和 debug 签名。arm64/x86_64 profile APK/AAB 已生成并完成 ABI、签名和打包 ELF 检查；它们只用于诊断/AVD，不是发布证明。
-- 完整 Gradle release lint 尚未通过：当前环境无法从 Google Maven 下载 `emoji2-views-helper:1.2.0`、`emoji2:1.2.0`、`lifecycle-process:2.4.1`、`concurrent-futures:1.0.0`，正常联网重试以 `Permission denied: getsockopt` 失败。现有 APK/AAB 是显式跳过 lint model/vital 任务后用于静态体积审计的制品，不得写成完整发布候选。
+- arm64 release：APK 11,557,632 B（11.022 MiB）、AAB 11,365,807 B（10.839 MiB）、Cargo release `.so` 13,040,288 B（12.436 MiB）、打包运行时 `.so` 8,951,720 B（8.537 MiB）、前端 `dist` 595,644 B（0.568 MiB）。`npm run audit:android-release` 已检查完整基线工具链、APK/AAB 各自的 arm64-only/AArch64、无 `.debug*`/`.symtab`/`.strtab`、无测试 EPUB/缓存/宿主路径 payload，并通过绝对与当前基线门禁。
+- profile 使用 release Rust、独立 `.profile` 包名、可调试应用、关闭 JNI debug/R8 和 debug 签名。历史 arm64/x86_64 profile APK/AAB 已完成 ABI、签名和打包 ELF 检查；它们只用于诊断/AVD，不是发布证明，正式延期验收前必须从当前提交重新生成并记录 hash。
+- 完整 Gradle release lint 尚未通过：当前环境无法从 Google Maven 下载 `emoji2-views-helper:1.2.0`、`emoji2:1.2.0`、`lifecycle-process:2.4.1`、`concurrent-futures:1.0.0`，2026-08-22 正常联网重试由 TLS 握手中断（`Remote host terminated the handshake`）。现有 APK/AAB 是显式跳过 lint model/vital 任务后用于静态体积审计的制品，不得写成完整发布候选。
 - Android 空白安装、code/data、低存储、中断与长期压力未执行，验收步骤见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
 
 ### CSP 策略

@@ -9,14 +9,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(any(target_os = "android", test))]
 use std::io;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", test))]
 use std::io::{Read, Seek, SeekFrom, Write};
 
 use tauri::{AppHandle, Runtime};
 
-#[cfg(any(target_os = "android", test))]
-use rusqlite::params;
 use rusqlite::Connection;
+#[cfg(any(target_os = "android", test))]
+use rusqlite::{params, Error as SqlError, ErrorCode};
 
 use super::fingerprint::SourceFingerprint;
 #[cfg(target_os = "android")]
@@ -127,6 +127,10 @@ impl SourceManager {
         book_id: &str,
         source_locator: &str,
     ) -> Result<(SourceLease, SourceFingerprint), String> {
+        // Register the lease before inspecting the cache. Eviction holds the
+        // same registry lock through metadata removal and file deletion, so a
+        // lease can only observe the file before eviction or rebuild it after.
+        let guard = self.guard_for(book_id)?;
         eprintln!("[EPUB-IMPORT] acquire_android: open_checked_source start");
         let (mut source, before) = open_checked_source(app, source_locator)?;
         eprintln!("[EPUB-IMPORT] acquire_android: open_checked_source ok");
@@ -140,7 +144,6 @@ impl SourceManager {
                 .unwrap_or(false)
         {
             self.touch_cache_hit(book_id, &cache_path, &before)?;
-            let guard = self.guard_for(book_id)?;
             return Ok((
                 SourceLease {
                     path: cache_path,
@@ -167,7 +170,6 @@ impl SourceManager {
         }
         self.persist_cache_entry(book_id, &cache_path, &after)?;
         self.evict_if_needed(book_id)?;
-        let guard = self.guard_for(book_id)?;
         Ok((
             SourceLease {
                 path: cache_path,
@@ -185,22 +187,7 @@ impl SourceManager {
         cache_path: &Path,
     ) -> Result<(), String> {
         let temp_path = self.cache_dir.join(format!("{book_id}.source.tmp"));
-        let mut target =
-            File::create(&temp_path).map_err(|error| source_cache_io_error("create", &error))?;
-        source
-            .seek(SeekFrom::Start(0))
-            .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: Android source cannot be rewound".to_string())?;
-        let mut limited = source.take(MAX_SOURCE_SIZE + 1);
-        let copied = std::io::copy(&mut limited, &mut target)
-            .map_err(|error| source_cache_io_error("copy", &error))?;
-        target
-            .flush()
-            .map_err(|error| source_cache_io_error("flush", &error))?;
-        if copied > MAX_SOURCE_SIZE {
-            remove_if_exists(&temp_path);
-            return Err("BOOK_RESOURCE_LIMIT_EXCEEDED: compressed source is too large".into());
-        }
-        fs::rename(&temp_path, cache_path).map_err(|error| source_cache_io_error("commit", &error))
+        copy_reader_atomically(source, &temp_path, cache_path, MAX_SOURCE_SIZE)
     }
 
     #[cfg(target_os = "android")]
@@ -217,14 +204,6 @@ impl SourceManager {
             self.invalidate(current_book_id);
         }
         result
-    }
-
-    #[cfg(any(target_os = "android", test))]
-    fn is_active(&self, book_id: &str) -> Result<bool, String> {
-        self.active
-            .lock()
-            .map(|active| active.get(book_id).and_then(Weak::upgrade).is_some())
-            .map_err(|_| "INTERNAL_ERROR: source lease lock poisoned".to_string())
     }
 
     #[cfg(any(target_os = "android", test))]
@@ -278,22 +257,22 @@ impl SourceManager {
                 .db
                 .lock()
                 .map_err(|_| "INTERNAL_ERROR: source cache database lock poisoned".to_string())?;
-            let transaction = conn.transaction().map_err(|_| {
-                "INTERNAL_ERROR: source cache metadata cannot be reconciled".to_string()
-            })?;
+            let transaction = conn
+                .transaction()
+                .map_err(|error| source_cache_sql_error("metadata cannot be reconciled", error))?;
             for book_id in stale_book_ids {
                 transaction
                     .execute(
                         "DELETE FROM source_cache_entries WHERE book_id = ?1",
                         [&book_id],
                     )
-                    .map_err(|_| {
-                        "INTERNAL_ERROR: source cache metadata cannot be reconciled".to_string()
+                    .map_err(|error| {
+                        source_cache_sql_error("metadata cannot be reconciled", error)
                     })?;
             }
-            transaction.commit().map_err(|_| {
-                "INTERNAL_ERROR: source cache metadata cannot be reconciled".to_string()
-            })?;
+            transaction
+                .commit()
+                .map_err(|error| source_cache_sql_error("metadata cannot be reconciled", error))?;
         }
 
         for entry in fs::read_dir(&self.cache_dir)
@@ -390,27 +369,12 @@ impl SourceManager {
             if total <= soft_limit {
                 break;
             }
-            if current_book_id == Some(book_id.as_str()) || self.is_active(&book_id)? {
+            if current_book_id == Some(book_id.as_str()) {
                 continue;
             }
-            match fs::remove_file(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(_) => {
-                    return Err("INTERNAL_ERROR: source cache entry cannot be evicted".to_string())
-                }
+            if self.evict_cache_entry_if_inactive(&book_id, &path)? {
+                total = total.saturating_sub(size);
             }
-            remove_if_exists(&self.cache_dir.join(format!("{book_id}.fingerprint.json")));
-            let conn = self
-                .db
-                .lock()
-                .map_err(|_| "INTERNAL_ERROR: source cache database lock poisoned".to_string())?;
-            conn.execute(
-                "DELETE FROM source_cache_entries WHERE book_id = ?1",
-                [&book_id],
-            )
-            .map_err(|_| "INTERNAL_ERROR: source cache metadata cannot be removed".to_string())?;
-            total = total.saturating_sub(size);
         }
 
         if total > hard_limit {
@@ -420,6 +384,43 @@ impl SourceManager {
             );
         }
         Ok(())
+    }
+
+    #[cfg(any(target_os = "android", test))]
+    fn evict_cache_entry_if_inactive(
+        &self,
+        book_id: &str,
+        source_path: &Path,
+    ) -> Result<bool, String> {
+        let active = self
+            .active
+            .lock()
+            .map_err(|_| "INTERNAL_ERROR: source lease lock poisoned".to_string())?;
+        if active.get(book_id).and_then(Weak::upgrade).is_some() {
+            return Ok(false);
+        }
+
+        // Remove metadata first. If SQLite rejects the change, the cache file
+        // remains usable and no dangling row is created. The active-registry
+        // lock stays held until the file is gone, closing the lease/eviction
+        // check-then-delete window.
+        let conn = self
+            .db
+            .lock()
+            .map_err(|_| "INTERNAL_ERROR: source cache database lock poisoned".to_string())?;
+        conn.execute(
+            "DELETE FROM source_cache_entries WHERE book_id = ?1",
+            [book_id],
+        )
+        .map_err(|error| source_cache_sql_error("metadata cannot be removed", error))?;
+        drop(conn);
+
+        remove_cache_file_for_reconciliation(source_path)?;
+        remove_cache_file_for_reconciliation(
+            &self.cache_dir.join(format!("{book_id}.fingerprint.json")),
+        )?;
+        drop(active);
+        Ok(true)
     }
 
     pub fn invalidate(&self, book_id: &str) {
@@ -446,7 +447,7 @@ impl SourceManager {
             .map_err(|_| "INTERNAL_ERROR: source cache database lock poisoned".to_string())?;
         let now = unix_epoch_millis();
         if touch_cache_entry(&conn, book_id, now)
-            .map_err(|_| "INTERNAL_ERROR: source cache access time cannot be updated".to_string())?
+            .map_err(|error| source_cache_sql_error("access time cannot be updated", error))?
         {
             return Ok(());
         }
@@ -502,7 +503,7 @@ fn persist_cache_entry(
             [observed_at],
             |row| row.get::<_, i64>(0),
         )
-        .map_err(|_| "INTERNAL_ERROR: source cache access time cannot be read".to_string())?;
+        .map_err(|error| source_cache_sql_error("access time cannot be read", error))?;
     conn.execute(
         "INSERT INTO source_cache_entries (
              book_id, cache_path, source_locator, file_size_bytes,
@@ -530,7 +531,7 @@ fn persist_cache_entry(
         ],
     )
     .map(|_| ())
-    .map_err(|_| "INTERNAL_ERROR: source cache metadata cannot be persisted".to_string())
+    .map_err(|error| source_cache_sql_error("metadata cannot be persisted", error))
 }
 
 #[cfg(target_os = "android")]
@@ -559,6 +560,41 @@ fn remove_if_exists(path: &Path) {
 }
 
 #[cfg(any(target_os = "android", test))]
+fn copy_reader_atomically<R: Read + Seek>(
+    source: &mut R,
+    temporary_path: &Path,
+    cache_path: &Path,
+    max_size: u64,
+) -> Result<(), String> {
+    let result = (|| -> Result<(), String> {
+        let mut target = File::create(temporary_path)
+            .map_err(|error| source_cache_io_error("create", &error))?;
+        source
+            .seek(SeekFrom::Start(0))
+            .map_err(|_| "BOOK_SOURCE_UNAVAILABLE: Android source cannot be rewound".to_string())?;
+        let read_limit = max_size.checked_add(1).ok_or_else(|| {
+            "BOOK_RESOURCE_LIMIT_EXCEEDED: compressed source size overflow".to_string()
+        })?;
+        let mut limited = source.take(read_limit);
+        let copied = std::io::copy(&mut limited, &mut target)
+            .map_err(|error| source_cache_io_error("copy", &error))?;
+        target
+            .flush()
+            .map_err(|error| source_cache_io_error("flush", &error))?;
+        if copied > max_size {
+            return Err("BOOK_RESOURCE_LIMIT_EXCEEDED: compressed source is too large".into());
+        }
+        fs::rename(temporary_path, cache_path)
+            .map_err(|error| source_cache_io_error("commit", &error))
+    })();
+
+    if result.is_err() {
+        remove_if_exists(temporary_path);
+    }
+    result
+}
+
+#[cfg(any(target_os = "android", test))]
 fn remove_cache_file_for_reconciliation(path: &Path) -> Result<(), String> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -582,6 +618,17 @@ fn is_storage_exhausted(error: &io::Error) -> bool {
     matches!(error.raw_os_error(), Some(28 | 122 | 112))
 }
 
+#[cfg(any(target_os = "android", test))]
+fn source_cache_sql_error(context: &str, error: SqlError) -> String {
+    if matches!(
+        error,
+        SqlError::SqliteFailure(ref failure, _) if failure.code == ErrorCode::DiskFull
+    ) {
+        return "BOOK_RESOURCE_LIMIT_EXCEEDED: source cache metadata storage is full".to_string();
+    }
+    format!("INTERNAL_ERROR: source cache {context}")
+}
+
 #[cfg(target_os = "android")]
 fn read_fingerprint(path: &Path) -> Option<SourceFingerprint> {
     let bytes = fs::read(path).ok()?;
@@ -592,8 +639,21 @@ fn read_fingerprint(path: &Path) -> Option<SourceFingerprint> {
 fn write_fingerprint(path: &Path, fingerprint: &SourceFingerprint) -> Result<(), String> {
     let bytes = serde_json::to_vec(fingerprint)
         .map_err(|_| "INTERNAL_ERROR: source fingerprint cannot be encoded".to_string())?;
-    fs::write(path, bytes)
-        .map_err(|_| "INTERNAL_ERROR: source fingerprint cannot be persisted".to_string())
+    let temporary_path = PathBuf::from(format!("{}.tmp", path.to_string_lossy()));
+    let result = (|| -> Result<(), String> {
+        let mut file = File::create(&temporary_path)
+            .map_err(|error| source_cache_io_error("fingerprint create", &error))?;
+        file.write_all(&bytes)
+            .map_err(|error| source_cache_io_error("fingerprint write", &error))?;
+        file.flush()
+            .map_err(|error| source_cache_io_error("fingerprint flush", &error))?;
+        fs::rename(&temporary_path, path)
+            .map_err(|error| source_cache_io_error("fingerprint commit", &error))
+    })();
+    if result.is_err() {
+        remove_if_exists(&temporary_path);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -725,6 +785,59 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_full_uses_stable_source_cache_resource_error() {
+        let error =
+            SqlError::SqliteFailure(rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_FULL), None);
+
+        assert_eq!(
+            source_cache_sql_error("metadata cannot be persisted", error),
+            "BOOK_RESOURCE_LIMIT_EXCEEDED: source cache metadata storage is full"
+        );
+    }
+
+    #[test]
+    fn failed_atomic_source_copy_removes_temporary_file() {
+        struct FailingSource {
+            yielded_byte: bool,
+        }
+
+        impl std::io::Read for FailingSource {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                if self.yielded_byte {
+                    return Err(std::io::Error::other("injected source read failure"));
+                }
+                self.yielded_byte = true;
+                buffer[0] = b'x';
+                Ok(1)
+            }
+        }
+
+        impl std::io::Seek for FailingSource {
+            fn seek(&mut self, _: std::io::SeekFrom) -> std::io::Result<u64> {
+                self.yielded_byte = false;
+                Ok(0)
+            }
+        }
+
+        let cache_dir =
+            std::env::temp_dir().join(format!("epub-cache-copy-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&cache_dir).unwrap();
+        let temporary_path = cache_dir.join("book-a.source.tmp");
+        let cache_path = cache_dir.join("book-a.source");
+        let mut source = FailingSource {
+            yielded_byte: false,
+        };
+
+        let error =
+            copy_reader_atomically(&mut source, &temporary_path, &cache_path, 16).unwrap_err();
+
+        assert!(error.starts_with("BOOK_SOURCE_UNAVAILABLE:"));
+        assert!(!temporary_path.exists());
+        assert!(!cache_path.exists());
+        fs::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
     fn cache_hit_advances_persisted_lru_clock() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         crate::db::migrations::run_migrations(&conn).unwrap();
@@ -834,6 +947,44 @@ mod tests {
         assert!(!manager.cache_dir.join("book-b.source").exists());
         assert!(manager.cache_dir.join("book-c.source").exists());
         drop(active_guard);
+        fs::remove_dir_all(&manager.cache_dir).unwrap();
+    }
+
+    #[test]
+    fn failed_source_metadata_eviction_keeps_cache_file_and_row() {
+        let manager = cache_manager();
+        seed_cache_entry(&manager, "book-a", 4, 10);
+        manager
+            .db
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER fail_source_cache_delete
+                 BEFORE DELETE ON source_cache_entries
+                 BEGIN
+                   SELECT RAISE(ABORT, 'injected source metadata failure');
+                 END;",
+            )
+            .unwrap();
+
+        let error = manager.enforce_cache_limits(None, 0, 16).unwrap_err();
+
+        assert!(error.starts_with("INTERNAL_ERROR:"));
+        assert!(
+            manager.cache_dir.join("book-a.source").exists(),
+            "a failed metadata update must not leave a dangling database row"
+        );
+        let remaining: i64 = manager
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM source_cache_entries WHERE book_id = 'book-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 1);
         fs::remove_dir_all(&manager.cache_dir).unwrap();
     }
 

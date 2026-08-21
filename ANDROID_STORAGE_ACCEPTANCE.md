@@ -17,7 +17,7 @@
 - EPUB 大小：8,521,993 字节
 - EPUB SHA-256：`1138B2A23BB79F9DF0727D0D34EA6055E8D1E4EA363EAC865D2F8FB2108E5980`
 
-若 x86_64 profile APK 不存在，先用已有 JDK/SDK/NDK 重建；首次执行需允许 Gradle从已配置仓库取得依赖，或提前准备完整缓存。Tauri 的独立 `rustBuildX86_64Profile` 任务依赖上层 CLI WebSocket，不能单独调用；以下步骤直接用同一 NDK 编译 release Rust 库，把它暂存到已忽略的 `jniLibs/x86_64`，再让 Gradle完成 profile 打包。该暂存文件不得提交。
+正式验收前必须用当前提交重新生成 x86_64 profile APK并记录 hash，不能仅因旧文件仍存在就复用；首次执行需允许 Gradle 从已配置仓库取得依赖，或提前准备完整缓存。Tauri 的独立 `rustBuildX86_64Profile` 任务依赖上层 CLI WebSocket，不能单独调用；以下步骤直接用同一 NDK 编译 release Rust 库，把它暂存到已忽略的 `jniLibs/x86_64`，再让 Gradle 完成 profile 打包。该暂存文件不得提交。
 
 ```powershell
 $NdkBin = 'D:\Android\Sdk\ndk\27.3.13750724\toolchains\llvm\prebuilt\windows-x86_64\bin'
@@ -35,7 +35,7 @@ New-Item -ItemType Directory -Force -Path $JniDir | Out-Null
 Copy-Item -LiteralPath 'D:\epub_start\src-tauri\target\x86_64-linux-android\release\libepub_start_lib.so' -Destination (Join-Path $JniDir 'libepub_start_lib.so') -Force
 $env:JAVA_HOME = 'D:\Android\jdk17\jdk-17.0.20+8'
 $env:GRADLE_OPTS = '-Djava.io.tmpdir=D:\epub_start\src-tauri\target\codex-gradle-jvm-tmp'
-& 'C:\Users\OigwenTs\.gradle\wrapper\dists\gradle-8.14.3-bin\cv11ve7ro1n3o1j4so8xd9n66\gradle-8.14.3\bin\gradle.bat' --project-dir 'D:\epub_start\src-tauri\gen\android' --no-daemon '-Pkotlin.compiler.execution.strategy=in-process' :app:assembleX86_64Profile :app:bundleX86_64Profile -x rustBuildX86_64Profile
+& 'D:\epub_start\src-tauri\gen\android\gradlew.bat' --project-dir 'D:\epub_start\src-tauri\gen\android' --no-daemon '-Pkotlin.compiler.execution.strategy=in-process' :app:assembleX86_64Profile :app:bundleX86_64Profile -x rustBuildX86_64Profile
 if ($LASTEXITCODE -ne 0) { throw 'x86_64 profile packaging failed.' }
 ```
 
@@ -129,13 +129,13 @@ New-Item -ItemType Directory -Force -Path $FixtureDir | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Fixture upload failed.' }
 ```
 
-在应用 picker 中一次选择这 46 份 EPUB，等待所有导入结束。随后打开第 46 本并连续翻页，再执行第 3 节快照。
+在应用 picker 中先导入 30 份，再打开其中一本旧书并启动会读取来源的后台索引；索引仍在运行时导入余下 16 份。若当前界面无法形成可观察的并发读取，必须把“Android 活动读取”记为未执行，不能仅凭导入后翻页补签。全部导入结束后打开第 46 本连续翻页，再执行第 3 节快照。
 
 通过条件：
 
 - 来源缓存最终不超过 256 MiB，除当前候选或短暂活动租约外按 `source_cache_entries.last_accessed_at` 从旧到新淘汰；数据库记录的 `cache_size_bytes` 等于真实文件大小。
 - 封面缓存最终不超过 64 MiB，按 `books.updated_at, books.id` 确定顺序淘汰；被淘汰图书的 `cover_cache_path` 置空，不留下孤儿文件。
-- 当前正在读取或刚命中的来源不得在该请求生命周期内消失。设备侧并发观察只能补充单元测试，不能单独证明所有 hard-limit 分支。
+- 当前正在读取或刚命中的来源不得在该请求生命周期内消失。46 份样本用于越过软上限；512 MiB 来源硬上限、128 MiB 封面硬上限及“受保护项无法淘汰”的拒绝分支由辅助逻辑测试覆盖，除非另有可控并发租约工具，否则不得把本节写成 Android 硬上限运行态通过。
 - 任何无法安全淘汰的拒绝必须以 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 开头，且数据库、旧封面与旧缓存保持一致。
 
 ## 5. 中断、重启与孤儿恢复
@@ -199,7 +199,7 @@ if ($LASTEXITCODE -ne 0) { throw 'fallocate unavailable or failed; do not substi
 & $Adb -s $Serial shell df -k /data
 ```
 
-保留约 12 MiB 后，导入一份 8,521,993 字节样本并触发封面写入；如系统预留使操作仍成功，以 1 MiB 为步长增加同一个 fill 文件，但始终保留至少 4 MiB，且每一步都重新执行 `df -k /data`。观察到目标错误后立即清理：
+保留约 12 MiB 后，把固定样本复制成一个从未导入的新文件名，再通过 picker 导入并触发封面写入。每次调整 fill 文件后都必须换用新的来源文件名；如果前一次导入成功，先在应用内删除该书，并通过第 3 节快照确认对应 `source_cache_entries` 行和 `.source` 文件已删除，避免缓存命中冒充新的磁盘写入。如系统预留使操作仍成功，以 1 MiB 为步长增加同一个 fill 文件，但始终保留至少 4 MiB，且每一步都重新执行 `df -k /data`。观察到目标错误后立即清理：
 
 ```powershell
 & $Adb -s $Serial shell rm -f /data/local/tmp/epubstart-fill.bin
@@ -249,8 +249,10 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 | 项目 | 必须记录 | 通过条件 | 当前状态 |
 | --- | --- | --- | --- |
 | 空白安装 | APK hash、镜像/AVD、`df`、`du`、日志 | 可启动且私有目录为空/一致 | 阻塞：无可运行 AVD |
-| 来源软/硬预算 | 文件与 DB 字节、LRU 顺序、活动读取 | 256/512 MiB 闭环、稳定错误 | 辅助逻辑已测；Android 阻塞 |
-| 封面软/硬预算 | 文件与 `cover_cache_path` | 64/128 MiB 闭环、无孤儿 | 辅助逻辑已测；Android 阻塞 |
+| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 辅助逻辑已测；Android 阻塞 |
+| 来源硬预算 | 受保护项总量、拒绝前缀 | 512 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；无并发租约工具时 Android 不签发 |
+| 封面软预算 | 文件与 `cover_cache_path` | 64 MiB 回落、无孤儿 | 辅助逻辑已测；Android 阻塞 |
+| 封面硬预算 | 并发候选总量、拒绝前缀 | 128 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；无并发候选工具时 Android 不签发 |
 | 中断/重启 | 目标步骤日志、重启前后快照 | 无 `.tmp`/半提交，可重试 | 辅助逻辑已测；Android 阻塞 |
 | ENOSPC | fill 大小、`df`、错误前缀、DB 校验 | 稳定拒绝并保留旧状态 | Android 阻塞 |
 | 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | Android 阻塞 |

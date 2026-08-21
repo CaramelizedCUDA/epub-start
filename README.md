@@ -6,7 +6,7 @@
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；完整 Gradle lint 因四个 Google Maven 制品无法在受限网络中取得而阻塞，低存储/长期压力则等待受控 AVD。前端 WebView 如何消费资源 URL 不属于 B0/B1 后端完成判定。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；完整 Gradle lint 因四个 Google Maven 制品在当前网络发生 TLS 握手中断而阻塞，低存储/长期压力则等待受控 AVD。前端 WebView 如何消费资源 URL 不属于 B0/B1 后端完成判定。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 

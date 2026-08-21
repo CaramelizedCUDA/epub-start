@@ -23,8 +23,8 @@
 
 ### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：B2 Android 制品/缓存代码收口后 175/175 通过，exit 0（当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移、批注覆盖，以及来源缓存持久 LRU/活动租约/软硬上限/重启协调、封面原子候选/事务清理/软硬上限、统一 896 MiB 硬预算和存储耗尽稳定映射；本次新增 17 个测试均完成目标步骤变红自证。未测：桌面 legacy shell/EPUB.js 与 Android WebView 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
-- `cargo fmt --check`、`cargo check`、`npm.cmd run build`、`npm.cmd run audit:unwrap` 与 `npm.cmd run audit:android-release`：当前工作区通过（2026-08-18）。`npm.cmd run tauri -- build --no-bundle` 也通过并生成 Windows release exe；带 installer 的 `tauri build` 在应用编译成功后因当前沙箱无法下载 WiX 3.14（os error 10013）停止，未形成新的 MSI。`audit:android-release` 只证明当前静态制品/基线，不证明完整 Gradle lint、签名或设备运行态。
+- `cargo test`：B2 Android 制品/缓存最终复核后 181/181 通过，exit 0（2026-08-22 当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移、批注覆盖，以及来源缓存持久 LRU/活动租约/软硬上限/重启协调、原子写入失败清理、租约与淘汰竞态闭合，封面原子候选/并发预算/元数据一致性/软硬上限，统一 896 MiB 硬预算和 SQLite/文件系统存储耗尽稳定映射；初始收口新增 17 个测试，本次复核再新增 6 个并强化 1 个，均完成目标步骤变红自证。未测：桌面 legacy shell/EPUB.js 与 Android WebView 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
+- `cargo fmt --check`、`cargo check`、`npm.cmd run build`、`npm.cmd run audit:unwrap` 与 `npm.cmd run audit:android-release`：当前工作区通过（2026-08-22）。官方 arm64 release 命令完成最终 Rust release 编译，但完整 Gradle lint 在 `:tauri-android:generateReleaseLintModel` 因 Google Maven TLS 握手中断而无法取得四个 AndroidX 制品；随后显式跳过 lint model/vital 任务的 APK/AAB 打包成功，仅用于静态基线。`audit:android-release` 只证明当前静态制品/基线，不证明完整 Gradle lint、正式签名或设备运行态。
 
 ### Android 环境（B1 首次门禁已完成）
 
@@ -40,7 +40,7 @@
 ### 0.2.1 panic/unwrap/expect 与锁生命周期 — 通过
 
 - `panic!`、`todo!`、`unimplemented!`、`unreachable!`：生产代码 0 处（grep 全量确认）。
-- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 550 行（共 563 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
+- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 575 行（共 590 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
 - `.expect()`：生产代码仅 1 处，`lib.rs:106` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B2 保留现状即可。
 - 安全 unwrap 变体（`unwrap_or`/`unwrap_or_else`/`unwrap_or_default`）均为带默认值的非 panic 形式，合格。
 - 锁与生命周期：`AppState.db: Arc<Mutex<Connection>>` 由来源/封面服务共享，业务服务仍经 `lock_db` 辅助函数获取并把 poisoning 映射为错误；`source/cache.rs` 的 `active: Mutex<HashMap<String, Weak<()>>>` 同样映射 poisoning，租约由 `Arc<()>` 守护。未发现未受控线程或租约生命周期漏洞。
@@ -129,8 +129,8 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 | 边界 | 实现位置 | 状态 |
 | --- | --- | --- |
 | 来源校验 | `platform/desktop.rs`（绝对路径+存在+可读+扩展名）、`platform/android.rs`（content:// 校验 + 插件持久权限复核）、`platform/mod.rs`（共享 SAF 纯逻辑：picker 响应转换 + content:// 非空 authority 校验，2026-08-14） | 辅助逻辑：桌面 `validate_selected_source` 3 个测试 + SAF 9 个测试（均变红自证，2026-08-14）；未测：自动化 Android Provider/撤销链（Kotlin 真机行为，双机探查为准） |
-| Reader 租约 | `source/reader.rs` + `source/cache.rs`：SourceLease + Arc 守护；桌面直读文件、Android 私有缓存原子复制、持久真实 LRU、256/512 MiB 与启动协调 | 辅助逻辑：原 5 个租约/临时文件测试及 B2 新增 8 个 LRU/预算/重启测试均有变红自证；Android 自动化 FD、真实淘汰/ENOSPC/恢复仍阻塞 |
-| 封面缓存 | `CoverCache` + `formats/epub`：64/128 MiB、原子候选、旧封面保护、事务化缺失路径与孤儿清理 | 辅助逻辑：5 个 CoverCache、2 个 EPUB 写入/ENOSPC、1 个服务传播测试均有变红自证；asset 命中不可观测，Android 真实满盘/重启仍阻塞 |
+| Reader 租约 | `source/reader.rs` + `source/cache.rs`：SourceLease + Arc 守护；桌面直读文件、Android 私有缓存原子复制、持久真实 LRU、256/512 MiB 与启动协调 | 辅助逻辑：`source::cache::tests` 18/18，通过租约先注册且淘汰持有同一 registry 锁直到文件删除来闭合竞态；Android 自动化 FD、真实淘汰/ENOSPC/恢复仍阻塞 |
+| 封面缓存 | `CoverCache` + `formats/epub`：64/128 MiB、原子候选、旧封面保护、事务化缺失路径与孤儿清理 | 辅助逻辑：`cover_cache_service::tests` 8/8，含并发候选共享硬预算和元数据失败不先删文件；asset 命中不可观测，Android 真实满盘/重启仍阻塞 |
 | ZIP 预算 | `formats/epub/mod.rs`：5000 条目、2 MiB 控制文件、50 MiB 单条目、2 GiB 总解压、200:1 压缩比、`checked_add` 溢出检查、`take()` 包装 | 辅助逻辑已测压缩比与超限；Android 已测持久 URI 的 8 MiB 章节拒绝和缓存重拷贝；未测低存储与完整大文件导入压力 |
 | 协议路径 | `services/format_service.rs::normalize_entry_path`：拒绝 `..`、`\`、`/` 开头、空段；Components 规范化二次检查 | 辅助逻辑已测路径规范化；Android 后端路由有初步设备探查；前端消费方式不在本审计范围 |
 | MIME | `formats/epub/mod.rs::mime_for_path` 扩展名白名单；响应带 `X-Content-Type-Options: nosniff` | 辅助逻辑已测扩展名映射；Android 后端响应有初步设备探查；WebView 渲染不在本审计范围 |
@@ -148,6 +148,14 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **来源缓存（新增 8 个测试）**：覆盖命中推进持久时钟、最终文件真实大小、持久 LRU 不受 mtime 误导、活动租约跳过、受保护项超过 hard limit 的稳定错误、256/512 MiB 常量、重启孤儿/缺失协调、重启重新执行预算。变红自证包括临时移除活动判断、忽略 hard overflow、把软上限改为 255 MiB，以及在实现 seam 缺失/旧启动行为下的编译失败或目标断言失败；恢复后来源缓存 15/15。
 - **封面与统一预算（新增 9 个测试）**：`CoverCache` 覆盖启动孤儿/缺失路径、按旧到新回落软上限、候选+旧封面保护、受保护 hard limit、失败导入只清候选；EPUB 覆盖原子候选不覆盖旧文件与 ENOSPC 映射；library service 覆盖资源错误不降级为书籍状态；`resource_budget` 冻结 512+128+256=896 MiB。变红自证分别通过缺失新 seam 的编译失败、保留旧封面/禁用 hard 判断、恢复旧错误映射和临时把封面 hard 上限改为 129 MiB 触发。恢复后完整套件 175/175。
 - **已测/未测边界**：上述均为辅助逻辑与静态制品检查。完整 Gradle arm64 release 在 `:tauri-android:generateReleaseLintModel` 阶段需要四个未缓存 AndroidX runtime 制品；正常联网重试在当前沙箱以 `Permission denied: getsockopt` 失败，因此跳过 lint model/vital 任务生成的 APK/AAB不得称为完整 release 候选。当前 ADB 仅发现序列号 `88477008` 为 `unauthorized`，未向设备写入；当前无可运行 AVD，所以空白安装、code/data、真实淘汰、中断、ENOSPC、清理重建、长期/2 GiB 和 page/journal/WAL 峰值统一标记 Android 环境“阻塞”。可执行步骤见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。桌面端缓存算法由自动化覆盖，本次未做新的桌面 GUI 运行态，标记“待人工验证”。
+
+### 0.2.14 B2 收口复核（2026-08-22）— 一致性缺口已修复，运行态边界不变
+
+- **来源竞态与失败一致性**：Android `acquire` 在检查缓存前注册 `SourceLease` guard；淘汰持有同一活动 registry 锁直至元数据先删除、来源和指纹文件后删除，关闭“检查不活跃后、删文件前新租约进入”的窗口。原子复制和指纹写入失败会清理 `.tmp`；SQLite `SQLITE_FULL` 映射为稳定 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。
+- **封面并发与失败一致性**：`CoverMaintenance` 对尚未持久化的并发候选和旧封面做引用计数保护，所有重叠 admission 共用 128 MiB 硬预算；淘汰先清除数据库引用再删文件，数据库失败保留文件和引用，文件删除失败留下可由启动协调清理的孤儿，不产生悬空路径。
+- **本轮红→绿清单**：`failed_source_metadata_eviction_keeps_cache_file_and_row` 在旧顺序下因文件已被删除而红；`sqlite_full_uses_stable_source_cache_resource_error` 在临时禁用 DiskFull 分支时得到 `INTERNAL_ERROR:` 而红；`failed_atomic_source_copy_removes_temporary_file` 在原子 helper 尚不存在时编译红。`overlapping_cover_admissions_share_one_hard_budget` 在第二候选错误返回 `Ok(())` 时红；`failed_cover_metadata_eviction_keeps_file_and_reference` 在文件先删时红；`sqlite_full_uses_stable_cover_cache_resource_error` 在 mapper 尚不存在时编译红。强化后的 `rebuildable_data_budgets_are_frozen_below_one_gibibyte` 在旧常量为 1 GiB、预期实际总和 896 MiB 时红。逐项恢复后定向测试、来源 18/18、封面 8/8 和完整 181/181 均绿。
+- **release 门禁复核**：旧脚本会放过注入为 `0.0.0-injected` 的 Node 基线，补齐 Node/npm/rustc/cargo/JDK/Tauri CLI/Tauri crate 后同一注入按预期失败；AAB 的 ABI 集与打包 ELF 现独立于 APK 审计，临时把预期 ABI 改为 x86_64 后门禁按预期失败。最终静态基线收紧为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B，增强门禁通过。
+- **环境边界**：官方 arm64 release 命令完成当前代码的 Rust release 编译；完整 Gradle lint 仍在相同四个 AndroidX 制品处失败，本次可联网错误为 Google Maven “Remote host terminated the handshake”，不再归因于用户禁止联网。显式跳过 lint 后 APK/AAB 打包成功，但不签发完整 release 候选。未连接或写入 Android 设备；无可运行 AVD，Android 低存储/中断/长期压力仍按延期验收包阻塞。验收包已改用仓库 Gradle Wrapper，要求每次 ENOSPC 尝试使用新 locator，并区分软上限运行态与仅有辅助逻辑覆盖的受保护 hard-limit 分支。
 
 ## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 
@@ -224,8 +232,8 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 | 6 | Android 官方构建不可从干净 scaffold 复现 | `src-tauri/gen/android`、Tauri Android 生成/构建链 | 高/阻塞 B0 完成证明 | **已关闭**（2026-08-14）：干净再生成 scaffold（保留 EpubSafPlugin.kt）、无本地绕过，官方命令 exit 0 产出 APK/AAB | `npm.cmd run tauri -- android build --debug --target aarch64` |
 | 7 | Android 导入偶发卡住 | `platform/android.rs`、SAF 插件/来源缓存链 | 高/阻塞 B1 实机门禁 | **已关闭**（2026-08-14）：根因 tauri#14994 MainPipe 唤醒，`select_epub_sources` 返回前 200ms sleep workaround；黑鲨 30 轮循环导入无卡住 | 双机后端/平台验收 |
 | 8 | V1/V3 回滚测试缺少变红自证 | `src-tauri/src/db/migrations.rs` | 中/阻塞 B0 完成证明 | **已补证**（2026-08-14）：V1/V3 分别在目标步骤注入 `COMMIT;` 破坏回滚并确认目标断言变红（V1: `books was not rolled back`@640；V3: `font_size_px` 列@682），恢复后 9/9 与完整套件通过 | `cargo test db::migrations` + `cargo test` |
-| 9 | Android release 制品缺少可重复分项基线 | Gradle/Tauri release 构建链、体积报告脚本 | 中/阻塞 B3 冻结 | **代码/静态制品已关闭（2026-08-18）**：目录冲突关闭，arm64 APK/AAB/native/dist 基线与绝对/10%/ABI/ELF/payload 门禁已建立。未关闭：完整 Gradle lint 的四个 AndroidX runtime 制品受当前沙箱网络权限阻塞，正式签名和安装后 code/data 留待 B3/AVD | `npm run audit:android-release` + 完整 Gradle lint + AVD 分项 |
-| 10 | 来源/封面缓存缺少真实 LRU 与完整软硬预算 | `source/cache.rs`、`source_cache_entries`、`CoverCache` | 中/长期膨胀风险 | **实现与辅助逻辑已关闭（2026-08-18）**：来源 256/512 MiB、持久真实 LRU、活动租约、重启协调；封面 64/128 MiB、原子候选、事务/孤儿清理；合计硬上限 896 MiB。未关闭：Android ENOSPC、中断/重启、长期压力和真实分项占用 | 17 个新增变红自证测试 + `ANDROID_STORAGE_ACCEPTANCE.md` |
+| 9 | Android release 制品缺少可重复分项基线 | Gradle/Tauri release 构建链、体积报告脚本 | 中/阻塞 B3 冻结 | **代码/静态制品已关闭并于 2026-08-22 复核**：目录冲突关闭，最终 arm64 APK/AAB/native/dist 基线与绝对/10%/完整工具链/APK+AAB ABI/ELF/payload 门禁已建立。未关闭：完整 Gradle lint 的四个 AndroidX runtime 制品因 Google Maven TLS 握手中断仍不可取得，正式签名和安装后 code/data 留待 B3/AVD | `npm run audit:android-release` + 完整 Gradle lint + AVD 分项 |
+| 10 | 来源/封面缓存缺少真实 LRU 与完整软硬预算 | `source/cache.rs`、`source_cache_entries`、`CoverCache` | 中/长期膨胀风险 | **实现与辅助逻辑已关闭并于 2026-08-22 复核**：来源 256/512 MiB、持久真实 LRU、无 TOCTOU 的活动租约保护、原子失败清理和重启协调；封面 64/128 MiB、并发候选总预算、元数据优先淘汰与孤儿清理；合计实际硬预算 896 MiB、总 ceiling 1 GiB。未关闭：Android ENOSPC、中断/重启、长期压力和真实分项占用 | 初始 17 个 + 复核新增 6 个/强化 1 个变红自证测试 + `ANDROID_STORAGE_ACCEPTANCE.md` |
 
 ## 修复记录
 
@@ -249,3 +257,4 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 - 2026-08-17：B2 第五节第三项完成。标签模块新增 `list_series_tags` 与 `filter_books_by_tags`，同步 Rust/IPC/TypeScript 并保持 Command 薄适配；补齐系列标签重启读取、直接/继承标签 AND 筛选、稳定排序与书架隐私返回，修复标签组/同组标签唯一冲突误报内部错误。新增 4 个测试均完成目标变红自证；完整 `cargo test` 150/150，`audit:unwrap` 自动统计 426 行/433 次。桌面标签消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
 - 2026-08-18：B2 第五节第五项完成。`notes_service` 统一修剪创建/更新字段，拒绝空白起止 CFI、把空白 range 归一为 `NULL`，冻结 4,096/10,000/20,000 Unicode 字符边界、小写颜色和字面纯文本语义；新增真实文件数据库关闭重开后的全字段恢复测试，并把删书级联改为通过服务 seam 观察。新增 3 个、强化 2 个测试，5 组均完成目标变红自证；notes 专项 21/21、完整 `cargo test` 158/158，`audit:unwrap` 自动统计 455 行/462 次。桌面 EPUB.js 批注运行态待 B3/F2 人工验证，Android WebView/设备矩阵阻塞至 B3/F2。
 - 2026-08-18：B2 Android 制品/缓存代码收口完成。修复 desktop dialog 与外部 Android 子项目 build 目录冲突，固定 NDK 并建立 profile、arm64 release 基线和静态体积/ABI/ELF/payload 门禁；来源缓存实施 256/512 MiB、持久真实 LRU、活动租约、启动协调，封面实施 64/128 MiB、原子候选、事务/孤儿清理，统一可重建数据硬上限 896 MiB。新增 17 个测试与 release/profile 静态门禁均完成目标变红自证；完整 `cargo test` 175/175，`audit:unwrap` 550 行/563 次。完整 Gradle lint 的四个 AndroidX runtime 制品受当前沙箱网络权限阻塞；Android 运行态等待固定 AVD，未签发 B2 总完成证明。
+- 2026-08-22：B2 收口复核修复来源租约/淘汰 TOCTOU、来源临时文件残留、来源/封面 SQLite 满盘稳定映射、封面文件先删后改元数据和并发候选未共享硬预算；实际硬预算常量由误称 1 GiB 改为 896 MiB，并保留独立 1 GiB ceiling。新增 6 个测试、强化 1 个预算测试，逐项目标变红后恢复，完整 `cargo test` 181/181；`audit:unwrap` 自动统计 575 行/590 次。release 门禁补齐完整工具链和 AAB ABI/ELF，最终静态基线收紧；完整 Gradle lint 因 Google Maven TLS 握手中断仍阻塞，Android 运行态仍等待固定 AVD，B2 总完成标准保持未勾选。

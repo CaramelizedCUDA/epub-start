@@ -8,7 +8,7 @@
  *   node scripts/audit-android-release.mjs --baseline path/to/baseline.json
  *   node scripts/audit-android-release.mjs --readelf path/to/llvm-readelf
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
@@ -36,6 +36,8 @@ const DEFAULT_BASELINE = join(
   'release-baselines',
   'android-arm64-release.json',
 );
+const PACKAGE_LOCK = join(ROOT, 'package-lock.json');
+const CARGO_LOCK = join(ROOT, 'src-tauri', 'Cargo.lock');
 const APK = join(
   ROOT,
   'src-tauri',
@@ -138,6 +140,23 @@ function requirePath(path, kind) {
   if (!existsSync(path)) {
     throw new Error(`missing ${kind}: ${relative(ROOT, path)}`);
   }
+}
+
+function commandVersion(command, args, pattern, label) {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (result.error) {
+    throw new Error(`cannot run ${label}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`${label} exited with status ${result.status}`);
+  }
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  const match = output.match(pattern);
+  if (!match) throw new Error(`cannot read ${label} version`);
+  return match[1];
 }
 
 function directorySize(path) {
@@ -244,7 +263,10 @@ function findReadelf(explicitPath, ndkVersion) {
   for (const path of direct) if (existsSync(path)) return path;
 
   const ndkRoots = [process.env.ANDROID_NDK_HOME, process.env.NDK_HOME].filter(Boolean);
-  for (const sdk of [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT].filter(Boolean)) {
+  const sdkRoots = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT].filter(Boolean);
+  if (process.env.LOCALAPPDATA) sdkRoots.push(join(process.env.LOCALAPPDATA, 'Android', 'Sdk'));
+  if (process.platform === 'win32') sdkRoots.push('D:\\Android\\Sdk');
+  for (const sdk of sdkRoots) {
     ndkRoots.push(join(sdk, 'ndk', ndkVersion));
   }
   for (const root of ndkRoots) {
@@ -283,6 +305,8 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   for (const [path, kind] of [
     [args.baseline, 'baseline'],
+    [PACKAGE_LOCK, 'npm package lock'],
+    [CARGO_LOCK, 'Cargo lock'],
     [APK, 'arm64 release APK'],
     [AAB, 'arm64 release AAB'],
     [RUST_NATIVE, 'Rust release native library'],
@@ -304,7 +328,22 @@ function main() {
   const rootGradle = readFileSync(ROOT_GRADLE, 'utf8');
   const rustPlugin = readFileSync(RUST_PLUGIN, 'utf8');
   const wrapper = readFileSync(WRAPPER_PROPERTIES, 'utf8');
+  const packageLock = readJson(PACKAGE_LOCK);
+  const cargoLock = readFileSync(CARGO_LOCK, 'utf8');
+  const npmCommand = process.platform === 'win32'
+    ? ['cmd.exe', ['/d', '/s', '/c', 'npm.cmd --version']]
+    : ['npm', ['--version']];
   const observedToolchain = {
+    node: process.versions.node,
+    npm: commandVersion(npmCommand[0], npmCommand[1], /(\d+\.\d+\.\d+)/, 'npm'),
+    rustc: commandVersion('rustc', ['--version'], /rustc\s+(\d+\.\d+\.\d+)/, 'rustc'),
+    cargo: commandVersion('cargo', ['--version'], /cargo\s+(\d+\.\d+\.\d+)/, 'cargo'),
+    jdk: commandVersion(
+      'java',
+      ['--version'],
+      /(?:openjdk|java)(?:\s+version)?\s+"?(\d+\.\d+\.\d+)/i,
+      'JDK',
+    ),
     compileSdk: Number(capture(appGradle, /compileSdk\s*=\s*(\d+)/, 'compileSdk')),
     targetSdk: Number(capture(appGradle, /targetSdk\s*=\s*(\d+)/, 'targetSdk')),
     ndk: capture(appGradle, /ndkVersion\s*=\s*"([^"]+)"/, 'ndkVersion'),
@@ -314,6 +353,12 @@ function main() {
       'Android Gradle Plugin version',
     ),
     gradle: capture(wrapper, /gradle-([0-9.]+)-bin\.zip/, 'Gradle version'),
+    tauriCli: packageLock.packages?.['node_modules/@tauri-apps/cli']?.version,
+    tauri: capture(
+      cargoLock,
+      /\[\[package\]\]\s+name = "tauri"\s+version = "([^"]+)"/s,
+      'Tauri crate version',
+    ),
   };
 
   const failures = [];
@@ -338,6 +383,9 @@ function main() {
   }
   if (!rustPlugin.includes('release = profile != "debug"')) {
     failures.push('Rust Gradle profile does not use a release native library');
+  }
+  if (!observedToolchain.tauriCli) {
+    failures.push('cannot read Tauri CLI version from package-lock.json');
   }
   for (const [key, value] of Object.entries(observedToolchain)) {
     if (baseline.toolchain[key] !== value) {
@@ -366,6 +414,14 @@ function main() {
   if (runtimeAbis.size !== 1 || !runtimeAbis.has('arm64-v8a')) {
     failures.push(`APK ABI set is not arm64-only: ${[...runtimeAbis].join(', ') || '(none)'}`);
   }
+  const bundleAbis = new Set(
+    aabZip.entries
+      .map((entry) => entry.name.match(/^[^/]+\/lib\/([^/]+)\/[^/]+\.so$/)?.[1])
+      .filter(Boolean),
+  );
+  if (bundleAbis.size !== 1 || !bundleAbis.has('arm64-v8a')) {
+    failures.push(`AAB ABI set is not arm64-only: ${[...bundleAbis].join(', ') || '(none)'}`);
+  }
 
   const forbiddenEntry = /(?:^|\/)(?:cache|source-cache|fixtures?|test-?data)(?:\/|$)|\.epub$|(?:^|\/)(?:Users|home)\//i;
   for (const [kind, entries] of [
@@ -380,35 +436,50 @@ function main() {
 
   let forbiddenSections = [];
   let elfMachine = '(not checked)';
+  let aabForbiddenSections = [];
+  let aabElfMachine = '(not checked)';
   const readelf = findReadelf(args.readelf, baseline.toolchain.ndk);
   if (!readelf) {
     failures.push(
       'llvm-readelf not found; set ANDROID_HOME/ANDROID_NDK_HOME or pass --readelf',
     );
-  } else if (apkNative) {
+  } else {
     const auditDir = mkdtempSync(join(tmpdir(), 'epub-start-release-audit-'));
-    const nativePath = join(auditDir, 'libepub_start_lib.so');
     try {
-      writeFileSync(nativePath, extractZipEntry(apkZip, apkNative));
-      const output = execFileSync(
-        readelf,
-        ['--file-header', '--sections', '--wide', nativePath],
-        { encoding: 'utf8' },
-      );
-      elfMachine = output.match(/Machine:\s+(.+)/)?.[1]?.trim() ?? '(unknown)';
-      const sections = [...output.matchAll(/^\s*\[\s*\d+\]\s+(\S+)/gm)].map(
-        (match) => match[1],
-      );
-      forbiddenSections = sections.filter(
-        (section) =>
-          section.startsWith('.debug') ||
-          ['.symtab', '.strtab', '.gdb_index', '.gnu_debuglink'].includes(section),
-      );
-      if (!/AArch64/i.test(elfMachine)) {
-        failures.push(`packaged native library machine is ${elfMachine}, expected AArch64`);
-      }
-      if (forbiddenSections.length > 0) {
-        failures.push(`packaged native library retains forbidden sections: ${forbiddenSections.join(', ')}`);
+      for (const [kind, zip, native, fileName] of [
+        ['APK', apkZip, apkNative, 'apk-libepub_start_lib.so'],
+        ['AAB', aabZip, aabNative, 'aab-libepub_start_lib.so'],
+      ]) {
+        if (!native) continue;
+        const nativePath = join(auditDir, fileName);
+        writeFileSync(nativePath, extractZipEntry(zip, native));
+        const output = execFileSync(
+          readelf,
+          ['--file-header', '--sections', '--wide', nativePath],
+          { encoding: 'utf8' },
+        );
+        const machine = output.match(/Machine:\s+(.+)/)?.[1]?.trim() ?? '(unknown)';
+        const sections = [...output.matchAll(/^\s*\[\s*\d+\]\s+(\S+)/gm)].map(
+          (match) => match[1],
+        );
+        const forbidden = sections.filter(
+          (section) =>
+            section.startsWith('.debug') ||
+            ['.symtab', '.strtab', '.gdb_index', '.gnu_debuglink'].includes(section),
+        );
+        if (kind === 'APK') {
+          elfMachine = machine;
+          forbiddenSections = forbidden;
+        } else {
+          aabElfMachine = machine;
+          aabForbiddenSections = forbidden;
+        }
+        if (!/AArch64/i.test(machine)) {
+          failures.push(`${kind} packaged native library machine is ${machine}, expected AArch64`);
+        }
+        if (forbidden.length > 0) {
+          failures.push(`${kind} packaged native library retains forbidden sections: ${forbidden.join(', ')}`);
+        }
       }
     } finally {
       rmSync(auditDir, { recursive: true, force: true });
@@ -456,7 +527,8 @@ function main() {
 
   console.log('Android arm64 release audit');
   console.log(`Baseline                 ${relative(ROOT, args.baseline)}`);
-  console.log(`Toolchain                Gradle ${observedToolchain.gradle}, AGP ${observedToolchain.androidGradlePlugin}, NDK ${observedToolchain.ndk}`);
+  console.log(`Toolchain                Node ${observedToolchain.node}, npm ${observedToolchain.npm}, Rust ${observedToolchain.rustc}, JDK ${observedToolchain.jdk}`);
+  console.log(`Android toolchain        Gradle ${observedToolchain.gradle}, AGP ${observedToolchain.androidGradlePlugin}, NDK ${observedToolchain.ndk}, Tauri ${observedToolchain.tauri}`);
   console.log('');
   printMetric('APK', metrics.apkBytes, `  growth ${growth.apkBytes?.toFixed(2)}%`);
   printMetric('AAB', metrics.aabBytes, `  growth ${growth.aabBytes?.toFixed(2)}%`);
@@ -468,8 +540,9 @@ function main() {
   }
   console.log('');
   console.log(`APK ABI set              ${[...runtimeAbis].join(', ') || '(none)'}`);
-  console.log(`Packaged ELF machine     ${elfMachine}`);
-  console.log(`Forbidden ELF sections  ${forbiddenSections.length === 0 ? 'none' : forbiddenSections.join(', ')}`);
+  console.log(`AAB ABI set              ${[...bundleAbis].join(', ') || '(none)'}`);
+  console.log(`APK packaged ELF         ${elfMachine}; forbidden sections ${forbiddenSections.length === 0 ? 'none' : forbiddenSections.join(', ')}`);
+  console.log(`AAB packaged ELF         ${aabElfMachine}; forbidden sections ${aabForbiddenSections.length === 0 ? 'none' : aabForbiddenSections.join(', ')}`);
 
   if (failures.length > 0) {
     console.error('');
