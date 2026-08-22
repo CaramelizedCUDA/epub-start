@@ -148,7 +148,10 @@ pub fn release_source_permission<R: Runtime>(
 }
 
 pub fn epub_root_url(book_id: &str) -> String {
-    format!("epub://localhost/book/{book_id}/")
+    // Android WebView exposes Tauri custom URI schemes through the
+    // http://<scheme>.localhost origin. A bare `epub://` URL is rejected by
+    // Fetch before the registered Rust protocol handler can receive it.
+    format!("http://epub.localhost/book/{book_id}/")
 }
 
 fn validate_content_uri(source_locator: &str) -> Result<(), String> {

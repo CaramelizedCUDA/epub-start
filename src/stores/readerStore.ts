@@ -70,6 +70,32 @@ function throttledSave(bookId: string, cfi: string, progression: number) {
 
 const BOOK_OPEN_TIMEOUT_MS = 30_000;
 
+function normalizeEpubRequestUrl(url: string, epubRootUrl: string): string {
+  const httpEpubOrigin = /^https?:\/\/epub\.localhost\//.test(epubRootUrl)
+    ? epubRootUrl.match(/^https?:\/\/epub\.localhost/)?.[0] ?? null
+    : null;
+
+  if (httpEpubOrigin) {
+    const nativeEpubPath = url.match(/^epub:\/{2,3}localhost(\/.*)$/);
+    if (nativeEpubPath) {
+      return `${httpEpubOrigin}${nativeEpubPath[1]}`;
+    }
+    if (url.startsWith('null/')) {
+      return `${httpEpubOrigin}/${url.slice('null/'.length)}`;
+    }
+  }
+
+  if (url.startsWith('epub://') || url.startsWith('http://epub.localhost/')) {
+    return url;
+  }
+  if (url.startsWith('null/')) {
+    const rootOrigin = epubRootUrl.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/)?.[0];
+    if (rootOrigin) return `${rootOrigin}/${url.slice('null/'.length)}`;
+  }
+
+  return `${epubRootUrl}${url}`;
+}
+
 function loadTimeout(label: string): Promise<never> {
   return new Promise((_, reject) => {
     window.setTimeout(() => {
@@ -234,20 +260,12 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     try {
       book = ePub({
         requestMethod: async (url: string, type: string) => {
-          // EPUB.js uses `new URL("epub://...").origin` internally, which
-          // returns "null" in Chromium for non-standard schemes. This
-          // produces URLs like "null/book/{id}/META-INF/container.xml".
-          // Detect and repair these before fetching.
-          let finalUrl: string;
-          if (url.startsWith('epub://') || url.startsWith('http://epub.localhost/')) {
-            finalUrl = url;
-          } else if (url.startsWith('null/')) {
-            // Preserve the complete protocol path, including `book/{id}`.
-            finalUrl = url.replace(/^null\//, 'epub://localhost/');
-          } else {
-            // Relative path — join with root
-            finalUrl = `${epubRootUrl}${url}`;
-          }
+          // EPUB.js can lose the origin for non-standard schemes and hand
+          // back `null/...`, `epub://localhost/...`, or
+          // `epub:///localhost/...`. On Android/Windows Tauri maps this
+          // protocol through the HTTP localhost origin, so normalize those
+          // forms before Fetch sees them.
+          const finalUrl = normalizeEpubRequestUrl(url, epubRootUrl);
 
           const response = await fetch(finalUrl);
           const mime = response.headers.get('content-type') ?? '';

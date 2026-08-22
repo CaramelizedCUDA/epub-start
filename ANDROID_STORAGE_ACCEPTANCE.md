@@ -1,12 +1,14 @@
 # B2 Android 运行时存储延期验收包
 
-状态：**部分执行，尚未形成 Android 运行态通过证据**。
+状态：**部分执行，Android WebView 资源协议阻塞已修复；低存储与长期压力仍未完成**。
 
 本文件用于在后续具备受控 Android 虚拟设备时，关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
 
 2026-08-22 已在 `EpubStart_B2_API35`、`emulator-5554`、`ro.kernel.qemu=1` 的受控 AVD 上执行一轮部分验收。证据目录为 `D:\epub_start\target\android-b2-acceptance-20260822-184117`；正式 profile APK SHA-256 为 `BF60936AA6F7601CE5062656FAB644F038B6CE0C9194702E473BC820D1D45C4D`。本轮覆盖空白安装、46 份逐份导入、来源/封面预算观察、缺失缓存元数据协调以及孤儿/临时文件启动清理；共享存储输入在每份导入后删除，以避免与应用私有缓存同时占满受控 `/data`，因此不等同于“46 个输入文件长期留在共享目录”的压力路径。
 
-本轮未覆盖受控 ENOSPC、六轮累计 2 GiB、复制目标步骤中的 force-stop、中断重试和成功的 Android 阅读/后台索引。重新定位后打开图书时，日志记录 WebView 拒绝 `epub:///localhost/...`，提示 `URL scheme "epub" is not supported`；该阅读协议问题需单独修复，不能把导入或数据库快照计作活动读取通过。
+本轮未覆盖受控 ENOSPC、六轮累计 2 GiB、复制目标步骤中的 force-stop、中断重试和 Android 后台索引。重新定位后打开图书时，首轮日志记录 WebView 拒绝 `epub:///localhost/...`，提示 `URL scheme "epub" is not supported`；该问题已在后续复测中修复，但首轮导入/数据库快照不计作活动读取通过。
+
+2026-08-22 WebView 修复复测：Android 平台改用 Tauri 映射的 `http://epub.localhost/book/{book_id}/` 根地址，前端同时归一化 EPUB.js 可能返回的 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...` 形式。使用重新编译的 x86_64 profile Rust 库和 APK 在同一 `EpubStart_B2_API35` / `emulator-5554` AVD 安装；当前复测 APK SHA-256 为 `6F6361B97AD52D7CA46FDFACC90EBE03AE93808664E80E46830AD5B821E23759`。重新定位后打开固定 EPUB 并读取首屏成功；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`，回归命令输出 `WEBVIEW_REGRESSION=GREEN`，未出现 `URL scheme "epub" is not supported`、`Failed to fetch`、`epub:///` 或 `localhost:1420`。本次只证明单书基本阅读资源链，未把后台索引、长压、满盘或进程中断路径计作通过。
 
 ## 1. 固定环境与安全门
 
@@ -261,7 +263,7 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 | 项目 | 必须记录 | 通过条件 | 当前状态 |
 | --- | --- | --- | --- |
 | 空白安装 | APK hash、镜像/AVD、`df`、`du`、日志 | 可启动且私有目录为空/一致 | Android 已通过：新 profile 安装、`run-as`、实际根目录和无 `localhost:1420` |
-| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本后来源缓存 31 条/约 256 MiB；活动读取被 Android WebView URL scheme 阻塞 |
+| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本后来源缓存 31 条/约 256 MiB；Android 单书首屏资源读取已通过，后台索引与压力链路未执行 |
 | 来源硬预算 | 受保护项总量、拒绝前缀 | 512 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
 | 封面软预算 | 文件与 `cover_cache_path` | 64 MiB 回落、无孤儿 | 部分：46 个封面约 54.1 MB，未越过 64 MiB 触发淘汰 |
 | 封面硬预算 | 并发候选总量、拒绝前缀 | 128 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
@@ -270,7 +272,7 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 | 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | 全量缓存目录重建未执行；缺失文件/孤儿协调已通过 |
 | 长期/2 GiB | 自动计算累计字节、六轮快照 | 无泄漏/损坏/永久任务 | Android 阻塞 |
 
-本轮最终数据库快照为：`integrity_check=ok`、`books=46`、`source_cache_entries=31`、来源缓存数据库账面 `264,181,783` 字节、来源缓存实体文件 62 个、封面实体 46 个/`54,084,201` 字节；`search_documents=0` 与 `search_index_state=0`，因为 Android 阅读资源协议尚未打通。
+本轮最终数据库快照为：`integrity_check=ok`、`books=46`、`source_cache_entries=31`、来源缓存数据库账面 `264,181,783` 字节、来源缓存实体文件 62 个、封面实体 46 个/`54,084,201` 字节；`search_documents=0` 与 `search_index_state=0`。该快照来自 WebView 修复前的导入/协调轮，不作为修复后后台索引证据。
 
 最终结论必须分别写：
 

@@ -2,11 +2,11 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码收口；受控虚拟设备已完成一轮部分存储验收，但完整 Gradle release lint、ENOSPC/长期压力和 Android 阅读资源协议仍未收口，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码收口；受控虚拟设备已完成一轮部分存储验收，Android WebView 资源协议已修复并通过单书首屏回归，但完整 Gradle release lint、ENOSPC/长期压力和后台索引仍未收口，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；完整 Gradle lint 因四个 Google Maven 制品在当前网络发生 TLS 握手中断而阻塞，受控 AVD 已完成空白安装、46 份导入和缓存协调的部分证据，但 ENOSPC/长期压力及 Android `epub` 资源 URL 仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；完整 Gradle lint 因四个 Google Maven 制品在当前网络发生 TLS 握手中断而阻塞，受控 AVD 已完成空白安装、46 份导入、缓存协调和 WebView 单书首屏读取，但 ENOSPC/长期压力及后台索引仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
@@ -17,7 +17,7 @@
 - [ROADMAP.md](ROADMAP.md)：阶段边界与冻结区。
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
 - [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论与缺口清单（2026-08-14）。
-- [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力延期验收包；已完成部分运行态执行，完整通过证据仍待补齐。
+- [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力延期验收包；已完成部分运行态执行及 WebView 单书首屏回归，完整通过证据仍待补齐。
 
 若文档间存在冲突，以职责更专门的文档为准：依赖与命令以本文件为准，目录职责以架构文档为准，表字段以数据库文档为准，Command 签名和错误语义以 IPC 文档为准。
 
@@ -56,7 +56,7 @@ npm run audit:android-release
 npm run tauri build
 ```
 
-需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。`audit:android-release` 只审计已经生成的 arm64 release APK/AAB、原生库与 `dist`，不会自行构建或证明 Android 运行态。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建不能替代 Android 验收，普通模拟器也不能替代真实设备上的 SAF Provider、持久权限、OEM 进程回收、WebView、性能和手势证据。由于现有真机无法安全构造近满存储，B2 的 ENOSPC/SQLite 满盘、长期/2 GiB 压力及重启清理允许延期到固定 API、受控 `/data` 容量的可复现 Android 虚拟设备执行；该例外不外推到其他实机门禁。B1 首次真实设备来源链门禁已经完成；B2 已完成搜索任务、缓存辅助逻辑、Android 制品检查以及一轮受控 AVD 的空白安装/导入/缓存协调，低存储、长期压力、SQLite page/WAL 运行态和 Android `epub` 资源 URL 仍待按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 执行，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
+需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。`audit:android-release` 只审计已经生成的 arm64 release APK/AAB、原生库与 `dist`，不会自行构建或证明 Android 运行态。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建不能替代 Android 验收，普通模拟器也不能替代真实设备上的 SAF Provider、持久权限、OEM 进程回收、WebView、性能和手势证据。由于现有真机无法安全构造近满存储，B2 的 ENOSPC/SQLite 满盘、长期/2 GiB 压力及重启清理允许延期到固定 API、受控 `/data` 容量的可复现 Android 虚拟设备执行；该例外不外推到其他实机门禁。B1 首次真实设备来源链门禁已经完成；B2 已完成搜索任务、缓存辅助逻辑、Android 制品检查以及一轮受控 AVD 的空白安装/导入/缓存协调和 WebView 单书首屏读取，低存储、长期压力、SQLite page/WAL 运行态和后台索引仍待按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 执行，B3 再执行发布候选回归，详细矩阵见 [ROADMAP.md](ROADMAP.md)。
 
 ## 测试 EPUB
 
@@ -79,7 +79,7 @@ npm run tauri build
 
 - React 负责 UI 与 EPUB.js iframe 渲染；Rust 负责文件、ZIP/XML、SQLite、权限和自定义协议。
 - 前端只通过 Tauri `invoke` 访问本地数据，必须处理 `Result<T, String>` 的错误结果。
-- EPUB ZIP 内部资源统一由 Rust 的 `epub://` 自定义协议提供，不能将 `asset://` 当作 ZIP 文件读取器。
+- EPUB ZIP 内部资源统一由 Rust 的 `epub` 协议处理，不能将 `asset://` 当作 ZIP 文件读取器；Windows/Android WebView 通过 `http://epub.localhost/...` 映射，其他桌面平台保留 `epub://localhost/...` 形式。
 - P3 解锁后，外层 ZIP 只能作为导入分发容器，或在内容全为受支持图片时以 CBZ 漫画语义导入；项目不得新增 `BookFormat::Zip`。当前 `zip` crate 只批准用于 EPUB 与既有安全读取，不代表通用 ZIP/CBZ 已进入实现范围。
 - 用户明确删除图书时会按数据库契约级联删除进度与批注；之后重新导入属于新记录。数据库中仍存在的同 `source_locator` 记录会复用原 `book_id`；文件移动后，通用导入也只会按指纹恢复唯一匹配的 `missing/error` 记录，多候选时拒绝猜测。
 - 每次工作从 [TODO.md](TODO.md) 第一个未完成且无外部阻塞的 `[ ]` 任务开始，并满足该任务的完成标准后再勾选。后端 B0–B3 未通过前，禁止新增前端功能或视觉优化；仅允许为 IPC 契约同步、类型检查、安全修复和构建阻塞进行最小前端改动。

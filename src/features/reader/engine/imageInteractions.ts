@@ -313,9 +313,10 @@ function resolveImageTarget(
   }
   if (!entryPath) return null;
 
-  // 用平台层抽象的 epubRootUrl 构造 displayUrl（Windows: http://epub.localhost/...;
-  // Android: epub://localhost/...），确保外层 React <img> 能被 webview 正确加载。
-  // 硬编码 epub:// 在 Windows WebView2 对 <img> 资源加载有 edge case。
+  // 用平台层抽象的 epubRootUrl 构造 displayUrl（Windows/Android:
+  // http://epub.localhost/...；其他桌面平台保留 epub://localhost/...），
+  // 确保外层 React <img> 能被 webview 正确加载。硬编码 epub:// 在 Windows
+  // WebView2 和 Android WebView 对资源加载都有 edge case。
   const displayUrl = `${epubRootUrl}${entryPath}`;
 
   return {
