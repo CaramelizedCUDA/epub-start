@@ -98,7 +98,7 @@
 - [x] 自动化覆盖缓存命中时间、真实文件大小、持久 LRU、活动租约、硬上限、重启预算、孤儿/缺失协调、原子候选、失败清理、并发候选与 ENOSPC/SQLite full 稳定映射；初始新增 17 个测试，复核新增 6 个并强化 1 个，均完成目标步骤变红→恢复变绿，完整套件 181/181。未覆盖 Android 真实磁盘、进程和文件系统行为。
 - [x] 保持缓存统计/清理为后端内部维护，不新增公开 Command 或 stub；V2 字段足够，本次无迁移。
 - [ ] **外部环境阻塞：** 完整 Gradle arm64 release lint 需要下载 `emoji2-views-helper:1.2.0`、`emoji2:1.2.0`、`lifecycle-process:2.4.1`、`concurrent-futures:1.0.0`；2026-08-22 正常联网重试由 Google Maven TLS 握手中断（`Remote host terminated the handshake`）。跳过 lint model/vital 任务的 APK/AAB 仅用于体积/ELF 门禁，不签发完整 release 构建证明。
-- [ ] **Android 环境阻塞：** 当前无可运行 AVD，未执行设备写入。按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 在固定 x86_64 API 35、受控 `/data` 的可丢弃 AVD 完成空白安装、软预算/活动读取、中断/重启、孤儿、ENOSPC、清理重建和长期/2 GiB 分项证据；来源/封面 hard-limit 运行态只有在具备可控并发租约/候选工具时才可签发，否则保留为辅助逻辑覆盖，不得用制品检查替代。
+- [ ] **Android 环境阻塞：** 受控 `EpubStart_B2_API35` AVD 已可运行；2026-08-22 已完成新 profile 空白安装、46 份逐份导入、来源/封面预算观察、缺失缓存元数据协调和孤儿/临时文件启动清理。未完成：Android `epub` 资源 URL 导致的旧书读取/后台索引、复制目标步骤 force-stop、中断重试、ENOSPC、全量清理重建和六轮累计 2 GiB；来源/封面 hard-limit 运行态仍不签发。证据见 `target/android-b2-acceptance-20260822-184117`，不得用部分导入或制品检查替代完整 Android 门禁。
 
 ### 7. B2 完成标准
 
@@ -151,3 +151,4 @@
 - 2026-08-18：B2 第五节第五项完成。批注创建/更新统一修剪文本字段，空白 CFI 拒绝、空白 range 归一为 `NULL`，冻结 4,096/10,000/20,000 字符上限、小写颜色与字面纯文本语义；新增真实 SQLite 文件关闭重开恢复测试，并把删书级联改为通过服务 seam 观察。新增 3 个测试、强化 2 个测试，5 组均完成目标变红自证；notes 专项 21/21、完整 `cargo test` 158/158，`audit:unwrap` 455 行/462 次。桌面 EPUB.js 批注运行态待 B3/F2 人工验证，Android WebView/设备矩阵阻塞至 B3/F2。
 - 2026-08-18：B2 Android 制品/存储代码收口完成。修复 desktop dialog/外部 Android 子项目 build 目录冲突，加入 profile 与 arm64 release 基线/审计门禁；来源缓存完成 256/512 MiB、持久 LRU、活动租约和重启协调，封面完成 64/128 MiB、原子候选、事务化元数据/孤儿清理，统一可重建数据硬上限 896 MiB。新增 17 个测试均完成目标变红自证，完整 `cargo test` 175/175，`audit:unwrap` 550 行/563 次。完整 Gradle lint 的四个 AndroidX 制品受当前沙箱网络权限阻塞；Android 低存储/中断/长期压力等待固定 AVD，故 B2 总完成标准保持未勾选。
 - 2026-08-22：B2 收口复核关闭来源租约/淘汰竞态、原子写失败残留、来源/封面元数据失败一致性、封面并发候选预算和 SQLite full 稳定错误缺口；实际 896 MiB 硬预算与 1 GiB ceiling 分离。新增 6 个测试、强化 1 个测试均逐项变红→变绿，完整 `cargo test` 181/181，`audit:unwrap` 575 行/590 次。release 门禁补齐全部基线工具链与 AAB ABI/ELF，最终静态基线收紧；完整 Gradle lint 仍因 Google Maven TLS 握手中断阻塞，无可运行 AVD，故 B2 总完成标准继续未勾选。
+- 2026-08-22：补齐 `custom-protocol` Cargo feature 别名并修正 Android 验收文档的真实 `app_data_dir` 路径和 profile 资源打包步骤；正式 x86_64 profile APK 构建成功。受控 AVD 完成新包空白安装、46 份逐份导入、来源缓存 31 条/约 256 MiB、封面 46 个/约 54.1 MB、缺失缓存元数据协调和孤儿清理；SQLite 完整性保持 `ok`。重新定位后的阅读请求暴露 Android WebView 不支持当前 `epub:///localhost/...` URL，活动读取/后台索引未通过；ENOSPC、复制中断、清理重建和六轮 2 GiB 压力仍阻塞。

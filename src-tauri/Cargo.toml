@@ -9,6 +9,11 @@ edition = "2021"
 name = "epub_start_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+# Enable the embedded asset protocol for production/profile Android builds.
+# Keep this opt-in so `tauri dev` continues to use `build.devUrl`.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

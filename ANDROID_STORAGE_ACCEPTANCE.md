@@ -1,12 +1,16 @@
 # B2 Android 运行时存储延期验收包
 
-状态：**待执行，未形成 Android 运行态通过证据**。
+状态：**部分执行，尚未形成 Android 运行态通过证据**。
 
 本文件用于在后续具备受控 Android 虚拟设备时，关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
 
+2026-08-22 已在 `EpubStart_B2_API35`、`emulator-5554`、`ro.kernel.qemu=1` 的受控 AVD 上执行一轮部分验收。证据目录为 `D:\epub_start\target\android-b2-acceptance-20260822-184117`；正式 profile APK SHA-256 为 `BF60936AA6F7601CE5062656FAB644F038B6CE0C9194702E473BC820D1D45C4D`。本轮覆盖空白安装、46 份逐份导入、来源/封面预算观察、缺失缓存元数据协调以及孤儿/临时文件启动清理；共享存储输入在每份导入后删除，以避免与应用私有缓存同时占满受控 `/data`，因此不等同于“46 个输入文件长期留在共享目录”的压力路径。
+
+本轮未覆盖受控 ENOSPC、六轮累计 2 GiB、复制目标步骤中的 force-stop、中断重试和成功的 Android 阅读/后台索引。重新定位后打开图书时，日志记录 WebView 拒绝 `epub:///localhost/...`，提示 `URL scheme "epub" is not supported`；该阅读协议问题需单独修复，不能把导入或数据库快照计作活动读取通过。
+
 ## 1. 固定环境与安全门
 
-验收只允许在可丢弃的虚拟设备上执行。建议固定为 API 35、Google APIs x86_64、`/data` 1536 MiB，并在记录中保存 system image revision、AVD 配置和快照名。创建/下载 AVD 不属于本次收口执行范围。
+验收只允许在可丢弃的虚拟设备上执行。本次固定为 API 35、Google APIs x86_64、约 1536 MiB `/data` 的 `EpubStart_B2_API35` AVD，并在记录中保存 system image revision、AVD 配置和快照名。
 
 使用当前 profile 制品：
 
@@ -17,7 +21,7 @@
 - EPUB 大小：8,521,993 字节
 - EPUB SHA-256：`1138B2A23BB79F9DF0727D0D34EA6055E8D1E4EA363EAC865D2F8FB2108E5980`
 
-正式验收前必须用当前提交重新生成 x86_64 profile APK并记录 hash，不能仅因旧文件仍存在就复用；首次执行需允许 Gradle 从已配置仓库取得依赖，或提前准备完整缓存。Tauri 的独立 `rustBuildX86_64Profile` 任务依赖上层 CLI WebSocket，不能单独调用；以下步骤直接用同一 NDK 编译 release Rust 库，把它暂存到已忽略的 `jniLibs/x86_64`，再让 Gradle 完成 profile 打包。该暂存文件不得提交。
+正式验收前必须用当前提交重新生成 x86_64 profile APK并记录 hash，不能仅因旧文件仍存在就复用；首次执行需允许 Gradle 从已配置仓库取得依赖，或提前准备完整缓存。Tauri CLI 的 Android build 支持显式 `custom-protocol` feature，但只提供 debug/release 构建选项；本文件使用 profile 诊断包，因此显式执行前端构建、Rust feature 构建、资源同步和 Gradle profile 打包。Tauri 的独立 `rustBuildX86_64Profile` 任务依赖上层 CLI WebSocket，不能单独调用；以下步骤直接用同一 NDK 编译 release Rust 库，把它暂存到已忽略的 `jniLibs/x86_64`，再让 Gradle 完成 profile 打包。该暂存文件和生成的 Android assets 不得提交。
 
 ```powershell
 $NdkBin = 'D:\Android\Sdk\ndk\27.3.13750724\toolchains\llvm\prebuilt\windows-x86_64\bin'
@@ -27,7 +31,15 @@ $env:ANDROID_NDK_HOME = 'D:\Android\Sdk\ndk\27.3.13750724'
 $env:CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER = Join-Path $NdkBin 'x86_64-linux-android24-clang.cmd'
 $env:CC_x86_64_linux_android = Join-Path $NdkBin 'x86_64-linux-android24-clang.cmd'
 $env:AR_x86_64_linux_android = Join-Path $NdkBin 'llvm-ar.exe'
-cargo build --manifest-path 'D:\epub_start\src-tauri\Cargo.toml' --target x86_64-linux-android --release
+npm.cmd run build
+if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+
+$AssetDir = 'D:\epub_start\src-tauri\gen\android\app\src\main\assets'
+New-Item -ItemType Directory -Force -Path $AssetDir | Out-Null
+Get-ChildItem -LiteralPath $AssetDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+Get-ChildItem -LiteralPath 'D:\epub_start\dist' -Force | Copy-Item -Destination $AssetDir -Recurse -Force
+
+cargo build --manifest-path 'D:\epub_start\src-tauri\Cargo.toml' --target x86_64-linux-android --release --features custom-protocol
 if ($LASTEXITCODE -ne 0) { throw 'x86_64 Rust build failed.' }
 
 $JniDir = 'D:\epub_start\src-tauri\gen\android\app\src\main\jniLibs\x86_64'
@@ -95,7 +107,7 @@ if ($LASTEXITCODE -ne 0 -or -not $RunAs.StartsWith('/data/')) { throw 'run-as is
 & $Adb -s $Serial logcat -d -v threadtime | Out-File -Encoding utf8 (Join-Path $Evidence 'logcat-blank.txt')
 ```
 
-空白安装必须满足：应用可启动；`run-as` 可用；创建 `files/epubstart.db`、`files/source-cache/` 与 `files/covers/`；无 `.source`、封面候选或 journal/WAL 遗留。若实际 `app_data_dir` 布局不同，记录真实路径并停止修改本文件中的相对路径后再继续。
+空白安装必须满足：应用可启动；`run-as` 可用；在 `run-as` 返回的应用数据根目录创建 `epubstart.db`、`source-cache/` 与 `covers/`；无 `.source`、封面候选或 journal/WAL 遗留。当前实现由 `app.path().app_data_dir()` 直接使用应用数据根目录，profile 的实际绝对路径为 `/data/user/0/com.epubstart.reader.profile/`；`files/profileInstalled` 仅是 Tauri/应用标记目录，不是数据库或缓存根目录。
 
 ## 3. 统一证据快照
 
@@ -106,8 +118,8 @@ if ($LASTEXITCODE -ne 0 -or -not $RunAs.StartsWith('/data/')) { throw 'run-as is
 $Stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 & $Adb -s $Serial shell run-as $Package du -ak . | Out-File -Encoding utf8 (Join-Path $Evidence "du-$Stamp.txt")
 & $Adb -s $Serial shell df -k /data | Out-File -Encoding utf8 (Join-Path $Evidence "df-$Stamp.txt")
-& $Adb -s $Serial exec-out run-as $Package cat files/epubstart.db > (Join-Path $Evidence "epubstart-$Stamp.db")
-& $Adb -s $Serial shell run-as $Package ls -al files files/source-cache files/covers | Out-File -Encoding utf8 (Join-Path $Evidence "files-$Stamp.txt")
+& $Adb -s $Serial exec-out run-as $Package cat epubstart.db > (Join-Path $Evidence "epubstart-$Stamp.db")
+& $Adb -s $Serial shell run-as $Package ls -al epubstart.db source-cache covers | Out-File -Encoding utf8 (Join-Path $Evidence "files-$Stamp.txt")
 & $Adb -s $Serial logcat -d -v threadtime | Out-File -Encoding utf8 (Join-Path $Evidence "logcat-$Stamp.txt")
 & $Sqlite (Join-Path $Evidence "epubstart-$Stamp.db") 'PRAGMA integrity_check; PRAGMA foreign_key_check; SELECT COUNT(*) AS books FROM books; SELECT COUNT(*), COALESCE(SUM(cache_size_bytes),0) FROM source_cache_entries; SELECT COUNT(*), COALESCE(SUM(length(CAST(title AS BLOB)) + length(CAST(body AS BLOB))),0) FROM search_documents;' | Out-File -Encoding utf8 (Join-Path $Evidence "sqlite-$Stamp.txt")
 ```
@@ -116,7 +128,7 @@ $Stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 ## 4. 固定样本与软上限淘汰
 
-先准备 46 个不同文件名但内容相同的受控样本。46 份来源字节为 392,211,678；样本中的 `cover.jpg` 为 1,484,820 字节，46 份为 68,301,720，分别足以越过来源 256 MiB 与封面 64 MiB 软上限。重复内容只用于存储治理，不作为不同作品身份测试。
+先准备 46 个不同文件名但内容相同的受控样本。46 份来源字节为 392,011,678；样本中的 `cover.jpg` 为 1,484,820 字节，46 份为 68,301,720，分别足以越过来源 256 MiB 与封面 64 MiB 软上限。重复内容只用于存储治理，不作为不同作品身份测试。
 
 ```powershell
 $FixtureDir = Join-Path $Repo 'target\b2-android-fixtures'
@@ -146,14 +158,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture upload failed.' }
 
 ```powershell
 & $Adb -s $Serial shell am force-stop $Package
-& $Adb -s $Serial shell run-as $Package sh -c 'printf orphan > files/source-cache/orphan.source'
-& $Adb -s $Serial shell run-as $Package sh -c 'printf orphan > files/source-cache/orphan.fingerprint.json'
-& $Adb -s $Serial shell run-as $Package sh -c 'printf partial > files/source-cache/interrupted.source.tmp'
-& $Adb -s $Serial shell run-as $Package sh -c 'printf orphan > files/covers/orphan.jpg'
-& $Adb -s $Serial shell run-as $Package sh -c 'printf partial > files/covers/.interrupted.jpg.tmp'
+& $Adb -s $Serial shell run-as $Package touch source-cache/orphan.source
+& $Adb -s $Serial shell run-as $Package touch source-cache/orphan.fingerprint.json
+& $Adb -s $Serial shell run-as $Package touch source-cache/interrupted.source.tmp
+& $Adb -s $Serial shell run-as $Package touch covers/orphan.jpg
+& $Adb -s $Serial shell run-as $Package touch covers/.interrupted.jpg.tmp
 & $Adb -s $Serial shell monkey -p $Package -c android.intent.category.LAUNCHER 1
 Start-Sleep -Seconds 5
-& $Adb -s $Serial shell run-as $Package ls -al files/source-cache files/covers
+& $Adb -s $Serial shell run-as $Package ls -al source-cache covers
 ```
 
 通过条件：所有上述孤儿与 `.tmp` 文件在启动维护后消失，已登记且大小匹配的缓存保留。
@@ -169,7 +181,7 @@ $CoverPath = (& $Sqlite $LatestDb.FullName 'SELECT cover_cache_path FROM books W
 $CoverName = Split-Path -Leaf $CoverPath
 if ([string]::IsNullOrWhiteSpace($BookId) -or [string]::IsNullOrWhiteSpace($CoverName)) { throw 'No cache rows available for missing-file recovery.' }
 & $Adb -s $Serial shell am force-stop $Package
-& $Adb -s $Serial shell run-as $Package rm -f "files/source-cache/$BookId.source" "files/source-cache/$BookId.fingerprint.json" "files/covers/$CoverName"
+& $Adb -s $Serial shell run-as $Package rm -f "source-cache/$BookId.source" "source-cache/$BookId.fingerprint.json" "covers/$CoverName"
 & $Adb -s $Serial shell monkey -p $Package -c android.intent.category.LAUNCHER 1
 Start-Sleep -Seconds 5
 ```
@@ -215,7 +227,7 @@ if ($LASTEXITCODE -ne 0) { throw 'fallocate unavailable or failed; do not substi
 
 ```powershell
 & $Adb -s $Serial shell am force-stop $Package
-& $Adb -s $Serial shell run-as $Package rm -rf files/source-cache files/covers
+& $Adb -s $Serial shell run-as $Package rm -rf source-cache covers
 & $Adb -s $Serial shell monkey -p $Package -c android.intent.category.LAUNCHER 1
 Start-Sleep -Seconds 5
 ```
@@ -248,15 +260,17 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 
 | 项目 | 必须记录 | 通过条件 | 当前状态 |
 | --- | --- | --- | --- |
-| 空白安装 | APK hash、镜像/AVD、`df`、`du`、日志 | 可启动且私有目录为空/一致 | 阻塞：无可运行 AVD |
-| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 辅助逻辑已测；Android 阻塞 |
-| 来源硬预算 | 受保护项总量、拒绝前缀 | 512 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；无并发租约工具时 Android 不签发 |
-| 封面软预算 | 文件与 `cover_cache_path` | 64 MiB 回落、无孤儿 | 辅助逻辑已测；Android 阻塞 |
-| 封面硬预算 | 并发候选总量、拒绝前缀 | 128 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；无并发候选工具时 Android 不签发 |
-| 中断/重启 | 目标步骤日志、重启前后快照 | 无 `.tmp`/半提交，可重试 | 辅助逻辑已测；Android 阻塞 |
+| 空白安装 | APK hash、镜像/AVD、`df`、`du`、日志 | 可启动且私有目录为空/一致 | Android 已通过：新 profile 安装、`run-as`、实际根目录和无 `localhost:1420` |
+| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本后来源缓存 31 条/约 256 MiB；活动读取被 Android WebView URL scheme 阻塞 |
+| 来源硬预算 | 受保护项总量、拒绝前缀 | 512 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
+| 封面软预算 | 文件与 `cover_cache_path` | 64 MiB 回落、无孤儿 | 部分：46 个封面约 54.1 MB，未越过 64 MiB 触发淘汰 |
+| 封面硬预算 | 并发候选总量、拒绝前缀 | 128 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
+| 中断/重启 | 目标步骤日志、重启前后快照 | 无 `.tmp`/半提交，可重试 | 启动协调、缺失元数据和孤儿清理已通过；目标步骤中断未执行 |
 | ENOSPC | fill 大小、`df`、错误前缀、DB 校验 | 稳定拒绝并保留旧状态 | Android 阻塞 |
-| 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | Android 阻塞 |
+| 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | 全量缓存目录重建未执行；缺失文件/孤儿协调已通过 |
 | 长期/2 GiB | 自动计算累计字节、六轮快照 | 无泄漏/损坏/永久任务 | Android 阻塞 |
+
+本轮最终数据库快照为：`integrity_check=ok`、`books=46`、`source_cache_entries=31`、来源缓存数据库账面 `264,181,783` 字节、来源缓存实体文件 62 个、封面实体 46 个/`54,084,201` 字节；`search_documents=0` 与 `search_index_state=0`，因为 Android 阅读资源协议尚未打通。
 
 最终结论必须分别写：
 
