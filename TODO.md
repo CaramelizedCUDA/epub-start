@@ -69,7 +69,7 @@
 
 ### 4. 搜索与索引（真实后台实现）
 
-- [x] 设计并实现同系列/多卷搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限、同系列任务原子去重和来源失效（桌面自动验证；Android 已复测取消与进程终止恢复，低存储/长期压力门禁仍延期）。当前书章节内查找按 IPC 留给 F2 EPUB.js，不冒充后端索引能力。
+- [x] 设计并实现同系列/多卷搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限、同系列任务原子去重和来源失效（桌面自动验证；Android 已复测取消与进程终止恢复，并在受控 AVD closeout 面板验证单书系列从 WebView 触发到 `34/34 ready`；读者并发读取、低存储/长期压力门禁仍延期）。当前书章节内查找按 IPC 留给 F2 EPUB.js，不冒充后端索引能力。
 - [x] 使用 bundled SQLite FTS5 trigram 建立惰性增量索引；查询短于 3 个字符时使用参数化 `LIKE`。
 - [x] 索引按来源指纹失效，支持部分结果、手动重建和过期重建；实现未把整本 EPUB 一次性读入 `Vec<u8>`。
 - [x] 执行预算：单章节 8 MiB、单书 64 MiB；提取计数使用溢出检查。一次索引任务累计提取量 2 GiB 的总任务门禁仍需 Android/大文件运行态验证。
@@ -78,7 +78,7 @@
 - [x] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。
 - [x] 在 Android 真实设备验证索引取消与应用进程被系统终止后的恢复：当前 APK 在黑鲨 Android 9 上七卷系列取消后保留 101/135 章节部分结果；force-stop 后重启状态恢复为 `pending`（101/135），重新执行后恢复到 135/135 `ready`。
 - [x] 在 Android 真实设备以系统 picker 导入 13.20 MiB EPUB，并验证大章节索引限制：章节超过 8 MiB 得到 `ready`、0/1 且保留超限明细；此前已持久 URI 重拷贝并恢复原 EPUB 到 34/34。该证据覆盖单次大文件导入，不等于长期/2 GiB 压力。
-- [ ] **硬件阻塞，延期至受控 Android 虚拟设备：** 按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 验证 ENOSPC/SQLite 满盘、长期/2 GiB 导入压力、进程重启与清理恢复；固定 API/镜像和 `/data` 容量，记录初始/峰值/清理后占用与可复现命令。来源授权撤销已用黑鲨 Android 9 的一次性诊断探针验证，同一设备已记录一次 135/135 重建的 SQLite 主库/rollback journal 占用。虚拟设备例外只覆盖破坏性存储压力，不替代 SAF Provider、OEM 进程管理、性能或手势实机证据，也不能用桌面纯辅助逻辑替代。
+- [ ] **硬件阻塞，延期至受控 Android 虚拟设备：** 按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 验证 ENOSPC/SQLite 满盘、长期/2 GiB 导入压力、进程重启与清理恢复；固定 API/镜像和 `/data` 容量，记录初始/峰值/清理后占用与可复现命令。受控 AVD 已补齐单书后台索引 WebView 触发与 `34/34 ready` 持久结果，但读者并发读取、长期/2 GiB、综合业务数据恢复和完整 Gradle lint 仍未完成。来源授权撤销已用黑鲨 Android 9 的一次性诊断探针验证，同一设备已记录一次 135/135 重建的 SQLite 主库/rollback journal 占用。虚拟设备例外只覆盖破坏性存储压力，不替代 SAF Provider、OEM 进程管理、性能或手势实机证据，也不能用桌面纯辅助逻辑替代。
 
 ### 5. 目录、系列、标签、设置和批注后端收口
 

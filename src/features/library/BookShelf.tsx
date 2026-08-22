@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useLibraryStore } from '../../stores/libraryStore';
 import { getGlobalReadingSettings, saveGlobalReadingSettings } from '../../lib/tauri';
 import type { BookSummary, ReadingSettings } from '../../types/models';
+import { B2CloseoutPanel } from '../closeout/B2CloseoutPanel';
 
 interface BookShelfProps {
   onOpenBook: (book: BookSummary) => void;
@@ -114,6 +115,8 @@ export function BookShelf({ onOpenBook }: BookShelfProps) {
           </button>
         </div>
       </header>
+
+      {import.meta.env.VITE_B2_CLOSEOUT === '1' && <B2CloseoutPanel />}
 
       {showSettings && (
         <aside className="absolute right-6 top-16 z-40 w-80 rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-xl">

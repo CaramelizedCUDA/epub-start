@@ -160,8 +160,9 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 ### 0.2.15 受控 AVD B2 收口补测（2026-08-22 后续）
 
 - **已通过的 Android 运行态**：在 `EpubStart_B2_API35` / `emulator-5554` / `ro.kernel.qemu=1` 上，WebView 修复后的固定 EPUB 单书首屏读取保持通过；143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启协调删除 `.source.tmp`，同一来源重试成功且数据库 `integrity_check=ok`；全新 profile 的受控 ENOSPC 在保留 4,088 KiB 时由 UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无临时文件；删除 `source-cache/` 与 `covers/` 后单书来源/封面可从持久 SAF 来源重建。
-- **覆盖清单**：已测目标复制步骤、重启临时文件清理、重试、来源复制满盘错误、单书可重建缓存，以及数据库完整性/来源缓存大小核对。未测后台索引的 Android 活动读取、六轮累计 2 GiB、完整系列/标签/设置/批注/索引数据重建、来源/封面 hard-limit 运行态、SQLite page/WAL 低存储峰值、OEM/真实设备矩阵；legacy shell 当前没有可观察的后台索引触发入口，因此不以隐藏 Command 调用冒充 UI 运行态。
-- **证据**：`target/android-b2-closeout-20260822/interrupt-large-result.txt`、`interrupt-retry-verification.txt`、`enospc-runtime-after.png`、`enospc-runtime-result.txt`、`after-cache-rebuild-sqlite.txt`。这些证据补充而不替换 46 本导入基线；B2 总门禁仍因长期压力、后台索引和完整 Gradle lint 未签发。
+- **后台索引补测**：为形成可观察的 Android 入口，临时 closeout debug APK 使用 `VITE_B2_CLOSEOUT=1` 显示诊断面板，调用既有 `list_series`、`set_book_series`、`ensure_series_search_index`、`get_search_index_status` 和 `cancel_search_index` Command；普通构建不包含该面板。`com.epubstart.reader` 在 `EpubStart_B2_API35` / `emulator-5554` 上导入固定 EPUB，建立 1 个测试系列并归属 1 本书，任务从 `pending` 到 `ready; 34/34`；拉回 SQLite 为 `integrity_check=ok`、`search_documents=34`、FTS=34。
+- **覆盖清单**：已测目标复制步骤、重启临时文件清理、重试、来源复制满盘错误、单书可重建缓存、后台索引 WebView 触发/状态轮询/FTS 持久结果，以及数据库完整性/来源缓存大小核对。未测索引期间 Android 读者并发打开/翻页、索引取消/重建分支、六轮累计 2 GiB、完整系列/标签/设置/批注/索引数据综合重建、来源/封面 hard-limit 运行态、SQLite page/WAL 低存储峰值、OEM/真实设备矩阵。
+- **证据**：`target/android-b2-closeout-20260822/interrupt-large-result.txt`、`interrupt-retry-verification.txt`、`enospc-runtime-after.png`、`enospc-runtime-result.txt`、`after-cache-rebuild-sqlite.txt`、`index-series-prepared.png`、`index-building.png`、`index-result.png`、`index-result-summary.txt`、`index-result.sqlite`。这些证据补充而不替换 46 本导入基线；B2 总门禁仍因长期压力、综合业务数据恢复和完整 Gradle lint 未签发。
 
 ## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 
