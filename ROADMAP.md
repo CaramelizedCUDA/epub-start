@@ -112,10 +112,11 @@ B2 采用以下初始门禁，首次可重复 release 基线建立后只允许�
 
 若需要暴露缓存统计或清理能力，先在 [IPC.md](IPC.md) 设计 Command、返回模型和错误语义，再实现和注册；本规划不授权预注册 stub。数据库应优先复用 `source_cache_entries.cache_size_bytes` 与 `last_accessed_at`，确有字段缺口时只能追加迁移。
 
-2026-08-22 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。完整 Gradle release lint 仍因 Google Maven 的四个 AndroidX runtime 制品发生 TLS 握手中断而阻塞；安装后 code/data、ENOSPC、重启中断和长期压力等待 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
+2026-08-22 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。完整 Gradle release lint 仍因 Google Maven 的四个 AndroidX runtime 制品发生 TLS 握手中断而阻塞；受控 AVD 后续已补充 ENOSPC、重启中断和单书缓存重建，后台索引、六轮长期压力和完整业务数据重建仍待 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
 
 2026-08-22 受控 AVD 首轮复测状态（修复前）：新增 `custom-protocol` Cargo feature 别名并修正验收文档的实际 `app_data_dir` 路径；新 profile 包空白安装与 46 份逐份导入成功，来源/封面预算观察、缺失元数据协调和孤儿清理有证据。Android WebView 拒绝当前 `epub:///localhost/...` URL，活动读取/后台索引未通过；ENOSPC、复制中断和六轮 2 GiB 压力仍未完成，B2 总门禁继续未签发。
 2026-08-22 受控 AVD WebView 修复复测：Android 根地址切换为 `http://epub.localhost/...`，前端在 EPUB.js 请求边界归一化 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...`。重新编译并安装 x86_64 profile APK 后，固定 EPUB 重新定位及单书首屏读取通过，输出 `WEBVIEW_REGRESSION=GREEN`，未出现不支持 scheme、`Failed to fetch`、`epub:///` 或 `localhost:1420`；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`。后台索引、ENOSPC、复制中断、清理重建和六轮 2 GiB 压力仍未完成，B2 总门禁继续未签发。
+2026-08-22 受控 AVD B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理 `.source.tmp` 且重试成功；全新 profile 在约 4 MiB 可用空间下导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无临时文件；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性保持 `ok`。证据目录为 `target/android-b2-closeout-20260822`。后台索引没有可观察的 legacy shell 触发入口，六轮 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态未执行，B2 总门禁继续未签发。
 
 EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于 F 阶段；B 阶段只交付它们依赖的稳定数据和 IPC 契约，不提前实现 UI。
 

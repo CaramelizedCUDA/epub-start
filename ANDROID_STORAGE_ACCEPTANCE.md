@@ -1,14 +1,16 @@
 # B2 Android 运行时存储延期验收包
 
-状态：**部分执行，Android WebView 资源协议阻塞已修复；低存储与长期压力仍未完成**。
+状态：**部分执行，Android WebView、复制中断重试和受控 ENOSPC 已有运行态证据；后台索引、长期压力和完整 release lint 仍未完成**。
 
-本文件用于在后续具备受控 Android 虚拟设备时，关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
+本文件用于在受控 Android 虚拟设备上关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
 
 2026-08-22 已在 `EpubStart_B2_API35`、`emulator-5554`、`ro.kernel.qemu=1` 的受控 AVD 上执行一轮部分验收。证据目录为 `D:\epub_start\target\android-b2-acceptance-20260822-184117`；正式 profile APK SHA-256 为 `BF60936AA6F7601CE5062656FAB644F038B6CE0C9194702E473BC820D1D45C4D`。本轮覆盖空白安装、46 份逐份导入、来源/封面预算观察、缺失缓存元数据协调以及孤儿/临时文件启动清理；共享存储输入在每份导入后删除，以避免与应用私有缓存同时占满受控 `/data`，因此不等同于“46 个输入文件长期留在共享目录”的压力路径。
 
-本轮未覆盖受控 ENOSPC、六轮累计 2 GiB、复制目标步骤中的 force-stop、中断重试和 Android 后台索引。重新定位后打开图书时，首轮日志记录 WebView 拒绝 `epub:///localhost/...`，提示 `URL scheme "epub" is not supported`；该问题已在后续复测中修复，但首轮导入/数据库快照不计作活动读取通过。
+首轮未覆盖受控 ENOSPC、六轮累计 2 GiB、复制目标步骤中的 force-stop、中断重试和 Android 后台索引。重新定位后打开图书时，首轮日志记录 WebView 拒绝 `epub:///localhost/...`，提示 `URL scheme "epub" is not supported`；该问题已在后续复测中修复，但首轮导入/数据库快照不计作活动读取通过。
 
 2026-08-22 WebView 修复复测：Android 平台改用 Tauri 映射的 `http://epub.localhost/book/{book_id}/` 根地址，前端同时归一化 EPUB.js 可能返回的 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...` 形式。使用重新编译的 x86_64 profile Rust 库和 APK 在同一 `EpubStart_B2_API35` / `emulator-5554` AVD 安装；当前复测 APK SHA-256 为 `6F6361B97AD52D7CA46FDFACC90EBE03AE93808664E80E46830AD5B821E23759`。重新定位后打开固定 EPUB 并读取首屏成功；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`，回归命令输出 `WEBVIEW_REGRESSION=GREEN`，未出现 `URL scheme "epub" is not supported`、`Failed to fetch`、`epub:///` 或 `localhost:1420`。本次只证明单书基本阅读资源链，未把后台索引、长压、满盘或进程中断路径计作通过。
+
+2026-08-22 B2 收口补测：同一受控 AVD 使用 `target/android-b2-closeout-20260822` 证据目录。143 MB 有效 EPUB 在 `copy_source_atomically start` 之后 force-stop，重启后 `.source.tmp` 被启动协调清除，重新导入成功；`interrupt-retry-verification.txt` 记录 `integrity=ok`、大文件缓存 `142743869` 字节且无临时文件。全新 profile 删除 `source-cache/` 与 `covers/` 后重新启动，固定 SAF 来源使缓存/封面重建，数据库为 `ok`、1 本书、1 条 `source_cache_entries`（8,521,993 字节）和 1 个封面；这只是单书可重建数据证据，不覆盖系列、标签、设置、批注和搜索索引保留。受控 ENOSPC 最终保留 4,088 KiB，导入新 locator `b2-enospc-runtime.epub` 在复制阶段显示 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；证据为 `enospc-runtime-after.png`、`enospc-runtime-result.txt` 和对应 `df` 文件。后台索引没有可观察的 legacy shell 触发入口，六轮累计 2 GiB 未执行；来源/封面 hard-limit 运行态和完整 Gradle release lint 仍未签发。
 
 ## 1. 固定环境与安全门
 
@@ -263,16 +265,18 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 | 项目 | 必须记录 | 通过条件 | 当前状态 |
 | --- | --- | --- | --- |
 | 空白安装 | APK hash、镜像/AVD、`df`、`du`、日志 | 可启动且私有目录为空/一致 | Android 已通过：新 profile 安装、`run-as`、实际根目录和无 `localhost:1420` |
-| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本后来源缓存 31 条/约 256 MiB；Android 单书首屏资源读取已通过，后台索引与压力链路未执行 |
+| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本后来源缓存 31 条/约 256 MiB；Android 单书首屏资源读取已通过；后台索引无可观察触发入口，长期压力未执行 |
 | 来源硬预算 | 受保护项总量、拒绝前缀 | 512 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
 | 封面软预算 | 文件与 `cover_cache_path` | 64 MiB 回落、无孤儿 | 部分：46 个封面约 54.1 MB，未越过 64 MiB 触发淘汰 |
 | 封面硬预算 | 并发候选总量、拒绝前缀 | 128 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
-| 中断/重启 | 目标步骤日志、重启前后快照 | 无 `.tmp`/半提交，可重试 | 启动协调、缺失元数据和孤儿清理已通过；目标步骤中断未执行 |
-| ENOSPC | fill 大小、`df`、错误前缀、DB 校验 | 稳定拒绝并保留旧状态 | Android 阻塞 |
-| 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | 全量缓存目录重建未执行；缺失文件/孤儿协调已通过 |
+| 中断/重启 | 目标步骤日志、重启前后快照 | 无 `.tmp`/半提交，可重试 | Android 已通过：143 MB 样本在 `copy_source_atomically start` 后 force-stop；重启清理临时文件，重试成功且 DB `integrity=ok`；限单书/缓存链路 |
+| ENOSPC | fill 大小、`df`、错误前缀、DB 校验 | 稳定拒绝并保留旧状态 | Android 部分通过：余量 4,088 KiB，UI 显示 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，清理后无 `.tmp`；使用全新 profile，未覆盖已有业务数据保留 |
+| 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | Android 部分通过：删除 `source-cache/` 与 `covers/` 后单书来源/封面重建，DB `ok`；完整业务数据、系列/标签/设置/批注/索引未覆盖 |
 | 长期/2 GiB | 自动计算累计字节、六轮快照 | 无泄漏/损坏/永久任务 | Android 阻塞 |
 
 本轮最终数据库快照为：`integrity_check=ok`、`books=46`、`source_cache_entries=31`、来源缓存数据库账面 `264,181,783` 字节、来源缓存实体文件 62 个、封面实体 46 个/`54,084,201` 字节；`search_documents=0` 与 `search_index_state=0`。该快照来自 WebView 修复前的导入/协调轮，不作为修复后后台索引证据。
+
+补测快照不替换上述 46 本基线：中断重试快照为 `integrity=ok`、3 本书、1 条 142,743,869 字节来源缓存；缓存重建快照为 `integrity=ok`、1 本书、1 条 8,521,993 字节来源缓存和 1 个封面；ENOSPC 使用空白 profile，错误发生在来源复制阶段且没有提交业务书籍行。长期/2 GiB、后台索引和完整多业务数据重建仍没有覆盖清单，不能据此签发 B2 总完成证明。
 
 最终结论必须分别写：
 
