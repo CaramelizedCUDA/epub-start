@@ -65,6 +65,6 @@ Rust `src-tauri/src/db/models.rs` 与 TypeScript `src/types/models.ts` 保持 sn
 
 仍未满足冻结签发条件：
 
-- Windows UI 尚未在不改变用户数据的前提下完成新导入、删除和失效来源重新定位；当前 legacy shell 没有系列/标签消费入口。
+- Windows UI 已在不改变既有用户数据的前提下，以隔离 fixture 完成开发态导入、删除和失效来源重新定位；当前 legacy shell 仍没有系列/标签消费入口。
 - Android 更广 OEM/真实设备矩阵与完整前端消费回归仍属于 B3/F2 边界；受控 AVD 证据不能替代它们。
 - 因此本文件是审计快照，不表示 B3 已完成，也不解锁 F1/F2 的新功能开发。
