@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="EpubStart Phase 2 isolated static frontend design prototype" />
+    <title>EpubStart — Editorial Personal Phase 2 Prototype</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-theme="light" data-view="library" data-reader-state="quiet" data-layout="grid" data-count="100">
+    <a class="skip-link" href="#primary-content">跳到主要内容</a>
+
+    <div id="prototype" class="prototype-shell">
+      <header class="window-bar" aria-label="静态原型窗口栏">
+        <div class="window-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        <p><strong>EpubStart</strong><span>Editorial Personal · Phase 2 static prototype</span></p>
+        <div class="window-actions" aria-hidden="true"><span>—</span><span>□</span><span>×</span></div>
+      </header>
+
+      <div class="application-frame">
+        <aside class="app-rail" aria-label="主导航">
+          <a class="brand-mark" href="#library" data-nav="library" aria-label="EpubStart 藏书首页">E</a>
+          <nav>
+            <button class="rail-action is-current" type="button" data-nav="library" aria-current="page"><span aria-hidden="true">⌂</span><small>藏书</small></button>
+            <button class="rail-action" type="button" data-nav="series"><span aria-hidden="true">◫</span><small>系列</small></button>
+            <button class="rail-action" type="button" data-open-search="series"><span aria-hidden="true">⌕</span><small>搜索</small></button>
+            <button class="rail-action" type="button" data-nav="notes"><span aria-hidden="true">✎</span><small>批注</small></button>
+          </nav>
+          <button class="rail-action rail-settings" type="button" data-toast="全局阅读设置将在 F1/F2 按冻结契约接入"><span aria-hidden="true">Aa</span><small>设置</small></button>
+        </aside>
+
+        <main id="primary-content" class="app-main" tabindex="-1">
+          <section id="libraryView" class="library-view" aria-labelledby="library-title">
+            <header class="library-mast">
+              <div class="library-heading">
+                <p class="context-label">My private library</p>
+                <h1 id="library-title">我的藏书</h1>
+                <span id="libraryCountLabel">100 本 EPUB</span>
+              </div>
+              <button id="searchTrigger" class="search-trigger" type="button" data-open-search="library">
+                <span aria-hidden="true">⌕</span>
+                <span>搜索书名、作者或系列</span>
+                <kbd>Ctrl K</kbd>
+              </button>
+              <button class="import-button" type="button" data-toast="静态原型不会打开系统文件选择器">＋ <span>导入 EPUB</span></button>
+            </header>
+
+            <div class="library-workspace">
+              <section class="collection-field" aria-labelledby="collection-title">
+                <section class="continuation-seam" aria-labelledby="continue-title" data-design-dependency="continue-reading">
+                  <span class="seam" aria-hidden="true"></span>
+                  <button class="continue-cover cover-style-1" type="button" data-open-reader aria-label="继续阅读《这里是终末停滞委员会》第四卷">
+                    <span class="cover-folio">04</span>
+                    <strong>终末停滞<br />委员会</strong>
+                    <small>第四卷</small>
+                  </button>
+                  <div class="continue-copy">
+                    <p>接着读 · 第四章</p>
+                    <h2 id="continue-title">这里是终末停滞委员会</h2>
+                    <span>并非所有静止都是终点</span>
+                  </div>
+                  <div class="continue-meter">
+                    <span>42%</span>
+                    <div role="progressbar" aria-label="阅读进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42"><i style="width: 42%"></i></div>
+                  </div>
+                  <button class="continue-action" type="button" data-open-reader>继续阅读 <span aria-hidden="true">→</span></button>
+                </section>
+
+                <p class="dependency-inline">
+                  <button id="dependencyInfoButton" type="button" aria-expanded="false" aria-controls="dependencyInfo">设计依赖说明</button>
+                  <span id="dependencyInfo" hidden><code>DESIGN_DEPENDENCY_REVIEW_REQUIRED</code>：全库续读和最近阅读排序需要批量进度策略；这里仅评审视觉位置。</span>
+                </p>
+
+                <header class="collection-toolbar">
+                  <div>
+                    <p class="context-label">Collection field</p>
+                    <h2 id="collection-title">全部藏书</h2>
+                  </div>
+                  <div class="toolbar-groups">
+                    <div class="segmented-control density-control" role="group" aria-label="藏书规模">
+                      <button type="button" data-count="10">10</button>
+                      <button class="is-selected" type="button" data-count="100" aria-pressed="true">100</button>
+                      <button type="button" data-count="1000">1000</button>
+                    </div>
+                    <div class="segmented-control layout-control" role="group" aria-label="藏书布局">
+                      <button class="is-selected" type="button" data-layout="grid" aria-pressed="true"><span aria-hidden="true">▦</span> 封面</button>
+                      <button type="button" data-layout="compact"><span aria-hidden="true">≡</span> 紧凑</button>
+                    </div>
+                    <button class="sort-button" type="button" data-toast="排序语义：BookSummary.updated_at / title / id 的设计占位">最近更新⌄</button>
+                  </div>
+                </header>
+
+                <div id="collectionSummary" class="collection-summary" aria-live="polite">显示 100 本；封面网格</div>
+                <div id="bookCollection" class="book-collection" role="list" aria-label="藏书列表"></div>
+              </section>
+
+              <aside id="detailLeaf" class="detail-leaf" aria-labelledby="detailTitle" data-open="true">
+                <span class="detail-seam" aria-hidden="true"></span>
+                <header>
+                  <p class="context-label">Selected book</p>
+                  <button id="detailClose" class="icon-button" type="button" aria-label="关闭图书详情">×</button>
+                </header>
+                <div id="detailCover" class="detail-cover cover-style-0" role="img" aria-label="选中图书封面">
+                  <span id="detailFolio" class="cover-folio">01</span>
+                  <strong id="detailCoverTitle">室内气候</strong>
+                  <small>EPUB</small>
+                </div>
+                <div class="detail-heading">
+                  <p id="detailSeries" class="series-label">未归入系列</p>
+                  <h2 id="detailTitle">室内气候</h2>
+                  <p id="detailAuthor">朴澄</p>
+                </div>
+                <div id="sourceNotice" class="source-notice" hidden>
+                  <span aria-hidden="true">!</span>
+                  <div><strong>文件已移动</strong><p>重新选择原 EPUB。验证成功后会保留进度与批注。</p></div>
+                </div>
+                <p id="detailDescription" class="detail-description">关于房间、季节与生活缓慢变化的短篇随笔集。</p>
+                <dl class="detail-meta">
+                  <div><dt>状态</dt><dd id="detailStatus">可阅读</dd></div>
+                  <div><dt>格式</dt><dd>EPUB</dd></div>
+                  <div><dt>标签</dt><dd id="detailTags">随笔 · 夏天</dd></div>
+                  <div><dt>加入</dt><dd id="detailAdded">今天</dd></div>
+                </dl>
+                <div class="detail-actions">
+                  <button id="openSelected" class="primary-action" type="button">开始阅读</button>
+                  <button id="relinkSelected" class="primary-action error-action" type="button" hidden>重新选择文件</button>
+                  <button class="secondary-action" type="button" data-toast="管理详情在此原型中不持久化">管理系列与标签</button>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section id="readerView" class="reader-view" aria-labelledby="readerTitle" hidden>
+            <span class="reader-seam" aria-hidden="true"><i style="height:42%"></i></span>
+            <header id="readerToolbar" class="reader-toolbar">
+              <button class="icon-button" type="button" data-nav="library" aria-label="返回藏书">←</button>
+              <div class="reader-book-context"><strong>这里是终末停滞委员会</strong><span>第四章 · 42%</span></div>
+              <nav aria-label="阅读工具">
+                <button type="button" data-reader-panel="toc" aria-pressed="true">目录</button>
+                <button type="button" data-open-search="content">搜索</button>
+                <button type="button" data-reader-panel="notes">批注</button>
+                <button type="button" data-reader-panel="settings">Aa</button>
+                <button type="button" data-toast="静态原型不控制真实窗口" aria-label="全屏">⛶</button>
+              </nav>
+            </header>
+
+            <div id="readerCanvas" class="reader-canvas" tabindex="0" aria-label="阅读正文；按 C 召回或隐藏控件">
+              <aside id="readerPanel" class="reader-panel" aria-label="阅读临时面板">
+                <div id="tocPanel" class="panel-content" data-panel-content="toc">
+                  <header><div><p class="context-label">Table of contents</p><h2>目录</h2></div><button class="icon-button" type="button" data-close-reader-panel aria-label="关闭目录">×</button></header>
+                  <ol class="toc-list">
+                    <li><button type="button"><span>序章</span><small>开始</small></button></li>
+                    <li><button type="button"><span>第一章 · 城市停止的早晨</span><small>12%</small></button></li>
+                    <li><button type="button"><span>第二章 · 无人经过的站台</span><small>23%</small></button></li>
+                    <li><button type="button"><span>第三章 · 留在室内的人</span><small>34%</small></button></li>
+                    <li class="is-current"><button type="button" aria-current="location"><span>第四章 · 并非所有静止都是终点</span><small>42%</small></button></li>
+                    <li><button type="button"><span>第五章 · 等待也有形状</span><small>55%</small></button></li>
+                    <li><button type="button"><span>第六章 · 明日的边缘</span><small>68%</small></button></li>
+                  </ol>
+                </div>
+                <div class="panel-content" data-panel-content="settings" hidden>
+                  <header><div><p class="context-label">Reading settings</p><h2>这本书的排版</h2></div><button class="icon-button" type="button" data-close-reader-panel aria-label="关闭排版设置">×</button></header>
+                  <label class="field-label">主题</label>
+                  <div class="theme-choices" role="group" aria-label="阅读主题"><button type="button" data-theme="light">亮色</button><button class="is-selected" type="button" data-theme="paper" aria-pressed="true">暖纸</button><button type="button" data-theme="dark">深色</button></div>
+                  <label class="field-label" for="fontSizeOutput">字号</label>
+                  <div class="stepper"><button type="button" data-font-step="-1" aria-label="减小字号">−</button><output id="fontSizeOutput">18 px</output><button type="button" data-font-step="1" aria-label="增大字号">＋</button></div>
+                  <label class="field-label">字体</label><button class="select-like" type="button" data-toast="原型保持 publisher / serif / sans / system 契约">出版社字体 <span>⌄</span></button>
+                  <label class="field-label">阅读方式</label><div class="theme-choices" role="group" aria-label="阅读方式"><button class="is-selected" type="button" aria-pressed="true">分页</button><button type="button" data-toast="滚动模式视觉状态仅供评审">滚动</button></div>
+                </div>
+                <div class="panel-content" data-panel-content="notes" hidden>
+                  <header><div><p class="context-label">Notes</p><h2>本书批注</h2></div><button class="icon-button" type="button" data-close-reader-panel aria-label="关闭批注">×</button></header>
+                  <button class="note-entry" type="button"><span class="note-color note-color-1"></span><span><strong>“有时，继续只是把下一页翻开。”</strong><small>第四章 · 8 月 21 日</small></span></button>
+                  <button class="note-entry" type="button"><span class="note-color note-color-2"></span><span><strong>窗外的钟没有再走。</strong><small>第四章 · 8 月 20 日</small></span></button>
+                  <button class="secondary-action" type="button" data-toast="静态原型不保存批注">添加批注</button>
+                </div>
+              </aside>
+
+              <article class="reading-page">
+                <p class="chapter-label">第四章</p>
+                <h1 id="readerTitle">我们在停止的时间里继续生活</h1>
+                <p>窗外的钟没有再走。秒针停在十二与一之间，像一句尚未决定是否说出口的话。</p>
+                <p>千束把书合上，又重新打开。纸页本来没有声音，可房间太安静了，连指腹擦过页边的细响都像从很远的地方传来。</p>
+                <p>“如果明天不会来，”她说，“今天是不是就变得无限长？”</p>
+                <p>没有人回答。走廊尽头的灯仍亮着，窗上的薄雾把城市折成许多模糊的层次。她忽然明白，继续并不一定需要时间向前。</p>
+                <p class="reader-highlight">有时，继续只是把下一页翻开。</p>
+                <p>她把指尖停在句号之后，听见另一间房里有人轻轻推开窗。风穿过没有门的走廊，把所有尚未完成的事情重新吹到眼前。</p>
+              </article>
+
+              <aside class="page-rail" aria-label="翻页与阅读进度">
+                <span>42%</span><i></i>
+                <button type="button" aria-label="上一页">←</button>
+                <button type="button" aria-label="下一页">→</button>
+              </aside>
+            </div>
+            <footer class="reader-folio"><span>184</span><span>这里是终末停滞委员会 · 第四卷</span><span>436</span></footer>
+          </section>
+        </main>
+
+        <nav class="mobile-nav" aria-label="移动端主导航">
+          <button class="is-current" type="button" data-nav="library" aria-current="page"><span aria-hidden="true">⌂</span><small>藏书</small></button>
+          <button type="button" data-nav="series"><span aria-hidden="true">◫</span><small>系列</small></button>
+          <button type="button" data-open-search="library"><span aria-hidden="true">⌕</span><small>搜索</small></button>
+          <button type="button" data-nav="notes"><span aria-hidden="true">✎</span><small>批注</small></button>
+        </nav>
+      </div>
+    </div>
+
+    <section id="searchOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="searchTitle" hidden>
+      <div class="search-dialog">
+        <header class="search-header">
+          <span class="search-seam" aria-hidden="true"></span>
+          <label for="searchInput"><span aria-hidden="true">⌕</span><span class="sr-only">搜索</span></label>
+          <input id="searchInput" type="search" value="停滞" autocomplete="off" maxlength="200" />
+          <kbd>Esc</kbd>
+          <button id="searchClose" class="icon-button" type="button" aria-label="关闭搜索">×</button>
+        </header>
+        <div class="search-body">
+          <nav class="search-scopes" aria-label="搜索范围" role="tablist">
+            <button id="scopeLibrary" type="button" role="tab" aria-selected="true" aria-controls="searchResults" data-search-scope="library"><span>Library</span><small>书名与作者</small></button>
+            <button id="scopeSeries" type="button" role="tab" aria-selected="false" aria-controls="searchResults" data-search-scope="series"><span>Series</span><small>系列与卷次</small></button>
+            <button id="scopeContent" type="button" role="tab" aria-selected="false" aria-controls="searchResults" data-search-scope="content"><span>Content</span><small>系列正文索引</small></button>
+          </nav>
+          <div class="search-results-column">
+            <header><div><p class="context-label">Search scope</p><h2 id="searchTitle">Library 中的结果</h2></div><span id="searchResultCount">3 项</span></header>
+            <section id="indexStatus" class="index-status" aria-live="polite" hidden></section>
+            <div id="searchResults" class="search-results" role="tabpanel" aria-live="polite"></div>
+          </div>
+        </div>
+        <footer class="search-footer">
+          <p><code>DESIGN_DEPENDENCY_REVIEW_REQUIRED</code>：这是统一视觉入口；Library、Series、Content 仍映射不同真实能力。</p>
+          <span>↑↓ 移动 · Enter 打开 · Esc 关闭</span>
+        </footer>
+      </div>
+    </section>
+
+    <section id="relinkOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="relinkTitle" hidden>
+      <div class="relink-dialog">
+        <span class="relink-seam" aria-hidden="true"></span>
+        <header><div><p class="context-label">Source unavailable</p><h2 id="relinkTitle">重新关联《海岸线以北》</h2></div><button id="relinkClose" class="icon-button" type="button" aria-label="关闭重新关联">×</button></header>
+        <div id="relinkState" class="relink-state" aria-live="polite">
+          <span class="state-symbol" aria-hidden="true">!</span>
+          <div><h3>文件已移动</h3><p>选择原来的 EPUB。EpubStart 会比较可靠的文件信息；验证成功后保留原有进度与批注。</p></div>
+        </div>
+        <ol class="relink-steps" aria-label="重新关联步骤"><li class="is-current">选择文件</li><li>验证来源</li><li>恢复阅读</li></ol>
+        <div class="relink-actions">
+          <button id="beginRelink" class="primary-action" type="button">重新选择 EPUB</button>
+          <button class="secondary-action" type="button" data-close-relink>稍后处理</button>
+        </div>
+        <div id="relinkDemoControls" class="demo-controls" hidden>
+          <p>静态原型评审控制：</p>
+          <button id="simulateMatch" type="button">模拟匹配原文件</button>
+          <button id="simulateMismatch" type="button">模拟选择了错误文件</button>
+        </div>
+        <p class="privacy-note">不会在界面中显示完整路径或 Android URI。本原型不会打开系统文件选择器。</p>
+      </div>
+    </section>
+
+    <button id="reviewToggle" class="review-toggle" type="button" aria-expanded="true" aria-controls="reviewPanel"><span aria-hidden="true">◇</span> 设计评审</button>
+    <aside id="reviewPanel" class="review-panel" aria-label="静态原型评审控制">
+      <header><div><p>Phase 2 sidecar</p><h2>评审控制</h2></div><button id="reviewClose" class="icon-button" type="button" aria-label="收起评审控制">×</button></header>
+      <section><p>页面</p><div class="review-buttons"><button type="button" data-nav="library">Library</button><button type="button" data-open-reader>Reader</button></div></section>
+      <section><p>藏书规模</p><div class="review-buttons"><button type="button" data-count="10">10</button><button type="button" data-count="100">100</button><button type="button" data-count="1000">1000</button></div></section>
+      <section><p>布局</p><div class="review-buttons"><button type="button" data-layout="grid">封面</button><button type="button" data-layout="compact">紧凑</button></div></section>
+      <section><p>Reader</p><div class="review-buttons"><button type="button" data-reader-state="quiet">安静态</button><button type="button" data-reader-state="controls">控件态</button></div></section>
+      <section><p>主题</p><div class="review-buttons"><button type="button" data-theme="light">Light</button><button type="button" data-theme="paper">Paper</button><button type="button" data-theme="dark">Dark</button></div></section>
+      <section><p>搜索索引</p><div class="review-buttons review-buttons-wrap"><button type="button" data-index-state="ready">Ready</button><button type="button" data-index-state="building">Building</button><button type="button" data-index-state="cancelled">Cancelled</button><button type="button" data-index-state="error">Error</button></div></section>
+      <section><p>异常流程</p><div class="review-buttons"><button type="button" data-demo-missing>来源丢失</button><button type="button" data-open-search="content">搜索</button></div></section>
+      <footer>
+        <code>DESIGN_DEPENDENCY_REVIEW_REQUIRED</code>
+        <span>本控制台只切换静态设计状态。</span>
+        <output id="reviewStateOutput" aria-label="当前原型状态"></output>
+      </footer>
+    </aside>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="liveRegion" class="sr-only" aria-live="polite"></div>
+
+    <script src="prototype.js"></script>
+  </body>
+</html>
