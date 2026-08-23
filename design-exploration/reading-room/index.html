@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EpubStart — Reading Room direction</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="topbar" aria-label="应用顶栏">
+      <a class="wordmark" href="#library">EpubStart <span>/ reading room</span></a>
+      <nav class="topnav" aria-label="主导航">
+        <a aria-current="page" href="#library">藏书</a>
+        <a href="#reader">正在阅读</a>
+        <button type="button" aria-label="打开搜索">搜索</button>
+      </nav>
+      <button class="icon-button" type="button" aria-label="打开设置">☼</button>
+    </header>
+
+    <main id="main">
+      <section id="library" class="library-view" aria-labelledby="library-title">
+        <div class="intro">
+          <p class="eyebrow">自己的藏书 · 08月24日</p>
+          <h1 id="library-title">接着读，<br /><em>从这里开始。</em></h1>
+          <p class="intro-copy">不追踪习惯，也不催促进度。只是记得你把哪几本书留在了手边。</p>
+        </div>
+
+        <section class="continue-ribbon" aria-labelledby="continue-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">阅读续接带</p>
+              <h2 id="continue-title">正在相处</h2>
+            </div>
+            <button class="quiet-button" type="button">查看全部</button>
+          </div>
+          <div class="reading-strip">
+            <article class="continue-item selected">
+              <div class="cover cover-blue" aria-label="书籍封面占位">終末<br />停滞<br /><small>04</small></div>
+              <div class="continue-meta"><p class="kicker">上次读到 · 第 12 章</p><h3>这里是终末停滞委员会 第四卷</h3><p>逢縁奇演 · 荻pote</p><div class="progress" aria-label="已读 38%"><span style="width:38%"></span></div></div>
+              <button class="continue-action" type="button">继续阅读 <span aria-hidden="true">→</span></button>
+            </article>
+            <article class="continue-item">
+              <div class="cover cover-ochre" aria-label="书籍封面占位">THE<br />QUIET<br /><small>SEA</small></div>
+              <div class="continue-meta"><p class="kicker">上次读到 · 第 03 章</p><h3>The Quiet Sea</h3><p>M. A. Harlow</p><div class="progress" aria-label="已读 14%"><span style="width:14%"></span></div></div>
+              <button class="continue-action" type="button">继续阅读 <span aria-hidden="true">→</span></button>
+            </article>
+          </div>
+        </section>
+
+        <section class="collection" aria-labelledby="collection-title">
+          <div class="section-heading"><div><p class="eyebrow">最近加入 · 书目不必排成表格</p><h2 id="collection-title">在这里停留</h2></div><button class="quiet-button" type="button">按系列整理</button></div>
+          <div class="open-group">
+            <div class="group-label"><span>终末停滞委员会</span><span>4 册 · 系列关系</span></div>
+            <div class="cover-row">
+              <button class="library-book" type="button"><span class="cover cover-blue">終末<br />停滞<br /><small>04</small></span><strong>第四卷</strong><small>逢縁奇演</small></button>
+              <button class="library-book" type="button"><span class="cover cover-ink">終末<br />停滞<br /><small>03</small></span><strong>第三卷</strong><small>逢縁奇演</small></button>
+              <button class="library-book" type="button"><span class="cover cover-moss">終末<br />停滞<br /><small>02</small></span><strong>第二卷</strong><small>逢縁奇演</small></button>
+              <button class="library-book" type="button"><span class="cover cover-missing">?</span><strong>第一卷</strong><small>封面缺失</small></button>
+            </div>
+          </div>
+          <div class="open-group">
+            <div class="group-label"><span>未分组</span><span>2 本</span></div>
+            <div class="compact-row"><button type="button"><span class="mini-cover cover-ochre">TQ</span><span><strong>The Quiet Sea</strong><small>M. A. Harlow</small></span></button><button type="button"><span class="mini-cover cover-plum">白</span><span><strong>白昼的边缘</strong><small>林月音</small></span></button></div>
+          </div>
+        </section>
+
+        <section class="state-samples" aria-labelledby="states-title">
+          <div class="section-heading"><div><p class="eyebrow">边界状态</p><h2 id="states-title">需要时才出现</h2></div></div>
+          <div class="state-grid">
+            <article><span class="state-mark state-muted">空</span><h3>书架还没有书</h3><p>导入一本 EPUB，留下第一处停留。</p><button class="text-action" type="button">导入 EPUB</button></article>
+            <article><span class="state-mark state-alert">!</span><h3>来源暂时不可用</h3><p>文件已移动；原有进度和批注仍在。</p><button class="text-action" type="button">重新选择文件</button></article>
+            <article><span class="state-mark state-progress">···</span><h3>正在准备搜索</h3><p>已索引 34 / 46 章，可以先浏览已有结果。</p><button class="text-action" type="button">取消索引</button></article>
+          </div>
+        </section>
+      </section>
+
+      <section id="reader" class="reader-study" aria-labelledby="reader-title">
+        <div class="study-label"><span>Desktop Reader · quiet</span><span>控件态在下方</span></div>
+        <article class="reader-quiet">
+          <div class="reader-folio"><span>04 / 58</span><span>这里是终末停滞委员会</span></div>
+          <div class="reader-copy"><p class="reader-kicker">第十二章</p><h2 id="reader-title">风从没有门的房间穿过</h2><p>房间里没有钟，只有纸页翻动时留下的微小回声。她把书放在膝上，像把一段仍未说完的路暂时收好。</p><p>阅读室不是一件家具。它只是允许记忆在下一次打开时，回到刚才停下的位置。</p></div>
+          <div class="reader-footer"><span>逢縁奇演</span><span class="reader-line"><i></i></span><span>38%</span></div>
+        </article>
+        <article class="reader-active" aria-label="阅读器控件态示意">
+          <div class="reader-toolbar"><button type="button">← 藏书</button><strong>这里是终末停滞委员会 第四卷</strong><div><button type="button">目录</button><button type="button">搜索</button><button type="button">Aa</button></div></div>
+          <div class="reader-active-body"><aside class="toc-sheet"><p class="eyebrow">目录</p><strong>第十二章</strong><span>第十三章</span><span>奥付</span></aside><div class="reader-copy"><p class="reader-kicker">第十二章</p><h2>风从没有门的房间穿过</h2><p>控件态只把上下文召回，不改变正文的宽度。目录以临时侧 sheet 出现，关闭后阅读重新成为唯一的主角。</p></div><aside class="note-sheet"><p class="eyebrow">设置 / 批注</p><span>正文 18px</span><span>行距 1.8</span><button class="text-action" type="button">添加批注</button></aside></div>
+        </article>
+      </section>
+
+      <section class="android-study" aria-labelledby="android-title">
+        <div class="study-label"><span>Android Library</span><span>不是缩小桌面</span></div>
+        <div class="phone" role="img" aria-label="Android 藏书代表屏静态示意"><div class="phone-status"><span>9:41</span><span>▴ ᯤ</span></div><div class="phone-head"><div><p class="eyebrow">自己的藏书</p><h2 id="android-title">接着读</h2></div><button class="icon-button" type="button" aria-label="搜索">⌕</button></div><div class="phone-continue"><span class="cover cover-blue">終末<br />停滞<br /><small>04</small></span><div><p class="kicker">第 12 章 · 38%</p><h3>这里是终末停滞委员会</h3><button class="continue-action" type="button">继续 <span aria-hidden="true">→</span></button></div></div><div class="phone-list"><p class="eyebrow">最近加入</p><div><span class="mini-cover cover-ochre">TQ</span><strong>The Quiet Sea</strong><small>昨天加入</small></div><div><span class="mini-cover cover-plum">白</span><strong>白昼的边缘</strong><small>上周加入</small></div></div><nav class="bottom-nav" aria-label="移动端导航"><a aria-current="page" href="#library">藏书</a><a href="#reader">系列</a><a href="#states-title">搜索</a><a href="#states-title">更多</a></nav></div>
+      </section>
+    </main>
+  </body>
+</html>

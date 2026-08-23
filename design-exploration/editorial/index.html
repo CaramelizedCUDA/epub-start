@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>EpubStart Design Exploration — Editorial</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到原型内容</a>
+    <header class="showcase-header">
+      <div>
+        <p class="eyebrow">EpubStart · Phase 1 · Direction A</p>
+        <h1>Editorial / Ink &amp; Paper</h1>
+        <p class="lede">像编辑一册私人刊物那样组织藏书；打开书后，软件退到页边。</p>
+      </div>
+      <nav aria-label="原型屏幕">
+        <a href="#library">Library</a>
+        <a href="#reader-quiet">Reader · Quiet</a>
+        <a href="#reader-active">Reader · Active</a>
+        <a href="#android">Android</a>
+        <a href="#states">States</a>
+      </nav>
+    </header>
+
+    <main id="main" class="showcase-main">
+      <section id="library" class="showcase-section" aria-labelledby="library-title">
+        <header class="section-heading">
+          <p>01 · Desktop</p>
+          <h2 id="library-title">Library — 编目桌</h2>
+          <span>1440 × 900 representative frame</span>
+        </header>
+
+        <article class="app-frame library-frame" aria-label="Editorial desktop library prototype">
+          <header class="masthead">
+            <a class="wordmark" href="#library" aria-label="EpubStart 藏书首页">EpubStart</a>
+            <nav class="primary-nav" aria-label="主导航">
+              <a class="is-current" href="#library" aria-current="page">藏书</a>
+              <a href="#states">系列</a>
+              <a href="#states">批注</a>
+            </nav>
+            <div class="mast-actions">
+              <button class="text-button" type="button">搜索藏书 <kbd>Ctrl K</kbd></button>
+              <button class="icon-button" type="button" aria-label="全局阅读设置">Aa</button>
+            </div>
+          </header>
+
+          <div class="catalogue-layout">
+            <section class="catalogue" aria-labelledby="catalogue-heading">
+              <header class="catalogue-heading">
+                <div>
+                  <p class="folio-label">私人编目 · 最近加入</p>
+                  <h3 id="catalogue-heading">藏书选读</h3>
+                </div>
+                <div class="catalogue-tools" aria-label="藏书显示选项">
+                  <button type="button" aria-pressed="true">封面</button>
+                  <button type="button" aria-pressed="false">紧凑书目</button>
+                  <button type="button">排序：最近加入</button>
+                </div>
+              </header>
+
+              <div class="cover-grid" role="list" aria-label="藏书列表">
+                <button class="book-tile is-selected" type="button" role="listitem" aria-current="true">
+                  <span class="cover cover-blue" role="img" aria-label="《终末停滞委员会》第四卷封面">
+                    <span class="cover-kicker">04</span>
+                    <strong>终末停滞<br />委员会</strong>
+                    <small>第四卷</small>
+                  </span>
+                  <span class="book-title">这里是终末停滞委员会</span>
+                  <span class="book-author">某作者 · 第四卷</span>
+                </button>
+
+                <button class="book-tile" type="button" role="listitem">
+                  <span class="cover cover-red" role="img" aria-label="《潮汐备忘录》封面">
+                    <span class="cover-rule"></span>
+                    <strong>潮汐<br />备忘录</strong>
+                    <small>TIDE NOTES</small>
+                  </span>
+                  <span class="book-title">潮汐备忘录</span>
+                  <span class="book-author">林屿</span>
+                </button>
+
+                <button class="book-tile" type="button" role="listitem">
+                  <span class="cover cover-ochre" role="img" aria-label="《北纬四十三度的灯》封面">
+                    <span class="cover-orbit"></span>
+                    <strong>北纬四十三度的灯</strong>
+                    <small>ESSAYS</small>
+                  </span>
+                  <span class="book-title">北纬四十三度的灯</span>
+                  <span class="book-author">秋庭</span>
+                </button>
+
+                <button class="book-tile" type="button" role="listitem">
+                  <span class="cover cover-black" role="img" aria-label="《Before the Quiet City Wakes》封面">
+                    <strong>BEFORE<br />THE QUIET<br />CITY WAKES</strong>
+                    <small>M. MORI</small>
+                  </span>
+                  <span class="book-title">Before the Quiet City Wakes</span>
+                  <span class="book-author">M. Mori</span>
+                </button>
+
+                <button class="book-tile" type="button" role="listitem">
+                  <span class="cover cover-missing" role="img" aria-label="《非常非常长的系列名称以及一段同样很长的副标题》缺少封面">
+                    <span>无封面</span>
+                    <strong>非常非常长的系列名称以及一段同样很长的副标题</strong>
+                  </span>
+                  <span class="book-title">非常非常长的系列名称以及一段同样很长的副标题</span>
+                  <span class="book-author">作者名很长的作者</span>
+                </button>
+
+                <button class="book-tile has-error" type="button" role="listitem">
+                  <span class="cover cover-green" role="img" aria-label="《室内气候》封面">
+                    <span class="cover-window"></span>
+                    <strong>室内气候</strong>
+                    <small>PRIVATE WEATHER</small>
+                  </span>
+                  <span class="book-title">室内气候</span>
+                  <span class="book-author">朴澄</span>
+                  <span class="book-status">来源不可用</span>
+                </button>
+              </div>
+            </section>
+
+            <aside class="margin-inspector" aria-labelledby="inspector-title">
+              <div class="proof-rail" aria-hidden="true">
+                <span>SELECTED</span>
+                <i></i>
+                <b>04</b>
+              </div>
+              <div class="inspector-content">
+                <p class="folio-label">选中的书</p>
+                <h3 id="inspector-title">这里是终末停滞委员会</h3>
+                <p class="inspector-author">某作者 · 第四卷</p>
+                <p class="inspector-copy">在终点到来以前，人们仍然需要决定如何度过今天。</p>
+                <dl>
+                  <div><dt>系列</dt><dd>终末停滞委员会</dd></div>
+                  <div><dt>标签</dt><dd>轻小说 · 待重读</dd></div>
+                  <div><dt>状态</dt><dd>可阅读</dd></div>
+                  <div><dt>加入</dt><dd>2026 年 8 月 18 日</dd></div>
+                </dl>
+                <button class="primary-action" type="button">打开这本书</button>
+                <button class="quiet-action" type="button">管理详情</button>
+              </div>
+              <footer>
+                <span>62 本</span>
+                <span>封面网格 · 5 列</span>
+              </footer>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="reader-quiet" class="showcase-section" aria-labelledby="quiet-title">
+        <header class="section-heading">
+          <p>02 · Desktop</p>
+          <h2 id="quiet-title">Reader — Distraction-free</h2>
+          <span>正文占据舞台，应用只留下书目线索</span>
+        </header>
+
+        <article class="app-frame reader-frame quiet-reader" aria-label="Editorial distraction-free reader prototype">
+          <header class="quiet-folio">
+            <span>这里是终末停滞委员会 · 第四卷</span>
+            <span>第四章</span>
+          </header>
+          <div class="reading-composition">
+            <aside class="reader-proof-rail" aria-label="阅读进度">
+              <span>04</span>
+              <i><b style="height: 42%"></b></i>
+              <small>42%</small>
+            </aside>
+            <article class="reading-page">
+              <p class="chapter-kicker">第四章 · 并非所有静止都是终点</p>
+              <h3>我们在停止的时间里继续生活</h3>
+              <p>窗外的钟没有再走。秒针停在十二与一之间，像一句尚未决定是否说出口的话。</p>
+              <p>千束把书合上，又重新打开。纸页本来没有声音，可房间太安静了，连指腹擦过页边的细响都像从很远的地方传来。</p>
+              <p>“如果明天不会来，”她说，“今天是不是就变得无限长？”</p>
+              <p>没有人回答。走廊尽头的灯仍亮着，窗上的薄雾把城市折成许多模糊的层次。她忽然明白，继续并不一定需要时间向前。</p>
+              <p>有时，继续只是把下一页翻开。</p>
+            </article>
+          </div>
+          <footer class="quiet-page-number"><span>184</span><span>轻触或按任意阅读快捷键召回控件</span></footer>
+        </article>
+      </section>
+
+      <section id="reader-active" class="showcase-section" aria-labelledby="active-title">
+        <header class="section-heading">
+          <p>03 · Desktop</p>
+          <h2 id="active-title">Reader — Controls active</h2>
+          <span>临时目录与工具条，不改变默认版心</span>
+        </header>
+
+        <article class="app-frame reader-frame active-reader" aria-label="Editorial reader with controls active prototype">
+          <header class="reader-toolbar">
+            <button class="icon-button" type="button" aria-label="返回藏书">←</button>
+            <div>
+              <strong>这里是终末停滞委员会</strong>
+              <span>第四章 · 42%</span>
+            </div>
+            <nav aria-label="阅读工具">
+              <button type="button" aria-pressed="true">目录</button>
+              <button type="button">搜索</button>
+              <button type="button">批注</button>
+              <button type="button">Aa</button>
+              <button type="button" aria-label="进入全屏">⛶</button>
+            </nav>
+          </header>
+          <div class="active-reader-body">
+            <aside class="toc-sheet" aria-labelledby="toc-title">
+              <header><p>目录</p><button type="button" aria-label="关闭目录">×</button></header>
+              <h3 id="toc-title">这里是终末停滞委员会</h3>
+              <ol>
+                <li><button type="button"><span>序章</span><small>开始</small></button></li>
+                <li><button type="button"><span>第一章 · 城市停止的早晨</span><small>12%</small></button></li>
+                <li><button type="button"><span>第二章 · 无人经过的站台</span><small>23%</small></button></li>
+                <li><button type="button"><span>第三章 · 留在室内的人</span><small>34%</small></button></li>
+                <li class="is-current"><button type="button" aria-current="location"><span>第四章 · 并非所有静止都是终点</span><small>42%</small></button></li>
+                <li><button type="button"><span>第五章 · 等待也有形状</span><small>55%</small></button></li>
+              </ol>
+            </aside>
+            <article class="reading-page active-page">
+              <p class="chapter-kicker">第四章 · 并非所有静止都是终点</p>
+              <h3>我们在停止的时间里继续生活</h3>
+              <p>窗外的钟没有再走。秒针停在十二与一之间，像一句尚未决定是否说出口的话。</p>
+              <p class="is-highlighted">千束把书合上，又重新打开。纸页本来没有声音，可房间太安静了，连指腹擦过页边的细响都像从很远的地方传来。</p>
+              <p>“如果明天不会来，”她说，“今天是不是就变得无限长？”</p>
+              <p>没有人回答。走廊尽头的灯仍亮着，窗上的薄雾把城市折成许多模糊的层次。</p>
+            </article>
+            <aside class="reader-context" aria-label="当前阅读上下文">
+              <span>42%</span>
+              <i></i>
+              <button type="button" aria-label="上一页">←</button>
+              <button type="button" aria-label="下一页">→</button>
+            </aside>
+          </div>
+          <footer class="reader-bottom-bar">
+            <button type="button">单页</button>
+            <button type="button">出版社字体</button>
+            <button type="button">暖纸</button>
+            <span>184 / 436</span>
+          </footer>
+        </article>
+      </section>
+
+      <section id="android" class="showcase-section" aria-labelledby="android-title">
+        <header class="section-heading">
+          <p>04 · Android</p>
+          <h2 id="android-title">Reader — Full screen + bottom sheet</h2>
+          <span>重新编排为触屏层级，不缩小桌面目录</span>
+        </header>
+
+        <div class="phone-stage">
+          <article class="phone-frame" aria-label="Editorial Android reader prototype">
+            <header class="phone-status"><span>10:24</span><span>▮▮ 85%</span></header>
+            <header class="phone-reader-bar">
+              <button type="button" aria-label="返回藏书">←</button>
+              <div><strong>第四章</strong><span>42%</span></div>
+              <button type="button" aria-label="更多阅读工具">•••</button>
+            </header>
+            <article class="phone-reading-page">
+              <p class="chapter-kicker">第四章</p>
+              <h3>我们在停止的时间里继续生活</h3>
+              <p>窗外的钟没有再走。秒针停在十二与一之间，像一句尚未决定是否说出口的话。</p>
+              <p>千束把书合上，又重新打开。纸页本来没有声音，可房间太安静了。</p>
+              <p>有时，继续只是把下一页翻开。</p>
+            </article>
+            <section class="bottom-sheet" aria-labelledby="sheet-title">
+              <div class="sheet-handle" aria-hidden="true"></div>
+              <header><h3 id="sheet-title">阅读设置</h3><button type="button" aria-label="关闭阅读设置">×</button></header>
+              <div class="sheet-actions" role="group" aria-label="阅读工具">
+                <button type="button"><span>☰</span>目录</button>
+                <button type="button"><span>⌕</span>搜索</button>
+                <button type="button"><span>✎</span>批注</button>
+                <button type="button"><span>Aa</span>排版</button>
+              </div>
+              <div class="font-control">
+                <span>字号</span>
+                <button type="button" aria-label="减小字号">−</button>
+                <output>18 px</output>
+                <button type="button" aria-label="增大字号">＋</button>
+              </div>
+            </section>
+          </article>
+          <div class="phone-rationale">
+            <p class="folio-label">移动端变化</p>
+            <ul>
+              <li>默认阅读全屏；轻触召回顶部动作。</li>
+              <li>目录、搜索、批注与排版从 bottom sheet 进入。</li>
+              <li>所有主要触点 ≥48px；关闭动作可见，不依赖下滑手势。</li>
+              <li>Android 图片导出未获支持，因此不展示该动作。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="states" class="showcase-section" aria-labelledby="states-title">
+        <header class="section-heading">
+          <p>05 · System states</p>
+          <h2 id="states-title">状态也属于编辑系统</h2>
+          <span>标题说明发生了什么，正文说明下一步</span>
+        </header>
+
+        <div class="state-ledger">
+          <article>
+            <p class="state-kind">EMPTY LIBRARY</p>
+            <h3>你的藏书还没有书</h3>
+            <p>从设备中选择 EPUB。导入后，文件仍由你保管。</p>
+            <button type="button">导入 EPUB</button>
+          </article>
+          <article>
+            <p class="state-kind">NO RESULT</p>
+            <h3>“停滞”在本系列中没有结果</h3>
+            <p>检查用词，或返回书名与作者范围继续查找。</p>
+            <button type="button">修改搜索</button>
+          </article>
+          <article>
+            <p class="state-kind">INDEXING · 34 / 135</p>
+            <h3>正在整理本系列的正文</h3>
+            <p>已有结果可以阅读；剩余章节会继续加入。</p>
+            <div class="linear-progress" aria-label="索引进度 25%"><span style="width: 25%"></span></div>
+            <button type="button">取消索引</button>
+          </article>
+          <article class="state-error">
+            <p class="state-kind">SOURCE UNAVAILABLE</p>
+            <h3>文件已移动</h3>
+            <p>重新选择原来的 EPUB。验证成功后会保留进度与批注。</p>
+            <button type="button">重新选择文件</button>
+          </article>
+          <article class="state-error">
+            <p class="state-kind">RESOURCE LIMIT</p>
+            <h3>设备空间不足，索引已停止</h3>
+            <p>旧索引仍保留。释放空间后可以重建，不会自动删除阅读数据。</p>
+            <button type="button">稍后重试</button>
+          </article>
+          <article>
+            <p class="state-kind">CANCELLED</p>
+            <h3>索引已在章节边界停止</h3>
+            <p>已完成的 34 个章节仍可搜索。</p>
+            <button type="button">继续整理</button>
+          </article>
+        </div>
+      </section>
+
+      <aside class="prototype-disclaimer" aria-label="原型边界">
+        <strong>Static design exploration only.</strong>
+        <span>无 Tauri 调用、无生产数据、无新增后端能力。详见 <a href="NOTES.md">方向说明</a>。</span>
+      </aside>
+    </main>
+  </body>
+</html>
