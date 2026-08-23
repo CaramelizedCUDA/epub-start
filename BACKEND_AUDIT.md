@@ -178,6 +178,13 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **红→绿反馈**：补齐依赖后，原 `:tauri-android:generateReleaseLintModel` TLS/缺失制品失败消失。完整 lint 首次到达项目检查并以 `MissingTvBanner` / `ImpliedTouchscreenHardware` 两条 error 变红；根因是初始 scaffold 宣告 `LEANBACK_LAUNCHER`，但项目从未承诺 Android TV。移除 Leanback feature/category 后，同一完整命令变绿。
 - **结果与边界**：`:app:lintUniversalRelease` 和 `:app:lintArmRelease` 在 `--offline --no-daemon --continue` 下 `BUILD SUCCESSFUL`，92 个任务中 26 个执行、66 个 up-to-date；两份报告各为 0 error、31 warning、1 hint。非阻塞 warning 未在本任务扩张处理；lint 通过不替代正式签名、重新生成的完整 release APK/AAB 或 Android 运行态矩阵。
 
+### 0.2.18 B3 Windows 桌面运行态回归（2026-08-23）
+
+- 本轮同时运行 `npm.cmd run tauri dev` 和当前代码生成的 Windows x64 release。开发态和 release 均从真实应用数据加载 8 本书，打开首本书并通过 `epub.localhost` 读取 container、OPF、NAV、XHTML；release 重新启动后书架、封面引用和首本书仍可用。
+- 已覆盖：翻页、目录跳转、正文搜索、批注创建/编辑/删除、单书阅读设置保存/恢复、进度保存调用、全屏进出和基础重启恢复。搜索回归发现 `section.load()` Promise 被误当回调导致结果为空；修复后开发态和 release 均以“终末”返回 19 条结果并可跳转。详细证据与步骤见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
+- 未覆盖：本轮没有打开原生导入选择器，没有删除现有用户书籍；当前来源均有效所以重新定位入口未出现；legacy shell 没有系列/标签消费入口；Android/OEM/Linux 不由本轮桌面证据替代。B3 Windows 总门禁因此仍保持未签发。
+- 本轮静态结果：`cargo fmt --check`、`cargo check`、完整 `cargo test`（181/181）、`npm.cmd run build`、`npm.cmd run audit:check` 和 `npm.cmd run audit:android-release` 通过；`npm.cmd run tauri build` 产出 Windows x64 exe/MSI/NSIS。Android 静态审计基线仍为 arm64-only、APK 11,557,632 B、AAB 11,365,807 B、原生库 13,040,288/8,951,720 B；本次前端修复后 `dist` 为 596,444 B，`audit:android-release` 增长 0.13%，仍在门禁内。
+
 ## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 
 1. 审计结果与缺口清单已经形成，IPC.md 的 `BOOK_RESOURCE_NOT_FOUND:` 文档缺口已经修复。
@@ -280,3 +287,4 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 - 2026-08-18：B2 Android 制品/缓存代码收口完成。修复 desktop dialog 与外部 Android 子项目 build 目录冲突，固定 NDK 并建立 profile、arm64 release 基线和静态体积/ABI/ELF/payload 门禁；来源缓存实施 256/512 MiB、持久真实 LRU、活动租约、启动协调，封面实施 64/128 MiB、原子候选、事务/孤儿清理，统一可重建数据硬上限 896 MiB。新增 17 个测试与 release/profile 静态门禁均完成目标变红自证；完整 `cargo test` 175/175，`audit:unwrap` 550 行/563 次。完整 Gradle lint 的四个 AndroidX runtime 制品受当前沙箱网络权限阻塞；Android 运行态等待固定 AVD，未签发 B2 总完成证明。
 - 2026-08-22：B2 收口复核修复来源租约/淘汰 TOCTOU、来源临时文件残留、来源/封面 SQLite 满盘稳定映射、封面文件先删后改元数据和并发候选未共享硬预算；实际硬预算常量由误称 1 GiB 改为 896 MiB，并保留独立 1 GiB ceiling。新增 6 个测试、强化 1 个预算测试，逐项目标变红后恢复，完整 `cargo test` 181/181；`audit:unwrap` 自动统计 575 行/590 次。release 门禁补齐完整工具链和 AAB ABI/ELF，最终静态基线收紧；完整 Gradle lint 因 Google Maven TLS 握手中断仍阻塞，Android 运行态仍等待固定 AVD，B2 总完成标准保持未勾选。
 - 2026-08-23：从阿里云镜像取得缺失 AndroidX/JUnit/Hamcrest 制品并以 Gradle module SHA-256/Maven Central SHA-1 校验，组装独立本地 Maven 仓库；完整 lint 首次到达项目检查后暴露 Android scaffold 的两条 Leanback TV error。项目没有 Android TV 目标，移除 Leanback feature/category 后，`:app:lintUniversalRelease` 与 `:app:lintArmRelease` 均 `BUILD SUCCESSFUL`，各为 0 error、31 warning、1 hint。未把此前跳过 lint 生成的 APK/AAB 追认为完整发布候选，B2 总门禁仍受其余 Android 运行态矩阵约束。
+- 2026-08-23：B3 Windows 回归覆盖开发态与 x64 release 的打开、资源链、目录、搜索、批注、设置、进度、全屏和基础重启；修复 EPUB.js `section.load()` Promise 被误当回调造成的桌面搜索空结果。导入、删除、失效来源重新定位、系列/标签消费及非 Windows 平台仍按覆盖清单保留未完成状态。

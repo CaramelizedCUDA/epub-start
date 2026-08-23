@@ -453,22 +453,44 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
   searchCurrentBook: async (query: string) => {
     const { book } = get();
-    if (!book || query.trim().length < 2) {
+    const needle = query.trim();
+    if (!book || needle.length < 2) {
       set({ searchResults: [] });
       return;
     }
-    const results: Array<{ href: string; excerpt: string }> = [];
-    const spine = (book as Book & { spine?: { each: (callback: (section: { href: string; load: (fn: (doc: Document) => void) => void }) => void) => void } }).spine;
-    spine?.each((section) => {
-      section.load((doc) => {
-        const text = doc.body?.textContent ?? '';
-        const index = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
-        if (index >= 0 && results.length < 50) {
-          results.push({ href: section.href, excerpt: text.slice(Math.max(0, index - 60), index + query.length + 120) });
+
+    type SearchSection = {
+      href: string;
+      load: () => Promise<{ textContent?: string } | null>;
+    };
+    const spine = (book as Book & {
+      spine?: { each: (callback: (section: SearchSection) => void) => void };
+    }).spine;
+    const sections: SearchSection[] = [];
+    spine?.each((section) => sections.push(section));
+
+    const lowerNeedle = needle.toLocaleLowerCase();
+    const results = await Promise.all(
+      sections.map(async (section) => {
+        try {
+          const contents = await section.load();
+          const text = contents?.textContent ?? '';
+          const index = text.toLocaleLowerCase().indexOf(lowerNeedle);
+          if (index < 0) return null;
+          return {
+            href: section.href,
+            excerpt: text.slice(Math.max(0, index - 60), index + needle.length + 120),
+          };
+        } catch (error) {
+          console.warn('Failed to load section for search:', section.href, error);
+          return null;
         }
-      });
+      }),
+    );
+
+    set({
+      searchResults: results.filter((result): result is { href: string; excerpt: string } => result !== null).slice(0, 50),
     });
-    set({ searchResults: results });
   },
 
   applyReadingSettings: (settings: ReadingSettings) => {

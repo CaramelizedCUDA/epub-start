@@ -109,7 +109,7 @@
 
 ## B3 后端验证与契约冻结
 
-- [ ] Windows 运行态回归：导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索、系列、标签和重启恢复。
+- [ ] Windows 运行态回归：导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索、系列、标签和重启恢复。本轮已覆盖开发态/release 的打开、封面、资源链、目录、搜索、批注、设置、进度、全屏和基础重启；导入、删除、失效来源重新定位、系列/标签消费仍未覆盖，详见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
 - [ ] Android 静态链审计和 B1 首次实机来源链门禁已完成；补做 B2 搜索任务与缓存淘汰回归，低存储/长期压力按批准的受控 Android 虚拟设备例外执行；未通过时不得完成全平台 B3 冻结或开始 Android 前端功能接入。
 - [ ] 以干净 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用；确认无调试段、测试 EPUB、预置缓存，且绝对上限、10% 回归门禁及缓存总预算均通过。
 - [ ] 运行 `cargo fmt --check`、`cargo check`、完整 `cargo test`、`npm.cmd run build` 和 `npm.cmd run tauri build`，记录版本、测试数量和已知警告。
@@ -157,3 +157,4 @@
 - 2026-08-22：同一受控 AVD 完成 B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理临时来源文件且重试成功；全新 profile 在保留约 4 MiB 空间时导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性为 `ok`。证据为 `target/android-b2-closeout-20260822`；后台索引无可观察触发入口，六轮累计 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态当时尚未执行，B2 总门禁保持未勾选。
 - 2026-08-23：受控 AVD 完成 B2 长期压力与限定范围综合恢复补测。`target/android-b2-pressure-20260823-direct` 以固定 8,521,993 字节 EPUB fixture 完成 6 轮×46 次 direct IPC/SAF 导入，累计逻辑输入 `2,352,070,068` 字节；每轮分段重启、轮末 force-stop/restart，第 6 轮保留 30 分钟后清理，日志以 `LONG_PRESSURE_DONE` 正常结束。`target/android-b2-recovery-20260823` 先验证启动协调不会凭空重建缓存，再通过持久化 SAF locator 的真实重新导入恢复来源、封面和 `34/34 ready` 索引，同时保留 1 本书、1 个系列、1 条关系。未覆盖来源/封面 hard-limit、索引期间并发活动读取、完整多记录业务、唯一物理 2 GiB 和多样内容；完整 Gradle lint 已在后续同日收口，B2 总门禁仍因其余 Android 运行态矩阵保持未勾选。
 - 2026-08-23：完整 Gradle release lint 收口。阿里云镜像下载与独立哈希校验关闭 AndroidX/JUnit/Hamcrest 依赖缺口；`generateReleaseLintModel` 先变绿，完整 lint 随后以 scaffold Leanback TV 声明的两条 error 变红。移除未承诺的 TV 声明后，Universal/Arm release lint 均为 0 error、31 warning、1 hint，且全程未使用 lint baseline、禁用检查或跳过 lint 任务。
+- 2026-08-23：启动 B3 Windows 桌面回归；开发态与 x64 release 的打开、资源链、目录、搜索、批注、设置、进度、全屏和基础重启已记录。修复 `section.load()` Promise 被误当回调导致的桌面搜索空结果；导入、删除、失效来源重新定位、系列/标签消费仍待后续覆盖。

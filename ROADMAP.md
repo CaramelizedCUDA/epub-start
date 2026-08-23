@@ -119,6 +119,8 @@ B2 采用以下初始门禁，首次可重复 release 基线建立后只允许�
 2026-08-22 受控 AVD B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理 `.source.tmp` 且重试成功；全新 profile 在约 4 MiB 可用空间下导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无临时文件；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性保持 `ok`。同一 AVD 的临时 closeout debug APK 新增可观察后台索引入口，单书测试系列任务最终 `34/34 ready`，SQLite `integrity_check=ok`、FTS=34。证据目录为 `target/android-b2-closeout-20260822`。六轮 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态当时尚未执行，B2 总门禁继续未签发。
 2026-08-23 受控 AVD B2 收口补测：`target/android-b2-pressure-20260823-direct` 完成 6 轮×46 份固定 EPUB fixture 的 direct IPC/SAF 导入，累计逻辑输入 `2,352,070,068` 字节（约 2.19 GiB）；每 15 份导入重启 profile、轮末 force-stop/restart，第 6 轮保留 30 分钟后清理，日志以 `LONG_PRESSURE_DONE` 正常结束。`target/android-b2-recovery-20260823` 通过持久化 SAF locator 的真实重新导入，验证 1 本书、1 个系列、1 条关系和 `34/34 ready` 索引保留，同时来源/封面缓存可重建；启动协调单独运行不会凭空生成缓存。该压力使用同一固定样本，不证明唯一物理 2 GiB、多样内容或完整多记录业务恢复；来源/封面 hard-limit、并发活动读取、取消/重建分支与 SQLite page/WAL 低存储峰值仍未覆盖，B2 总门禁继续未签发。完整 Gradle release lint 已在同日单独收口。
 
+2026-08-23 B3 Windows 回归已覆盖开发态与 x64 release 的打开、资源链、目录、搜索、批注、设置、进度、全屏和基础重启；导入、删除、失效来源重新定位、系列/标签消费仍未覆盖，记录见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
+
 EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于 F 阶段；B 阶段只交付它们依赖的稳定数据和 IPC 契约，不提前实现 UI。
 
 ## B3：后端验证与契约冻结
