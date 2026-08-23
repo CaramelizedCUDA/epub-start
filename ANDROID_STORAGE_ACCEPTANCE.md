@@ -1,6 +1,6 @@
 # B2 Android 运行时存储延期验收包
 
-状态：**部分执行，Android WebView、复制中断重试、受控 ENOSPC、后台索引、六轮累计压力和限定范围的业务数据/可重建缓存恢复已有运行态证据；完整 Gradle release lint 仍受 Google Maven TLS 阻塞，来源/封面 hard-limit 与更广 Android 矩阵仍未覆盖**。
+状态：**部分执行，Android WebView、复制中断重试、受控 ENOSPC、后台索引、六轮累计压力和限定范围的业务数据/可重建缓存恢复已有运行态证据，完整 Gradle release lint 已通过；来源/封面 hard-limit 与更广 Android 矩阵仍未覆盖**。
 
 本文件用于在受控 Android 虚拟设备上关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
 
@@ -10,12 +10,14 @@
 
 2026-08-22 WebView 修复复测：Android 平台改用 Tauri 映射的 `http://epub.localhost/book/{book_id}/` 根地址，前端同时归一化 EPUB.js 可能返回的 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...` 形式。使用重新编译的 x86_64 profile Rust 库和 APK 在同一 `EpubStart_B2_API35` / `emulator-5554` AVD 安装；当前复测 APK SHA-256 为 `6F6361B97AD52D7CA46FDFACC90EBE03AE93808664E80E46830AD5B821E23759`。重新定位后打开固定 EPUB 并读取首屏成功；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`，回归命令输出 `WEBVIEW_REGRESSION=GREEN`，未出现 `URL scheme "epub" is not supported`、`Failed to fetch`、`epub:///` 或 `localhost:1420`。本次只证明单书基本阅读资源链，未把后台索引、长压、满盘或进程中断路径计作通过。
 
-2026-08-22 B2 收口补测：同一受控 AVD 使用 `target/android-b2-closeout-20260822` 证据目录。143 MB 有效 EPUB 在 `copy_source_atomically start` 之后 force-stop，重启后 `.source.tmp` 被启动协调清除，重新导入成功；`interrupt-retry-verification.txt` 记录 `integrity=ok`、大文件缓存 `142743869` 字节且无临时文件。全新 profile 删除 `source-cache/` 与 `covers/` 后重新启动，固定 SAF 来源使缓存/封面重建，数据库为 `ok`、1 本书、1 条 `source_cache_entries`（8,521,993 字节）和 1 个封面；这只是单书可重建数据证据，不覆盖系列、标签、设置、批注和搜索索引保留。受控 ENOSPC 最终保留 4,088 KiB，导入新 locator `b2-enospc-runtime.epub` 在复制阶段显示 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；证据为 `enospc-runtime-after.png`、`enospc-runtime-result.txt` 和对应 `df` 文件。后台索引补测已形成独立运行态证据；六轮累计 2 GiB、综合业务数据恢复、来源/封面 hard-limit 运行态和完整 Gradle release lint 仍未签发。
+2026-08-22 B2 收口补测：同一受控 AVD 使用 `target/android-b2-closeout-20260822` 证据目录。143 MB 有效 EPUB 在 `copy_source_atomically start` 之后 force-stop，重启后 `.source.tmp` 被启动协调清除，重新导入成功；`interrupt-retry-verification.txt` 记录 `integrity=ok`、大文件缓存 `142743869` 字节且无临时文件。全新 profile 删除 `source-cache/` 与 `covers/` 后重新启动，固定 SAF 来源使缓存/封面重建，数据库为 `ok`、1 本书、1 条 `source_cache_entries`（8,521,993 字节）和 1 个封面；这只是单书可重建数据证据，不覆盖系列、标签、设置、批注和搜索索引保留。受控 ENOSPC 最终保留 4,088 KiB，导入新 locator `b2-enospc-runtime.epub` 在复制阶段显示 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；证据为 `enospc-runtime-after.png`、`enospc-runtime-result.txt` 和对应 `df` 文件。后台索引补测已形成独立运行态证据；截至该轮，六轮累计 2 GiB、综合业务数据恢复、来源/封面 hard-limit 运行态和完整 Gradle release lint 仍未签发，后续结果见下文。
 2026-08-22 后台索引补测：为避免把隐藏 Command 调用冒充产品运行态，使用 `VITE_B2_CLOSEOUT=1` 的临时 closeout debug APK（包名 `com.epubstart.reader`，SHA-256 `CE83A2C0AFC78535B6A9F819FC5BDE2129C50E35E8ED7505A75845CCE9036E24`）在同一 `EpubStart_B2_API35` / `emulator-5554` AVD 中从 WebView 触发既有系列与索引 Command。导入固定 EPUB（8,521,993 字节）后建立 `B2 Android Closeout` 测试系列并归属 1 本书；后台任务 `dc110e4b-87fe-41f0-b908-ebc2a6b9e59d` 最终为 `ready; 34/34`。拉回 SQLite 后 `integrity_check=ok`、`series=1`、`book_series=1`、`search_documents=34`、FTS=34；证据为 `index-series-prepared.png`、`index-building.png`、`index-result.png`、`index-result-summary.txt` 和 `index-result.sqlite`。本次覆盖 Android WebView 触发、系列归属、任务状态轮询、FTS 持久结果和数据库完整性；未覆盖读者同时打开/翻页的并发活动读取、取消/重建分支、长期多书索引。
 
 2026-08-23 长期压力补测：在同一受控 AVD 使用 `target/android-b2-pressure-20260823-direct`，以固定 EPUB（每份 8,521,993 字节）的 46 份 fixture 为一轮，完成 6 轮、每轮 46 次真实 SAF/IPC 导入，自动计算累计逻辑输入 `2,352,070,068` 字节（约 2.19 GiB）。每轮按每 15 份导入重启 profile，并在轮末 force-stop/restart；第 6 轮保留 46 本图书 30 分钟后清理。六轮重启快照均为 `integrity=ok`、`books=46`、31 条来源缓存/`264,181,783` 字节，清理快照均为 0 本书、0 条缓存；日志以 `LONG_PRESSURE_DONE totalBytes=2352070068 expected=2352070068` 正常结束。本轮是重复固定样本的 direct IPC/SAF 压力，未计入多 URI 后台索引，不证明唯一物理磁盘写入达到 2 GiB，也未覆盖多样 EPUB 内容或来源/封面 hard-limit 运行态。
 
 2026-08-23 综合恢复补测：在 `target/android-b2-recovery-20260823` 中先保留 1 本书、1 个 `B2 Android Closeout` 系列、1 条 `book_series` 关系和 `34/34 ready` 索引，删除 `source-cache/` 与 `covers/` 后重启。启动协调只完成目录/元数据清理，缓存实体仍为空；随后使用持久化 SAF locator 通过真实 `import_book` 重新导入，最终快照恢复为 `integrity_check=ok`、1 本书、1 个系列、1 条关系、1 条来源缓存（8,521,993 字节）、1 个封面和 `34/34` 索引，证实保存型业务数据保留且可重建缓存可恢复。该证据只覆盖一组书籍/系列/关系和搜索索引，不外推设置、批注、标签或多记录业务数据。
+
+2026-08-23 Gradle release lint 收口：从阿里云 Maven 镜像取得四个缺失 AndroidX 制品、JUnit 4.13.2、Hamcrest 1.3 及父 POM，并分别使用既有 Gradle module SHA-256 与 Maven Central SHA-1 校验后组装本地 Maven 仓库。`:tauri-android:generateReleaseLintModel` 首先通过；完整 `:app:lintUniversalRelease` / `:app:lintArmRelease` 初次真实检查暴露 Android scaffold 遗留的 Leanback TV 声明，在项目不支持 Android TV 的边界下移除该声明后，两种变体均 `BUILD SUCCESSFUL`，报告各为 0 error、31 warning、1 hint。此结论只关闭 lint 门禁，不把此前跳过 lint 生成的 APK/AAB 追认为完整发布候选，也不替代签名和设备矩阵。
 
 ## 1. 固定环境与安全门
 
@@ -284,7 +286,7 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 
 本轮最终数据库快照为：`integrity_check=ok`、`books=46`、`source_cache_entries=31`、来源缓存数据库账面 `264,181,783` 字节、来源缓存实体文件 62 个、封面实体 46 个/`54,084,201` 字节；`search_documents=0` 与 `search_index_state=0`。该快照来自 WebView 修复前的导入/协调轮，不作为修复后后台索引证据。
 
-补测快照不替换上述 46 本基线：中断重试快照为 `integrity=ok`、3 本书、1 条 142,743,869 字节来源缓存；ENOSPC 使用空白 profile，错误发生在来源复制阶段且没有提交业务书籍行；后台索引补测为 1 个测试系列、1 本书、`34/34 ready`、`search_documents=34`、FTS=34；长期压力为 6 轮×46 份固定 fixture、累计 `2,352,070,068` 字节并完成第 6 轮 30 分钟保留/清理；综合恢复为持久业务行保留、真实 SAF 重新导入后来源/封面/索引恢复。仍未覆盖索引期间并发活动读取、取消/重建分支、完整多记录业务数据、来源/封面 hard-limit 运行态和完整 Gradle release lint，不能据此签发 B2 总完成证明。
+补测快照不替换上述 46 本基线：中断重试快照为 `integrity=ok`、3 本书、1 条 142,743,869 字节来源缓存；ENOSPC 使用空白 profile，错误发生在来源复制阶段且没有提交业务书籍行；后台索引补测为 1 个测试系列、1 本书、`34/34 ready`、`search_documents=34`、FTS=34；长期压力为 6 轮×46 份固定 fixture、累计 `2,352,070,068` 字节并完成第 6 轮 30 分钟保留/清理；综合恢复为持久业务行保留、真实 SAF 重新导入后来源/封面/索引恢复；完整 Gradle release lint 已通过。仍未覆盖索引期间并发活动读取、取消/重建分支、完整多记录业务数据和来源/封面 hard-limit 运行态，不能据此签发 B2 总完成证明。
 
 最终结论必须分别写：
 

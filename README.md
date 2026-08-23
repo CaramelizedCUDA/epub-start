@@ -2,11 +2,11 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码收口；受控虚拟设备已完成 WebView 单书首屏、复制中断重试、受控 ENOSPC 和单书缓存重建，完整 Gradle release lint、后台索引和六轮长期压力仍未收口，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码收口；受控虚拟设备已完成 WebView 单书首屏、复制中断重试、受控 ENOSPC、单书后台索引、六轮累计压力和限定范围综合恢复，完整 Gradle release lint 也已通过。来源/封面 hard-limit、并发/取消重建、更完整业务恢复、SQLite page/WAL 与 OEM/实机矩阵仍未收口，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；完整 Gradle lint 因四个 Google Maven 制品在当前网络发生 TLS 握手中断而阻塞，受控 AVD 已补充复制中断重试、受控 ENOSPC 和单书缓存重建证据，但后台索引和六轮累计 2 GiB 压力仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前处于 B2 收口：arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现。2026-08-23 使用校验过的本地 Maven 仓库补齐依赖后，`:app:lintUniversalRelease` 与 `:app:lintArmRelease` 均以 0 error、31 warning、1 hint 通过；受控 AVD 已补齐后台索引、六轮累计 2 GiB 逻辑压力和限定范围综合恢复证据。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
