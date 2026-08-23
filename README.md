@@ -2,11 +2,11 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。当前 B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码收口；受控虚拟设备已完成 WebView 单书首屏、活动读者与后台索引并发、来源 hard-limit、复制中断重试、受控 ENOSPC、六轮累计压力、SQLite 低余量峰值和限定范围多记录恢复，完整 Gradle release lint 也已通过。封面 hard-limit 的公共路径只观察到串行 admission/软淘汰，仍保留辅助逻辑边界；真实设备已有取消/进程终止/重建记录，更广 OEM/真实设备矩阵延期至 B3/F2，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。当前阶段为 B3：Windows legacy shell 已覆盖其实际具备的运行态链，系列/标签 UI 消费按 Backend First 边界留给 F2；2026-08-24 已从当前提交重新生成 arm64 APK/AAB，完整 arm64 lint 与静态体积/ABI/ELF 门禁通过。当前仅缺 arm64 设备上的空白安装和固定样本运行时占用；更广 OEM/前端消费矩阵归 F2，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。Phase 1 的 Windows 桌面 EPUB 导入、封面、删除、阅读、翻页与应用重启后的 CFI 恢复有历史验收记录。B0 后端审计与 B1 后端核心能力已于 2026-08-14 完成：V1/V3 迁移回滚测试已补齐变红自证，Android 官方命令已从干净 scaffold 产出 debug APK/AAB，双机来源链门禁与导入卡住修复已有记录；自动化未覆盖的 Android Provider、WebView 和长期压力行为仍按设备证据单独标注。当前 B2 受控运行态收口已形成四类场景证据：活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 的公共并发分支仍仅保留辅助逻辑证据。arm64 release 分项基线、静态体积门禁、debug/profile/release 角色、来源 256/512 MiB 与封面 64/128 MiB 预算均已实现；2026-08-23 完整 `:app:lintUniversalRelease` 与 `:app:lintArmRelease` 均以 0 error、31 warning、1 hint 通过。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。2026-08-24 的 B3 当前提交复测通过 181/181 Rust 测试、Windows x64 安装包构建、arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。Android arm64 空白安装与固定样本运行时占用尚无在线同架构设备证据，不能由 x86_64 AVD 代替。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
@@ -18,6 +18,7 @@
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
 - [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论与缺口清单（2026-08-14）。
 - [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)：2026-08-23 Windows 开发态与 release 桌面回归的已测项、未测项和搜索修复证据。
+- [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)：2026-08-24 当前提交的 arm64 APK/AAB、完整 lint、静态门禁与待补设备占用证据。
 - [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)：B3 Command、模型、错误、数据库、资源预算和来源状态的冻结候选及未签发条件。
 - [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力验收包；已记录活动读者、来源 hard-limit、SQLite 低余量、长期压力和多记录恢复证据，并明确封面 hard-limit 与 B3/F2 设备矩阵边界。
 

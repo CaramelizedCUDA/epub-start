@@ -23,8 +23,8 @@
 
 ### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：B2 Android 制品/缓存最终复核后 181/181 通过，exit 0（2026-08-22 当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移、批注覆盖，以及来源缓存持久 LRU/活动租约/软硬上限/重启协调、原子写入失败清理、租约与淘汰竞态闭合，封面原子候选/并发预算/元数据一致性/软硬上限，统一 896 MiB 硬预算和 SQLite/文件系统存储耗尽稳定映射；初始收口新增 17 个测试，本次复核再新增 6 个并强化 1 个，均完成目标步骤变红自证。未测：桌面 legacy shell/EPUB.js 与 Android WebView 的完整 UI 消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、宿主真实磁盘写满、断电、唯一物理 2 GiB 写入、封面公共保护重叠 hard-limit 和更广 OEM/真实设备矩阵；Android 受控 AVD 已另有运行态证据，不由单元测试替代。
-- `cargo fmt --check`、`cargo check`、`npm.cmd run build`、`npm.cmd run audit:unwrap` 与 `npm.cmd run audit:android-release`：此前在当前工作区通过（2026-08-22）；本次 `audit:unwrap --check` 与 `audit:android-release` 于 2026-08-23 再次通过，统计仍为 575 行/590 次。Google Maven TLS 曾阻塞四个 AndroidX 制品；从阿里云镜像取得制品并完成独立哈希校验、补齐 JUnit/Hamcrest 元数据后，`:tauri-android:generateReleaseLintModel` 及完整 `:app:lintUniversalRelease` / `:app:lintArmRelease` 均通过，两份报告各为 0 error、31 warning、1 hint。`audit:android-release` 仍只证明当前静态制品/基线；lint 通过也不等同于正式签名或设备运行态。
+- `cargo test`：2026-08-24 当前提交重新执行 181/181 通过，exit 0；既有新增测试的目标变红→恢复变绿证据仍见各专项记录，本轮没有新增测试。已测：B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移、批注，以及来源缓存持久 LRU/活动租约/软硬上限/重启协调、原子写入失败清理、租约与淘汰竞态，封面原子候选/并发预算/元数据一致性/软硬上限，统一 896 MiB 硬预算和 SQLite/文件系统存储耗尽稳定映射。未测：F2 的新前端消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、宿主真实磁盘写满、断电、唯一物理 2 GiB 写入、封面公共保护重叠 hard-limit 和更广 OEM/真实设备矩阵；Android 受控 AVD 已另有运行态证据，不由单元测试替代。
+- 2026-08-24 当前提交的 `cargo fmt --check`、`cargo check`、`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release` 与 Windows x64 `npm.cmd run tauri build` 均通过，unwrap 统计仍为 575 行/590 次。当前 arm64 APK/AAB 静态候选重新生成，`:app:lintArm64Release` 为 0 error、31 warning、1 hint；APK/AAB 分别为 11,960,465/11,769,321 B，相对基线增长 3.49%/3.55%，ABI/ELF/禁止载荷门禁通过。`audit:android-release` 与 lint 只证明静态候选；没有在线 arm64 设备，空白安装、固定样本运行时占用和正式签名仍未验证。详见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。
 
 ### Android 环境（B1 首次门禁已完成）
 
@@ -148,6 +148,8 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **来源缓存（新增 8 个测试）**：覆盖命中推进持久时钟、最终文件真实大小、持久 LRU 不受 mtime 误导、活动租约跳过、受保护项超过 hard limit 的稳定错误、256/512 MiB 常量、重启孤儿/缺失协调、重启重新执行预算。变红自证包括临时移除活动判断、忽略 hard overflow、把软上限改为 255 MiB，以及在实现 seam 缺失/旧启动行为下的编译失败或目标断言失败；恢复后来源缓存 15/15。
 - **封面与统一预算（新增 9 个测试）**：`CoverCache` 覆盖启动孤儿/缺失路径、按旧到新回落软上限、候选+旧封面保护、受保护 hard limit、失败导入只清候选；EPUB 覆盖原子候选不覆盖旧文件与 ENOSPC 映射；library service 覆盖资源错误不降级为书籍状态；`resource_budget` 冻结 512+128+256=896 MiB。变红自证分别通过缺失新 seam 的编译失败、保留旧封面/禁用 hard 判断、恢复旧错误映射和临时把封面 hard 上限改为 129 MiB 触发。恢复后完整套件 175/175。
 - **已测/未测边界**：上述代码测试与静态制品检查仍按辅助逻辑口径记录。2026-08-23 使用校验过的本地 Maven 仓库补齐 AndroidX/JUnit/Hamcrest 依赖后，完整 `:app:lintUniversalRelease` / `:app:lintArmRelease` 已通过；此前跳过 lint model/vital 任务生成的 APK/AAB 仍不得称为完整 release 候选。受控 AVD 的运行态证据见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：已覆盖 WebView、活动读者、复制中断/重试、ENOSPC、来源 hard-limit、SQLite 低余量、长期压力和 4 本书/2 个系列的综合恢复；封面 hard-limit 公共保护重叠仅观察到 admission 串行化/软淘汰，仍以辅助逻辑为准。真实黑鲨 Android 9 的取消/进程终止/重建记录直接接受；更广 OEM/真实设备矩阵移至 B3/F2。桌面端缓存算法由自动化覆盖，本次未做新的桌面 GUI 运行态，标记“待人工验证”。
+
+- **B3 当前候选更新（2026-08-24）**：当前提交另完成 arm64 静态候选与 `:app:lintArm64Release`；APK/AAB 为 11,960,465/11,769,321 B，相对基线增长 3.49%/3.55%，ABI/ELF/禁止载荷门禁通过。Windows legacy shell 的实际运行态范围已关闭，系列/标签管理 UI 与更广 OEM/真实设备前端消费矩阵按 Backend First 边界归 F2/F3。当前没有在线 arm64 设备，候选的空白安装与固定样本运行时占用仍未验证，不能由 x86_64 AVD 或静态审计替代。详见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。
 
 ### 0.2.14 B2 收口复核（2026-08-22）— 一致性缺口已修复，运行态边界不变
 

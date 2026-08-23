@@ -65,7 +65,7 @@
 - [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 181/181；测试数 85→181，B2 搜索、目录/搜索、系列、标签、阅读设置、批注及缓存收口/复核测试均完成变红自证）。
 - [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、批注纯文本/CFI/长度/颜色/重启恢复契约，以及 Android 制品/缓存预算与延期验收边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 575 行/590 次）。
 
-## B2 后端业务能力（当前阶段）
+## B2 后端业务能力（已完成，2026-08-23）
 
 ### 4. 搜索与索引（真实后台实现）
 
@@ -102,20 +102,20 @@
 
 ### 7. B2 完成标准
 
-- [ ] 所有后端业务能力都有真实服务实现、IPC 契约、数据库迁移（如需要）、错误语义和自动化测试。
-- [ ] 搜索任务可取消、可查询、可重建，资源预算和来源失效行为可验证。
-- [ ] Android 发布制品存在可重复分项基线并通过绝对上限与 10% 回归门禁；运行时可重建数据具备软/硬上限、真实 LRU、活动租约保护、低存储错误和可验证清理语义。
-- [ ] 不存在“前端已接入但后端未实现”的 Command、假数据或临时本地状态替代品。
+- [x] 所有后端业务能力都有真实服务实现、IPC 契约、数据库迁移（如需要）、错误语义和自动化测试。
+- [x] 搜索任务可取消、可查询、可重建，资源预算和来源失效行为可验证。
+- [x] Android 发布制品存在可重复分项基线并通过绝对上限与 10% 回归门禁；运行时可重建数据具备软/硬上限、真实 LRU、活动租约保护、低存储错误和可验证清理语义。
+- [x] 不存在“前端已接入但后端未实现”的 Command、假数据或临时本地状态替代品。
 
 ## B3 后端验证与契约冻结
 
-- [ ] Windows 运行态回归：导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索、系列、标签和重启恢复。本轮已覆盖开发态/release 的打开、封面、资源链、目录、搜索、批注、设置、进度、全屏和基础重启；另以隔离 fixture 在开发态补齐导入、删除和失效来源重新定位。系列/标签消费仍未覆盖，详见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
-- [ ] Android 静态链审计和 B1 首次实机来源链门禁已完成；补做 B2 搜索任务与缓存淘汰回归，低存储/长期压力按批准的受控 Android 虚拟设备例外执行；未通过时不得完成全平台 B3 冻结或开始 Android 前端功能接入。
-- [ ] 以干净 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用；确认无调试段、测试 EPUB、预置缓存，且绝对上限、10% 回归门禁及缓存总预算均通过。
-- [ ] 运行 `cargo fmt --check`、`cargo check`、完整 `cargo test`、`npm.cmd run build` 和 `npm.cmd run tauri build`，记录版本、测试数量和已知警告。
-- [ ] 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与实现一致。
+- [x] Windows 运行态回归：legacy shell 实际具备的导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索和重启恢复均已覆盖；系列/标签的 Rust/IPC/事务契约由自动化覆盖，管理/消费 UI 按 Backend First 边界留给 F2，不再用尚未解锁的前端入口循环阻塞 B3。详见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
+- [x] Android 静态链、B1 首次实机来源链，以及 B2 搜索任务、活动读者、来源 hard-limit、缓存/低存储、长期压力和综合恢复均已有对应范围证据；真实黑鲨取消/进程终止/重建记录直接接受。更广 OEM/前端消费矩阵归 F2，不由 B3 后端冻结重复执行。
+- [ ] 以当前提交的 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用。2026-08-24 静态部分已通过：APK 11,960,465 B、AAB 11,769,321 B、Cargo `.so` 13,040,512 B、打包 `.so` 8,952,024 B、`dist` 596,444 B；增长均低于 10%，ABI/ELF/禁止载荷与完整 arm64 lint（0 error、31 warning、1 hint）通过。未完成：当前无在线 arm64 设备，现有 x86_64 AVD 不能替代本候选的空白安装与固定样本运行时占用。详见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。
+- [x] 2026-08-24 当前提交执行 `cargo fmt --check`、`cargo check`、完整 `cargo test`（181/181）、`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release` 和 `npm.cmd run tauri build` 均通过；Windows x64 产出 MSI 5,537,792 B、NSIS 3,215,710 B。已知非阻塞警告：Android/Kotlin 上游 deprecated API、Gradle 9 deprecated features、arm64 lint 31 warning/1 hint。
+- [x] 2026-08-24 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与当前实现一致；Rust 注册 44 个 Command == TypeScript 44 个 wrapper，V1–V4 迁移与 DATABASE 对齐，17 个公共稳定错误前缀均在 IPC 登记，Markdown 本地链接 0 个缺失，`audit:check` 仍为 575 行/590 次，当前无生产代码 diff。未测/不由文档审计替代：新前端 UI、arm64 候选设备占用及更广 OEM 运行态。
 - [ ] 建立后端契约冻结点：冻结 Command、模型、错误前缀、数据库字段、资源预算和来源状态语义。
-- 当前已形成候选冻结清单 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)，但因 Windows/Android 运行态缺口仍未签发。
+- 当前已形成候选冻结清单 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)；Windows 与 B2 Android 后端范围已关闭，仍因当前 arm64 候选缺少同架构设备安装/占用证据而未签发。
 
 ## F1–F3 前端（B3 通过后才解锁）
 
@@ -159,3 +159,5 @@
 - 2026-08-23：受控 AVD 完成 B2 长期压力与限定范围综合恢复补测。`target/android-b2-pressure-20260823-direct` 以固定 8,521,993 字节 EPUB fixture 完成 6 轮×46 次 direct IPC/SAF 导入，累计逻辑输入 `2,352,070,068` 字节；每轮分段重启、轮末 force-stop/restart，第 6 轮保留 30 分钟后清理，日志以 `LONG_PRESSURE_DONE` 正常结束。`target/android-b2-recovery-20260823` 先验证启动协调不会凭空重建缓存，再通过持久化 SAF locator 的真实重新导入恢复来源、封面和 `34/34 ready` 索引，同时保留 1 本书、1 个系列、1 条关系。未覆盖来源/封面 hard-limit、索引期间并发活动读取、完整多记录业务、唯一物理 2 GiB 和多样内容；完整 Gradle lint 已在后续同日收口，B2 总门禁仍因其余 Android 运行态矩阵保持未勾选。
 - 2026-08-23：完整 Gradle release lint 收口。阿里云镜像下载与独立哈希校验关闭 AndroidX/JUnit/Hamcrest 依赖缺口；`generateReleaseLintModel` 先变绿，完整 lint 随后以 scaffold Leanback TV 声明的两条 error 变红。移除未承诺的 TV 声明后，Universal/Arm release lint 均为 0 error、31 warning、1 hint，且全程未使用 lint baseline、禁用检查或跳过 lint 任务。
 - 2026-08-23：启动 B3 Windows 桌面回归；开发态与 x64 release 的打开、资源链、目录、搜索、批注、设置、进度、全屏和基础重启已记录。修复 `section.load()` Promise 被误当回调导致的桌面搜索空结果；导入、删除、失效来源重新定位、系列/标签消费仍待后续覆盖。
+- 2026-08-24：B3 Windows 边界裁决完成。导入、删除与失效来源重新定位已由隔离 fixture 补齐；系列/标签已有 Rust/IPC/事务自动化，但 legacy shell 没有 UI，按 Backend First 规则把真实消费留给 F2，不再形成“必须先做 F2 才能通过 B3”的循环门禁。更广 Android OEM/前端消费矩阵同样归 F2。
+- 2026-08-24：从当前提交重新生成 arm64 release 静态候选。完整 `lintArm64Release` 为 0 error、31 warning、1 hint，`audit:android-release` 通过 ABI/ELF/禁止载荷、绝对上限和 10% 回归门禁；全仓 `cargo fmt/check/test`（181/181）、前端 build、audit:check 与 Windows x64 Tauri build 均通过。当前没有在线 arm64 设备，x86_64 受控 AVD 不能替代空白安装和固定样本运行时占用，因此 B3 契约仍保持候选未签发。

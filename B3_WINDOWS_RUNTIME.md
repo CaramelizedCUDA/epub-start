@@ -1,7 +1,7 @@
 # B3 Windows 桌面运行态回归记录
 
-日期：2026-08-23  
-分支：`codex/b3-contract-freeze`  
+日期：2026-08-23
+分支：`codex/b3-contract-freeze`
 范围：本地 Tauri 开发运行与当前代码生成的 Windows x64 release 可执行文件。调试入口只绑定 `127.0.0.1`，所有操作均通过应用页面按钮触发；没有直接写数据库。导入/删除/重新定位使用本轮临时创建并在结束时清理的 EPUB fixture，不触碰既有书籍。
 
 ## 已执行
@@ -47,7 +47,13 @@
 | 导入 | 已覆盖（开发态） | 真实原生文件选择器导入隔离 fixture；观察到 `import_book` 获取/解析日志；fixture 已清理，release 未重复 |
 | 删除 | 已覆盖（开发态） | 仅删除本轮导入的 fixture，书架移除记录；既有书籍未操作 |
 | 重新定位 | 已覆盖（开发态） | 移动 fixture 触发 `BOOK_SOURCE_UNAVAILABLE`/“文件缺失”，再经“重新选择”恢复并重新打开正文；release 未重复 |
-| 系列、标签 | 未覆盖 | 当前 legacy shell 没有对应管理/消费 UI；Rust/IPC 自动化仍是辅助逻辑证据 |
-| Android/OEM/Linux | 未覆盖 | 见 `ANDROID_STORAGE_ACCEPTANCE.md` 与 B3/F2 后续门禁；不能由桌面运行代替 |
+| 系列、标签 | B3 后端边界已覆盖；UI 待 F2 | 当前 legacy shell 没有对应管理/消费 UI；Rust/IPC/事务自动化已覆盖真实契约，F2 再做管理与消费运行态 |
+| Android/OEM/Linux | 不在本 Windows 记录范围 | 见 `ANDROID_STORAGE_ACCEPTANCE.md`、`B3_ANDROID_RELEASE_CANDIDATE.md` 与 F2/F3 后续门禁；不能由桌面运行代替 |
 
 本记录不把“按钮存在”、静态构建或后端单元测试升级为未执行的桌面场景通过。没有新增前端自动化测试；本轮验证是应用运行态回归，未改变 Rust 测试统计。
+
+## B3 边界裁决（2026-08-24）
+
+ROADMAP 同时规定 B3 通过后才解锁 F1/F2，并在 F2 实现系列/标签 UI。因而要求 legacy shell 先消费系列/标签才允许 B3 冻结，会形成“必须先进入 F2 才能通过 B3”的循环门禁，并违反 Backend First 的前端冻结规则。
+
+本记录据此只把自动化证据用于证明系列/标签的后端契约，而不伪装成已执行 UI：系列 CRUD、单系列归属、卷标、排序、关系事务、标签 CRUD、直接/继承关系、筛选和稳定错误均已有 Rust/IPC/TypeScript 镜像与目标测试；真实 Windows 管理/消费体验仍明确列入 F2。B3 的 Windows 运行态范围因此以 legacy shell 当前实际具备的功能为准，已经关闭；该裁决不提前解锁或实现生产前端。

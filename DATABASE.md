@@ -203,7 +203,7 @@ V2 CRUD 中的 UUID、`created_at` 与 `updated_at` 由 Rust 服务层生成，�
 
 来源缓存软/硬上限为 256/512 MiB，封面缓存软/硬上限为 64/128 MiB，搜索索引文本账面硬上限为 256 MiB；统一常量把全部可重建数据合计硬上限冻结为 896 MiB，不超过 1 GiB。索引预算只统计持久化 `title/body` 的 UTF-8 字节数；搜索错误状态的文档清理、FTS 重建和 `search_index_state` 更新在同一个 `BEGIN IMMEDIATE` 事务中完成，任一步失败回滚并保留旧索引，`SQLITE_FULL` 映射为 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷重建已记录主库 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`，但该样本不等于低存储/长期压力门禁。达到上限必须保持数据库一致性；`books`、阅读进度、批注、设置等持久业务数据不属于缓存预算，禁止为满足预算而删除。
 
-上述来源/封面事务、重启协调、软硬淘汰和错误语义已有辅助逻辑自动化与变红自证。Android ENOSPC、进程中断、长期/2 GiB 压力以及真实 page/journal/WAL 峰值仍按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 阻塞，不得由桌面测试外推。V2 字段足以表达当前实现；未来确有 Schema 缺口时只能追加 V5 或更高迁移，禁止回写 V2。
+上述来源/封面事务、重启协调、软硬淘汰和错误语义已有辅助逻辑自动化与变红自证。Android ENOSPC、进程中断、长期/2 GiB 逻辑压力以及真实 page/rollback journal 低余量峰值已按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 形成限定范围证据；没有观察到 WAL/SHM，且结果不得外推为唯一物理 2 GiB、封面公共保护重叠或更广 OEM 行为。V2 字段足以表达当前实现；未来确有 Schema 缺口时只能追加 V5 或更高迁移，禁止回写 V2。
 
 ## V3 Schema（阅读设置扩展）
 

@@ -1,8 +1,8 @@
 # B3 后端契约冻结候选
 
-日期：2026-08-23  
-分支：`codex/b3-contract-freeze`  
-状态：**候选冻结，未签发**。Windows 导入/删除/失效来源重新定位/系列标签消费和更广 Android/OEM 矩阵仍未完成，因此本文件记录当前实现边界，不授权前端或平台继续扩展契约。
+日期：2026-08-24
+分支：`codex/b3-contract-freeze`
+状态：**候选冻结，未签发**。Windows legacy shell 实际具备的运行态链、系列/标签后端契约、B1/B2 Android 后端范围和当前 arm64 静态候选均已关闭；当前唯一未满足的 B3 发布候选证据是同一 arm64 候选的空白安装与固定样本运行时占用。因此本文件记录当前实现边界，但尚不正式解锁 F1/F2。
 
 ## Command 契约
 
@@ -61,10 +61,15 @@ Rust `src-tauri/src/db/models.rs` 与 TypeScript `src/types/models.ts` 保持 sn
 
 ## 证据与未签发条件
 
-已取得的静态证据：`cargo fmt --check`、`cargo check`、完整 `cargo test` 181/181、`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release` 和 Windows x64 `npm.cmd run tauri build` 均通过；命令与模型对照来自当前工作树。
+2026-08-24 当前提交已取得的证据：`cargo fmt --check`、`cargo check`、完整 `cargo test` 181/181、`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release` 和 Windows x64 `npm.cmd run tauri build` 均通过。当前 arm64 APK/AAB 重新生成，完整 `:app:lintArm64Release` 为 0 error、31 warning、1 hint；静态分项、哈希、ABI/ELF 与未测范围见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。Command 与模型对照来自当前工作树。
+
+边界裁决与已关闭条件：
+
+- Windows UI 已在不改变既有用户数据的前提下，以隔离 fixture 完成开发态导入、删除和失效来源重新定位；其余 legacy shell 运行态见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。系列/标签管理 UI 按 ROADMAP 属于 F2，B3 只要求其真实 Rust/IPC/事务契约与自动化覆盖，避免形成先做 F2 才能通过 B3 的循环门禁。
+- B1 真实设备来源链与 B2 受控 AVD/黑鲨证据按各自覆盖范围直接接受；更广 OEM、WebView、性能、手势和完整前端消费矩阵归 F2/F3，不重复作为后端冻结前置。封面公共保护重叠 hard-limit 仍诚实保留辅助逻辑边界。
 
 仍未满足冻结签发条件：
 
-- Windows UI 已在不改变既有用户数据的前提下，以隔离 fixture 完成开发态导入、删除和失效来源重新定位；当前 legacy shell 仍没有系列/标签消费入口。
-- Android 更广 OEM/真实设备矩阵与完整前端消费回归仍属于 B3/F2 边界；受控 AVD 证据不能替代它们。
-- 因此本文件是审计快照，不表示 B3 已完成，也不解锁 F1/F2 的新功能开发。
+- 本轮 `adb devices -l` 没有在线 arm64 设备；现有受控 AVD 为 x86_64，不能安装 arm64-only APK。当前候选尚未取得空白安装、首次启动 code/data 分项和固定样本运行时占用。
+- 正式签发前须用 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md) 中记录的当前 APK，或从同一提交可重复生成且静态门禁等价的 arm64 APK，补齐上述设备证据并复核哈希。
+- 因此本文件仍是候选冻结快照，不表示 B3 已完成，也不解锁 F1/F2 的生产开发。
