@@ -18,6 +18,7 @@
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
 - [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论与缺口清单（2026-08-14）。
 - [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)：2026-08-23 Windows 开发态与 release 桌面回归的已测项、未测项和搜索修复证据。
+- [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)：B3 Command、模型、错误、数据库、资源预算和来源状态的冻结候选及未签发条件。
 - [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力验收包；已记录活动读者、来源 hard-limit、SQLite 低余量、长期压力和多记录恢复证据，并明确封面 hard-limit 与 B3/F2 设备矩阵边界。
 
 若文档间存在冲突，以职责更专门的文档为准：依赖与命令以本文件为准，目录职责以架构文档为准，表字段以数据库文档为准，Command 签名和错误语义以 IPC 文档为准。

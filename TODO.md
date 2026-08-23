@@ -115,6 +115,7 @@
 - [ ] 运行 `cargo fmt --check`、`cargo check`、完整 `cargo test`、`npm.cmd run build` 和 `npm.cmd run tauri build`，记录版本、测试数量和已知警告。
 - [ ] 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与实现一致。
 - [ ] 建立后端契约冻结点：冻结 Command、模型、错误前缀、数据库字段、资源预算和来源状态语义。
+- 当前已形成候选冻结清单 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)，但因 Windows/Android 运行态缺口仍未签发。
 
 ## F1–F3 前端（B3 通过后才解锁）
 

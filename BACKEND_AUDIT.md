@@ -185,6 +185,11 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - 未覆盖：本轮没有打开原生导入选择器，没有删除现有用户书籍；当前来源均有效所以重新定位入口未出现；legacy shell 没有系列/标签消费入口；Android/OEM/Linux 不由本轮桌面证据替代。B3 Windows 总门禁因此仍保持未签发。
 - 本轮静态结果：`cargo fmt --check`、`cargo check`、完整 `cargo test`（181/181）、`npm.cmd run build`、`npm.cmd run audit:check` 和 `npm.cmd run audit:android-release` 通过；`npm.cmd run tauri build` 产出 Windows x64 exe/MSI/NSIS。Android 静态审计基线仍为 arm64-only、APK 11,557,632 B、AAB 11,365,807 B、原生库 13,040,288/8,951,720 B；本次前端修复后 `dist` 为 596,444 B，`audit:android-release` 增长 0.13%，仍在门禁内。
 
+### 0.2.19 B3 契约冻结候选（2026-08-23）
+
+- 当前 Command 注册/TypeScript 封装为 44/44，Rust 与 TypeScript 模型按 snake_case 镜像；数据库迁移链冻结为不可回写的 V1→V4；书籍状态、搜索状态、错误前缀和 896 MiB 可重建数据预算均有实现与文档定位。
+- 详细冻结表、资源预算、来源状态和未签发条件见 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)。由于 Windows UI 的导入/删除/失效来源重新定位、系列/标签消费和更广 Android/OEM 矩阵仍未覆盖，本候选不签发 B3 完成。
+
 ## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 
 1. 审计结果与缺口清单已经形成，IPC.md 的 `BOOK_RESOURCE_NOT_FOUND:` 文档缺口已经修复。
