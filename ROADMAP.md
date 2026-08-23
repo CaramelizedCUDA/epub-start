@@ -35,12 +35,12 @@ Android 不再只作为发布前的一次性验收项。普通模拟器只能用
 | --- | --- |
 | B0 | SDK/NDK、Rust targets、双机和固定样本已具备；V1/V3 回滚测试完成变红自证，官方命令已从干净、无本地绕过的 scaffold 产出 debug APK/AAB。 |
 | B1 | **第一次真实设备门禁已通过。** 已验证 SAF 选择、持久授权、打开、完全重启、授权撤销、重新定位、私有缓存、文件描述符生命周期和后端资源协议；未自动化的 Provider/WebView 行为继续单列。 |
-| B2 | 在真实设备验证搜索/索引取消、进程被系统终止后的恢复、来源失效和大文件；低存储与长期压力按受控 Android 虚拟设备例外补测。建立 Android 发布制品与运行时存储预算并验证淘汰；受控 AVD 已补齐限定范围的低存储、长期压力、后台索引和业务/缓存恢复证据，未覆盖项仍单列。 |
-| B3 | 完成后端冻结前的 Android 来源链和资源预算回归；未通过时不得把后端标记为全平台冻结，也不得进入 Android 功能接入。 |
-| F2 | 在真实设备上验证书架、阅读器、目录、搜索、批注、设置、图片查看和来源重新定位等功能。 |
+| B2 | 在真实设备验证搜索/索引取消、进程被系统终止后的恢复、来源失效和大文件；低存储与长期压力按受控 Android 虚拟设备例外补测。建立 Android 发布制品与运行时存储预算并验证淘汰；受控 AVD 已补齐活动读者、来源 hard-limit、SQLite 低余量、长期压力和多记录业务/缓存恢复证据；封面公共 hard-limit 并发分支保留辅助逻辑边界。真实设备已有取消/进程终止/重建记录，未覆盖项按边界单列。 |
+| B3 | 完成后端冻结前的 Android 来源链、资源预算和正式发布候选回归，并补齐更广 OEM/真实设备矩阵；未通过时不得把后端标记为全平台冻结，也不得进入 Android 功能接入。 |
+| F2 | 在真实设备上验证书架、阅读器、目录、搜索、批注、设置、图片查看和来源重新定位等功能；承接 Android WebView 与 OEM/设备矩阵的前端消费回归。 |
 | F3 | 验证触控/手势、窄屏、软键盘、深色模式、耗电、内存、不同 Android/WebView 版本和发布候选回归。 |
 
-B1 是首次实机验证节点，现已完成；B3 是不可越过的最终后端门禁。B1 的后端协议检查以 Rust 协议处理器、来源读取、状态码/MIME/CORS/路径防护的直接证据为准；legacy 前端或 WebView 选择何种请求方式属于后续前端集成，不参与 B0/B1 后端完成判定。B2/B3 仍须补齐受控虚拟设备上的低存储/长期压力、发布制品大小和缓存淘汰的可重复证据。
+B1 是首次实机验证节点，现已完成；B3 是不可越过的最终后端门禁。B1 的后端协议检查以 Rust 协议处理器、来源读取、状态码/MIME/CORS/路径防护的直接证据为准；legacy 前端或 WebView 选择何种请求方式属于后续前端集成，不参与 B0/B1 后端完成判定。B2 受控 AVD 的低存储/长期压力、活动读者、来源 hard-limit、SQLite 低余量和限定范围业务恢复已形成可重复证据；B3/F2 继续承接正式发布候选、封面公共保护重叠、完整前端消费及更广 OEM/真实设备矩阵。
 
 ## B0：后端审计与基线（已完成）
 
@@ -106,13 +106,13 @@ B2 采用以下初始门禁，首次可重复 release 基线建立后只允许�
 
 - arm64 release APK 不超过 40 MiB，Rust 原生库不超过 30 MiB，前端 `dist` 不超过 2 MiB；相对已提交基线增长超过 10% 即使仍低于绝对上限也必须解释；
 - debug APK 只用于诊断，不作为发布体积证明；profile 使用 release Rust、独立包名、可调试应用、关闭 JNI debug/R8 和 debug 签名，供日常诊断/AVD 验收；release 不得携带 Rust/NDK 运行时调试段、测试 EPUB 或预置来源缓存；
-- Android 来源缓存软上限 256 MiB、硬上限 512 MiB；封面缓存软上限 64 MiB、硬上限 128 MiB；搜索索引文本账面硬上限 256 MiB，当前统一常量合计 896 MiB、不超过 1 GiB；SQLite page/WAL 实际占用仍需运行态测量；
+- Android 来源缓存软上限 256 MiB、硬上限 512 MiB；封面缓存软上限 64 MiB、硬上限 128 MiB；搜索索引文本账面硬上限 256 MiB，当前统一常量合计 896 MiB、不超过 1 GiB；补充 6 GiB AVD 已记录 SQLite 低余量主库/rollback journal 峰值，WAL/SHM 未观察到，不把未使用的日志模式写成已通过场景；
 - 来源缓存命中必须更新 `last_accessed_at` 并按持久化真实 LRU 淘汰，活动 `SourceLease` 不得被删除。封面按 `books.updated_at, id` 确定淘汰顺序；asset 读取不可观测，不宣称命中 LRU。无法在硬上限内安全完成写入时返回稳定资源限制错误，不得静默突破上限；
 - 记录空白安装、固定样本导入、触发淘汰、进程重启和清理后的分项占用；覆盖磁盘不足、中断写入、孤儿封面/索引清理和缓存重建。数据库与用户明确保存的内容不是缓存，不得为达成指标而删除。
 
 若需要暴露缓存统计或清理能力，先在 [IPC.md](IPC.md) 设计 Command、返回模型和错误语义，再实现和注册；本规划不授权预注册 stub。数据库应优先复用 `source_cache_entries.cache_size_bytes` 与 `last_accessed_at`，确有字段缺口时只能追加迁移。
 
-2026-08-22 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。受控 AVD 后续已补充 ENOSPC、重启中断、单书缓存重建和单书后台索引 WebView 触发/`34/34 ready` 持久结果，六轮长期压力和限定范围综合恢复随后在 2026-08-23 完成；同日使用校验过的本地 Maven 仓库补齐依赖后，两种完整 Gradle release lint 均以 0 error 通过。具体边界见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，B2/B3 总门禁仍受其余 Android 运行态矩阵约束。
+2026-08-23 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。受控 AVD 已补齐活动读者与后台索引并发、来源 hard-limit、ENOSPC、SQLite 低余量、六轮长期压力和 4 本书/2 个系列/标签/设置/进度/批注及可重建来源/封面/索引恢复；真实黑鲨 Android 9 的取消、进程终止与重建记录直接接受。完整 Gradle release lint 同日以 0 error 通过。封面公共 hard-limit 并发分支只观察到 admission 串行化/软淘汰，更广 OEM/真实设备矩阵移至 B3/F2；具体证据见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
 
 2026-08-22 受控 AVD 首轮复测状态（修复前）：新增 `custom-protocol` Cargo feature 别名并修正验收文档的实际 `app_data_dir` 路径；新 profile 包空白安装与 46 份逐份导入成功，来源/封面预算观察、缺失元数据协调和孤儿清理有证据。Android WebView 拒绝当前 `epub:///localhost/...` URL，活动读取/后台索引未通过；ENOSPC、复制中断和六轮 2 GiB 压力仍未完成，B2 总门禁继续未签发。
 2026-08-22 受控 AVD WebView 修复复测：Android 根地址切换为 `http://epub.localhost/...`，前端在 EPUB.js 请求边界归一化 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...`。重新编译并安装 x86_64 profile APK 后，固定 EPUB 重新定位及单书首屏读取通过，输出 `WEBVIEW_REGRESSION=GREEN`，未出现不支持 scheme、`Failed to fetch`、`epub:///` 或 `localhost:1420`；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`。后台索引、ENOSPC、复制中断、清理重建和六轮 2 GiB 压力仍未完成，B2 总门禁继续未签发。
@@ -131,7 +131,7 @@ EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于
 4. 所有已交付 Command 都有 IPC 文档、Rust serde 模型、TypeScript 镜像和调用契约；未实现能力不注册 stub；
 5. 搜索/索引后台任务具备取消、状态、上限、预算、错误和重建行为；
 6. Windows 运行态完成导入、打开、资源协议、删除、批注、设置、搜索、系列、标签和重启恢复回归；
-7. Android 代码链已完成静态审计，并在真实设备通过 B1 来源链门禁；B2 的后台任务、缓存淘汰和受控 AVD 低存储/长期压力已形成限定范围证据，但来源/封面 hard-limit、并发活动读取和完整业务恢复仍须单列，不能用桌面构建或纯辅助逻辑替代；
+7. Android 代码链已完成静态审计，并在真实设备通过 B1 来源链门禁；B2 的后台任务、活动读者、来源 hard-limit、缓存淘汰、SQLite 低余量、长期压力和多记录业务/缓存恢复已形成限定范围证据，封面公共 hard-limit 并发分支仍保留辅助逻辑边界，不能用桌面构建或纯辅助逻辑替代；更广 OEM/真实设备矩阵由 B3/F2 承接；
 8. arm64 release APK、原生库、前端 `dist` 与安装后/运行时分项占用均有可重复基线，满足绝对上限与 10% 回归门禁；缓存/索引软硬上限、LRU、活动租约和清理语义已经验证并冻结；
 9. [README.md](README.md)、[ARCHITECTURE.md](ARCHITECTURE.md)、[DATABASE.md](DATABASE.md)、[IPC.md](IPC.md)、[CONVENTIONS.md](CONVENTIONS.md)、[TODO.md](TODO.md) 和 [SECURITY.md](SECURITY.md) 与实现一致。
 

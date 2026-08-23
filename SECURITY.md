@@ -26,7 +26,7 @@ EpubStart 是一个本地优先的 EPUB 阅读器。主要威胁来源为：
 | 控制文件最大体积（container.xml/OPF） | 2 MiB | `epub/mod.rs` |
 | ZIP 最大条目数 | 5,000 | `epub/mod.rs` |
 
-当前已统一实施：压缩源 512 MiB、声明与实际总解压量 2 GiB、单项及整包压缩比 200:1；B2 搜索提取已加入单章节 8 MiB、单书 64 MiB、一次任务累计提取量 2 GiB 限制，所有计数使用溢出检查。2 GiB 是异常输入处理的安全上限，不是允许搜索索引常驻设备的体积目标。Android 已验证系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和持久 URI 授权撤销后的来源失效，并记录过一次重建的主库/rollback journal 占用；来源/封面缓存写入的常见存储耗尽 OS 错误已映射为稳定 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，SQLite `SQLITE_FULL` 已通过限制 `max_page_count` 的真实写事务验证回滚保留旧索引。Android 真实低存储与长期/2 GiB 压力仍未完成，经批准延期至固定镜像和受控 `/data` 容量的 Android 虚拟设备；该例外不替代 SAF、OEM、性能或手势实机证据。
+当前已统一实施：压缩源 512 MiB、声明与实际总解压量 2 GiB、单项及整包压缩比 200:1；B2 搜索提取已加入单章节 8 MiB、单书 64 MiB、一次任务累计提取量 2 GiB 限制，所有计数使用溢出检查。2 GiB 是异常输入处理的安全上限，不是允许搜索索引常驻设备的体积目标。Android 已验证系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和持久 URI 授权撤销后的来源失效，并记录过一次重建的主库/rollback journal 占用；来源/封面缓存写入的常见存储耗尽 OS 错误已映射为稳定 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，SQLite `SQLITE_FULL` 已通过限制 `max_page_count` 的真实写事务验证回滚保留旧索引。受控 AVD 进一步完成来源 hard-limit 拒绝、六轮 `2,352,070,068` 字节逻辑压力、补充 6 GiB AVD 的 SQLite 低余量页/rollback journal 峰值和多记录业务/缓存恢复；不把固定样本的逻辑累计量写成唯一物理 2 GiB，也不外推为真实设备/OEM 证据。
 
 这些限制当前针对 EPUB 资源链。P3 的 CBZ/图片 ZIP 和通用 ZIP 分发包必须重新评估条目数、嵌套层数、总解压量、单图尺寸、总像素、解码内存和暂存磁盘预算；不得因复用 `zip` crate 而自动沿用不充分的 EPUB 限制。
 
@@ -57,7 +57,7 @@ B2 初始制品门禁为 arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 Mi
 - arm64 release：APK 11,557,632 B（11.022 MiB）、AAB 11,365,807 B（10.839 MiB）、Cargo release `.so` 13,040,288 B（12.436 MiB）、打包运行时 `.so` 8,951,720 B（8.537 MiB）、前端 `dist` 595,644 B（0.568 MiB）。`npm run audit:android-release` 已检查完整基线工具链、APK/AAB 各自的 arm64-only/AArch64、无 `.debug*`/`.symtab`/`.strtab`、无测试 EPUB/缓存/宿主路径 payload，并通过绝对与当前基线门禁。
 - profile 使用 release Rust、独立 `.profile` 包名、可调试应用、关闭 JNI debug/R8 和 debug 签名。历史 arm64/x86_64 profile APK/AAB 已完成 ABI、签名和打包 ELF 检查；它们只用于诊断/AVD，不是发布证明，正式延期验收前必须从当前提交重新生成并记录 hash。
 - 完整 Gradle release lint 已于 2026-08-23 通过：从阿里云镜像取得缺失 AndroidX/JUnit/Hamcrest 制品并以既有 Gradle module SHA-256/Maven Central SHA-1 校验，`:app:lintUniversalRelease` 与 `:app:lintArmRelease` 报告均为 0 error、31 warning、1 hint。项目不支持 Android TV，因此移除了初始 scaffold 的 Leanback feature/category，而未用 TV banner 或 lint baseline 掩盖错误。此前显式跳过 lint model/vital 任务生成的 APK/AAB 仍只用于静态体积审计，不追认为完整发布候选。
-- Android 空白安装、WebView、受控低存储、中断重试、六轮累计压力和限定范围恢复已有 AVD 证据；来源/封面 hard-limit、完整多记录业务恢复、SQLite page/WAL 低存储峰值和 OEM/真实设备矩阵仍未覆盖，验收边界见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
+- Android 空白安装、WebView、受控低存储、中断重试、来源 hard-limit、六轮累计压力、SQLite 低余量峰值和限定范围多记录恢复已有 AVD 证据；封面 hard-limit 的公共并发分支仅观察到 admission 串行化/软淘汰，因此仍以辅助逻辑作为 hard-limit 证据。更广 OEM/真实设备矩阵移至 B3/F2，验收边界见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
 
 ### CSP 策略
 
@@ -132,7 +132,7 @@ V1、V2、V3、V4 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，错�
 - Android SAF 持久权限的运行时撤销检测依赖平台插件
 - 当前无自动化的 Android 设备验收流水线
 - Android SDK/NDK、Rust targets 与双机环境已经具备；官方干净 debug 构建和 B1 首次实机来源链门禁已完成，导入卡住 workaround 已有黑鲨 30 轮与荣耀连续导入记录。未覆盖自动化设备回归、所有 DocumentsProvider；长期压力和低存储故障已按批准的受控 AVD 例外完成限定范围取证，不外推真实设备/OEM 矩阵。
-- arm64 release 静态分项基线、体积/ELF 门禁和两种完整 Gradle release lint 已建立；正式签名、重新生成的完整 release 候选、来源/封面 hard-limit 与更广 Android 运行态矩阵仍未完成，不能签发发布候选或 B2 Android 总运行态证明。历史 debug 296.16 MiB 与设备约 338 MB 仍不得写成 release 体积结论。
+- arm64 release 静态分项基线、体积/ELF 门禁和两种完整 Gradle release lint 已建立；正式签名、重新生成的完整 release 候选、封面可控保护重叠分支与更广 Android 运行态矩阵仍未完成，不能签发发布候选或全设备 Android 运行态证明。历史 debug 296.16 MiB 与设备约 338 MB 仍不得写成 release 体积结论。
 - legacy 前端/WebView 如何请求 EPUB 资源属于前端集成范围，不作为 B0 后端安全审计是否通过的判据
 - EPUB.js 的 iframe 隔离依赖其内置安全策略，而非 Tauri 主 WebView 的 CSP
 - 封面文件通过 `asset://` 协议暴露，需确认 `asset` scope 配置正确

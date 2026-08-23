@@ -7,7 +7,7 @@
 - **已实现**：代码真实存在且可定位。
 - **辅助逻辑（静态/单元）**：可由审查或自动化命令覆盖；必须同时写明已测与未测范围。
 - **桌面端**：需要 Windows/Linux 人工运行态证据；历史记录不自动升级为本次验证。
-- **Android 环境**：SDK/NDK/targets/设备已具备；B1 双机运行态记录与受控 AVD 证据分开保留，不能由桌面测试代替。受控 AVD 已补齐 WebView、复制中断/重试、ENOSPC、单书后台索引、六轮固定样本压力和限定范围的业务数据/可重建缓存恢复；来源/封面 hard-limit、读者并发活动读取、完整多记录恢复及 OEM/真实设备矩阵仍须单列。
+- **Android 环境**：SDK/NDK/targets/设备已具备；B1 双机运行态记录与受控 AVD 证据分开保留，不能由桌面测试代替。受控 AVD 已补齐活动读者、来源 hard-limit、WebView、复制中断/重试、ENOSPC、SQLite 低余量、六轮固定样本压力和 4 本书/2 个系列的保存型业务与可重建缓存恢复；封面 hard-limit 的公共保护重叠分支仍只保留辅助逻辑证据。真实黑鲨 Android 9 的取消、进程终止与重建记录直接接受，更广 OEM/真实设备矩阵移至 B3/F2。
 
 ## 0.1 基线验证
 
@@ -23,7 +23,7 @@
 
 ### 自动化命令（执行事实与覆盖边界）
 
-- `cargo test`：B2 Android 制品/缓存最终复核后 181/181 通过，exit 0（2026-08-22 当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移、批注覆盖，以及来源缓存持久 LRU/活动租约/软硬上限/重启协调、原子写入失败清理、租约与淘汰竞态闭合，封面原子候选/并发预算/元数据一致性/软硬上限，统一 896 MiB 硬预算和 SQLite/文件系统存储耗尽稳定映射；初始收口新增 17 个测试，本次复核再新增 6 个并强化 1 个，均完成目标步骤变红自证。未测：桌面 legacy shell/EPUB.js 与 Android WebView 的实际运行态消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、Android/宿主真实磁盘写满、断电、低存储、长期/2 GiB 压力，以及低存储场景下 SQLite page/WAL 实际占用；Android Provider/Activity 仍只有既有设备抽样。
+- `cargo test`：B2 Android 制品/缓存最终复核后 181/181 通过，exit 0（2026-08-22 当前工作区）。已测：既有 B1/B2 搜索、目录资源、系列、标签、阅读设置/迁移、批注覆盖，以及来源缓存持久 LRU/活动租约/软硬上限/重启协调、原子写入失败清理、租约与淘汰竞态闭合，封面原子候选/并发预算/元数据一致性/软硬上限，统一 896 MiB 硬预算和 SQLite/文件系统存储耗尽稳定映射；初始收口新增 17 个测试，本次复核再新增 6 个并强化 1 个，均完成目标步骤变红自证。未测：桌面 legacy shell/EPUB.js 与 Android WebView 的完整 UI 消费、所有 WebView/OEM 版本、多进程/多连接数据库并发、宿主真实磁盘写满、断电、唯一物理 2 GiB 写入、封面公共保护重叠 hard-limit 和更广 OEM/真实设备矩阵；Android 受控 AVD 已另有运行态证据，不由单元测试替代。
 - `cargo fmt --check`、`cargo check`、`npm.cmd run build`、`npm.cmd run audit:unwrap` 与 `npm.cmd run audit:android-release`：此前在当前工作区通过（2026-08-22）；本次 `audit:unwrap --check` 与 `audit:android-release` 于 2026-08-23 再次通过，统计仍为 575 行/590 次。Google Maven TLS 曾阻塞四个 AndroidX 制品；从阿里云镜像取得制品并完成独立哈希校验、补齐 JUnit/Hamcrest 元数据后，`:tauri-android:generateReleaseLintModel` 及完整 `:app:lintUniversalRelease` / `:app:lintArmRelease` 均通过，两份报告各为 0 error、31 warning、1 hint。`audit:android-release` 仍只证明当前静态制品/基线；lint 通过也不等同于正式签名或设备运行态。
 
 ### Android 环境（B1 首次门禁已完成）
@@ -70,12 +70,12 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **未调用**：21 个系列/标签目录 wrapper（`list_series`…`filter_books_by_tags`，含新增 `list_series_books`、`list_series_tags` 与 `filter_books_by_tags`）在后端已实现并有测试，但 legacy shell 前端未调用。这符合 B 阶段「前端冻结」策略，不视为缺陷，在 F2 接入。
 - **文档缺口**：`BOOK_RESOURCE_NOT_FOUND:` 前缀在 Rust（`formats/epub/mod.rs:45`）、协议层（`protocol/mod.rs:79`）与前端 `mapError` 中均已使用，但 [IPC.md](IPC.md) 错误契约表缺少该行。本次审计已补上（见下方修复记录）。
 
-### 0.2.5 B2 搜索与索引 — 自动化与 Android 部分运行态通过；低存储/长期压力延期至受控虚拟设备
+### 0.2.5 B2 搜索与索引 — 自动化与 Android 限定范围运行态通过
 
 - `formats/epub::extract_search_documents` 按 OPF spine 顺序读取 XHTML，受控解析相对路径、`..` 和百分号编码并拒绝越过 EPUB 根目录；单章节限制 8 MiB、单书限制 64 MiB，服务层以 `checked_add` 统计一次任务累计 2 GiB；不把整本 EPUB 读成一个 `Vec<u8>`。
 - `services/search_service.rs` 使用 V2 FTS5 trigram 外部内容表，短于 3 个字符走参数化、转义通配符的 `LIKE`；索引记录来源 `SourceFingerprint`，指纹变化会重建，章节损坏会保留已提取文档并记录部分结果错误；持久化文本账面硬上限为 256 MiB，既有文本按 UTF-8 字节数统计，计数溢出和超限均返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，超限重建回滚并保留原索引文档。
 - 已注册并实现 5 个 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。同一系列最多一个活动任务，后台线程在章节边界检查取消；错误状态清理/FTS 重建/状态更新在单事务内完成，`SQLITE_FULL` 使用稳定资源错误且回滚保留旧索引，单任务内部错误不再扩散清空整个系列。取消、来源不可用、资源超限均不会把错误原文或宿主路径返回给前端。
-- 自动化已测：spine 顺序、中日韩文本、相对/编码 href、取消、同系列任务去重、损坏章节部分结果、8 MiB 限制、短词 LIKE 与通配符字面查询、trigram 查询、结果上限、未就绪错误、进程重启状态恢复、ready/pending 聚合（含缺失状态和 ready 部分错误）、指纹失效判断、提取字节计数溢出、UTF-8 文本按字节计数、单任务 2 GiB 累计预算溢出/超限、索引预算超限稳定错误和超限回滚保留旧文档、错误状态事务失败回滚、真实 SQLite `SQLITE_FULL`/缓存存储错误映射、非满盘 SQLite I/O 保持内部错误；当前 175/175 全量测试通过。原搜索新增 5 个回归测试均按“恢复旧缺陷→目标测试变红→恢复修复→变绿”自证，本次目录/搜索契约补证见 0.2.6；SQLite 满盘使用受限 page_count 的真实写事务，缓存 OS 错误仍只构造内存错误对象，不填充设备存储。Android 当前 APK 真机复测：黑鲨 Android 9 单卷索引 34/34 并返回 trigram 摘要；七卷系列立即取消后保留 101/135 部分结果并进入 `error`；force-stop 后重启状态恢复为 `pending`（101/135），继续执行后恢复到 135/135 `ready`；系统 picker 导入 13.20 MiB EPUB 后，章节超限状态为 `ready`、0/1 且保留 `entry ... exceeds the size limit of 8388608 bytes`；一次性诊断探针调用现有 SAF `releasePermission` 后重建状态为 `error`，明细为 `BOOK_SOURCE_UNAVAILABLE: ... Persisted read permission is missing`；七卷 135/135 重建期间观测到 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`。未测：受控 Android 虚拟设备上的低存储、长期/2 GiB 导入压力和所有 WebView 版本。
+- 自动化已测：spine 顺序、中日韩文本、相对/编码 href、取消、同系列任务去重、损坏章节部分结果、8 MiB 限制、短词 LIKE 与通配符字面查询、trigram 查询、结果上限、未就绪错误、进程重启状态恢复、ready/pending 聚合（含缺失状态和 ready 部分错误）、指纹失效判断、提取字节计数溢出、UTF-8 文本按字节计数、单任务 2 GiB 累计预算溢出/超限、索引预算超限稳定错误和超限回滚保留旧文档、错误状态事务失败回滚、真实 SQLite `SQLITE_FULL`/缓存存储错误映射、非满盘 SQLite I/O 保持内部错误；当前 175/175 全量测试通过。原搜索新增 5 个回归测试均按“恢复旧缺陷→目标测试变红→恢复修复→变绿”自证，本次目录/搜索契约补证见 0.2.6；SQLite 满盘使用受限 page_count 的真实写事务，缓存 OS 错误仍只构造内存错误对象，不填充设备存储。Android 当前 APK 真机复测：黑鲨 Android 9 单卷索引 34/34 并返回 trigram 摘要；七卷系列立即取消后保留 101/135 部分结果并进入 `error`；force-stop 后重启状态恢复为 `pending`（101/135），继续执行后恢复到 135/135 `ready`；系统 picker 导入 13.20 MiB EPUB 后，章节超限状态为 `ready`、0/1 且保留 `entry ... exceeds the size limit of 8388608 bytes`；一次性诊断探针调用现有 SAF `releasePermission` 后重建状态为 `error`，明细为 `BOOK_SOURCE_UNAVAILABLE: ... Persisted read permission is missing`；七卷 135/135 重建期间观测到 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`。补充 6 GiB AVD 另验证来源 hard-limit 稳定拒绝、活动读者在索引 `building` 中翻页 2 次并最终 `10/10 ready`、6 轮×46 固定 fixture 的逻辑累计输入 `2,352,070,068` 字节，以及 SQLite 低余量时 `search index storage is full` 的稳定错误和 rollback journal 峰值；WAL/SHM 未观察到。更广 WebView/OEM/真实设备矩阵移至 B3/F2。
 
 ### 0.2.6 B2 目录/搜索资源与错误契约 — 辅助逻辑已验证，运行态待 B3
 
@@ -147,7 +147,7 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **profile 制品**：arm64 profile APK/AAB 为 17,447,581/9,998,282 B；x86_64 profile APK/AAB 为 17,540,173/10,268,338 B。两者包名均为 `com.epubstart.reader.profile`、v2 debug 签名、应用可调试、单 ABI；APK 内原生库分别为 AArch64/x86-64，且无上述调试/符号表。profile 是诊断/AVD 制品，不是发布证明。
 - **来源缓存（新增 8 个测试）**：覆盖命中推进持久时钟、最终文件真实大小、持久 LRU 不受 mtime 误导、活动租约跳过、受保护项超过 hard limit 的稳定错误、256/512 MiB 常量、重启孤儿/缺失协调、重启重新执行预算。变红自证包括临时移除活动判断、忽略 hard overflow、把软上限改为 255 MiB，以及在实现 seam 缺失/旧启动行为下的编译失败或目标断言失败；恢复后来源缓存 15/15。
 - **封面与统一预算（新增 9 个测试）**：`CoverCache` 覆盖启动孤儿/缺失路径、按旧到新回落软上限、候选+旧封面保护、受保护 hard limit、失败导入只清候选；EPUB 覆盖原子候选不覆盖旧文件与 ENOSPC 映射；library service 覆盖资源错误不降级为书籍状态；`resource_budget` 冻结 512+128+256=896 MiB。变红自证分别通过缺失新 seam 的编译失败、保留旧封面/禁用 hard 判断、恢复旧错误映射和临时把封面 hard 上限改为 129 MiB 触发。恢复后完整套件 175/175。
-- **已测/未测边界**：上述均为辅助逻辑与静态制品检查。2026-08-23 使用校验过的本地 Maven 仓库补齐 AndroidX/JUnit/Hamcrest 依赖后，完整 `:app:lintUniversalRelease` / `:app:lintArmRelease` 已通过；此前跳过 lint model/vital 任务生成的 APK/AAB仍不得称为完整 release 候选。受控 AVD 的运行态证据见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：已覆盖 WebView、复制中断/重试、ENOSPC、单书后台索引、六轮固定 fixture 压力和限定范围综合恢复；未覆盖来源/封面 hard-limit、索引期间并发活动读取、完整多记录业务恢复、SQLite page/WAL 低存储峰值及 OEM/真实设备矩阵。桌面端缓存算法由自动化覆盖，本次未做新的桌面 GUI 运行态，标记“待人工验证”。
+- **已测/未测边界**：上述代码测试与静态制品检查仍按辅助逻辑口径记录。2026-08-23 使用校验过的本地 Maven 仓库补齐 AndroidX/JUnit/Hamcrest 依赖后，完整 `:app:lintUniversalRelease` / `:app:lintArmRelease` 已通过；此前跳过 lint model/vital 任务生成的 APK/AAB 仍不得称为完整 release 候选。受控 AVD 的运行态证据见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：已覆盖 WebView、活动读者、复制中断/重试、ENOSPC、来源 hard-limit、SQLite 低余量、长期压力和 4 本书/2 个系列的综合恢复；封面 hard-limit 公共保护重叠仅观察到 admission 串行化/软淘汰，仍以辅助逻辑为准。真实黑鲨 Android 9 的取消/进程终止/重建记录直接接受；更广 OEM/真实设备矩阵移至 B3/F2。桌面端缓存算法由自动化覆盖，本次未做新的桌面 GUI 运行态，标记“待人工验证”。
 
 ### 0.2.14 B2 收口复核（2026-08-22）— 一致性缺口已修复，运行态边界不变
 
@@ -164,11 +164,13 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **覆盖清单**：已测目标复制步骤、重启临时文件清理、重试、来源复制满盘错误、单书可重建缓存、后台索引 WebView 触发/状态轮询/FTS 持久结果，以及数据库完整性/来源缓存大小核对。未测索引期间 Android 读者并发打开/翻页、索引取消/重建分支、六轮累计 2 GiB、完整系列/标签/设置/批注/索引数据综合重建、来源/封面 hard-limit 运行态、SQLite page/WAL 低存储峰值、OEM/真实设备矩阵。
 - **证据**：`target/android-b2-closeout-20260822/interrupt-large-result.txt`、`interrupt-retry-verification.txt`、`enospc-runtime-after.png`、`enospc-runtime-result.txt`、`after-cache-rebuild-sqlite.txt`、`index-series-prepared.png`、`index-building.png`、`index-result.png`、`index-result-summary.txt`、`index-result.sqlite`。这些证据补充而不替换 46 本导入基线；B2 总门禁仍因长期压力、综合业务数据恢复和完整 Gradle lint 未签发。
 
-### 0.2.16 受控 AVD 长期压力与限定范围综合恢复（2026-08-23）
+### 0.2.16 受控 AVD B2 closeout 运行态（2026-08-23）
 
+- **活动读者与来源 hard-limit**：在原始约 1536 MiB `EpubStart_B2_API35` AVD 上，索引任务处于 `building` 时读者完成 2 次翻页，最终 `10/10 ready`。补充 AVD 的实际 `/data` 为 `6,082,144 KiB`，使用 530 MiB 候选与 4,900 章节慢索引运行，候选返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache hard limit cannot be satisfied while active leases are protected` 且无残留，慢索引最终 `4,900/4,900 ready`。
 - **长期压力**：`target/android-b2-pressure-20260823-direct` 完成 6 轮×46 份固定 EPUB fixture 的 direct IPC/SAF 导入，单份 8,521,993 字节，累计逻辑输入 `2,352,070,068` 字节（约 2.19 GiB）。每轮每 15 份导入重启 profile，并在轮末 force-stop/restart；第 6 轮保留 46 本图书 30 分钟后清理。六轮重启快照均为 `integrity=ok`、46 本书、31 条来源缓存/`264,181,783` 字节，清理快照均归零；日志以 `LONG_PRESSURE_DONE totalBytes=2352070068 expected=2352070068` 结束。
-- **综合恢复**：`target/android-b2-recovery-20260823` 先证明删除 `source-cache/` 与 `covers/` 后启动协调不会凭空生成缓存；随后通过持久化 SAF locator 调用真实 `import_book`，恢复 1 本书、1 个系列、1 条 `book_series` 关系、来源缓存、封面和 `34/34 ready` 搜索索引，数据库 `integrity_check=ok`。该运行态只覆盖一组保存型业务数据，不外推设置、标签、批注或多记录恢复。
-- **边界**：长期压力使用同一固定 EPUB 的复制 fixture，证明逻辑累计输入、重启和清理行为，不证明唯一物理磁盘写入达到 2 GiB，也不计入多 URI 后台索引；来源/封面 hard-limit、索引期间并发活动读取、取消/重建分支和 SQLite page/WAL 低存储峰值仍未通过。因此 B2 总门禁继续保持未签发。
+- **综合恢复**：`target/android-b2-runtime-closeout-20260823` 在补充 AVD 上建立 4 本书、2 个系列、4 条 `book_series` 关系、卷标排序、标签、全局/单书设置、进度和 3 条批注；删除 `source-cache/` 与 `covers/` 后重启，确认保存型业务数据保留且空目录不会冒充缓存重建；随后通过持久化 SAF locator 调用真实 `import_book`，来源/封面缓存与两个系列搜索索引恢复为 `7/7`、`3/3 ready`，最终检查全部通过，数据库 `integrity_check=ok`。
+- **SQLite 低余量**：补充 AVD 写入 4,812,800,000 字节填充文件，将可用空间压到约 109,296 KiB；公开 `rebuild_search_index` 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: search index storage is full`。监测到主库峰值 111,452,160 字节、rollback journal 峰值 411,888 字节，WAL/SHM 均未观察到；清理填充后 `integrity_check=ok`、journal mode 为 `delete`，临时填充已移除。
+- **边界**：长期压力使用同一固定 EPUB 的复制 fixture，证明逻辑累计输入、重启和清理行为，不证明唯一物理磁盘写入达到 2 GiB，也不计入多 URI 后台索引；公共封面导入路径只观察到 admission 串行化和软淘汰，未形成可控受保护三候选重叠，因此封面 hard-limit 仍只签发辅助逻辑证据。真实黑鲨 Android 9 的取消/进程终止/重建记录直接接受；更广 OEM/真实设备矩阵、正式签名发布候选和完整前端消费回归由 B3/F2 承接。
 
 ### 0.2.17 Gradle release lint 收口（2026-08-23）
 
@@ -252,7 +254,7 @@ ELF 分段检查显示主要调试段包括 `.debug_info`、`.debug_str`、`.deb
 | 7 | Android 导入偶发卡住 | `platform/android.rs`、SAF 插件/来源缓存链 | 高/阻塞 B1 实机门禁 | **已关闭**（2026-08-14）：根因 tauri#14994 MainPipe 唤醒，`select_epub_sources` 返回前 200ms sleep workaround；黑鲨 30 轮循环导入无卡住 | 双机后端/平台验收 |
 | 8 | V1/V3 回滚测试缺少变红自证 | `src-tauri/src/db/migrations.rs` | 中/阻塞 B0 完成证明 | **已补证**（2026-08-14）：V1/V3 分别在目标步骤注入 `COMMIT;` 破坏回滚并确认目标断言变红（V1: `books was not rolled back`@640；V3: `font_size_px` 列@682），恢复后 9/9 与完整套件通过 | `cargo test db::migrations` + `cargo test` |
 | 9 | Android release 制品缺少可重复分项基线 | Gradle/Tauri release 构建链、体积报告脚本 | 中/阻塞 B3 冻结 | **代码/静态制品已关闭并于 2026-08-22 复核，完整 lint 于 2026-08-23 关闭**：目录冲突关闭，最终 arm64 APK/AAB/native/dist 基线与绝对/10%/完整工具链/APK+AAB ABI/ELF/payload 门禁已建立；两种 release lint 变体均为 0 error。正式签名和安装后 code/data 留待 B3/AVD | `npm run audit:android-release` + 完整 Gradle lint + AVD 分项 |
-| 10 | 来源/封面缓存缺少真实 LRU 与完整软硬预算 | `source/cache.rs`、`source_cache_entries`、`CoverCache` | 中/长期膨胀风险 | **实现与辅助逻辑已关闭并于 2026-08-22 复核**：来源 256/512 MiB、持久真实 LRU、无 TOCTOU 的活动租约保护、原子失败清理和重启协调；封面 64/128 MiB、并发候选总预算、元数据优先淘汰与孤儿清理；合计实际硬预算 896 MiB、总 ceiling 1 GiB。未关闭：Android ENOSPC、中断/重启、长期压力和真实分项占用 | 初始 17 个 + 复核新增 6 个/强化 1 个变红自证测试 + `ANDROID_STORAGE_ACCEPTANCE.md` |
+| 10 | 来源/封面缓存缺少真实 LRU 与完整软硬预算 | `source/cache.rs`、`source_cache_entries`、`CoverCache` | 中/长期膨胀风险 | **实现与辅助逻辑已关闭并于 2026-08-22 复核；Android 限定运行态于 2026-08-23 补齐**：来源 256/512 MiB、持久真实 LRU、无 TOCTOU 的活动租约保护、原子失败清理和重启协调；封面 64/128 MiB、并发候选总预算、元数据优先淘汰与孤儿清理；合计实际硬预算 896 MiB、总 ceiling 1 GiB。受控 AVD 已覆盖来源 hard-limit、ENOSPC、中断/重启、长期压力、SQLite 低余量和多记录缓存重建；公共封面保护重叠未形成可控运行态，仅保留辅助逻辑证据；更广 OEM/真实设备矩阵移至 B3/F2。 | 初始 17 个 + 复核新增 6 个/强化 1 个变红自证测试 + `ANDROID_STORAGE_ACCEPTANCE.md` |
 
 ## 修复记录
 

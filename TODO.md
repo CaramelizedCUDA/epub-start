@@ -69,16 +69,16 @@
 
 ### 4. 搜索与索引（真实后台实现）
 
-- [x] 设计并实现同系列/多卷搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限、同系列任务原子去重和来源失效（桌面自动验证；Android 已复测取消与进程终止恢复，并在受控 AVD closeout 面板验证单书系列从 WebView 触发到 `34/34 ready`；六轮固定 fixture 压力已完成，但读者并发读取、索引取消/重建运行态仍未覆盖）。当前书章节内查找按 IPC 留给 F2 EPUB.js，不冒充后端索引能力。
+- [x] 设计并实现同系列/多卷搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限、同系列任务原子去重和来源失效（桌面自动验证；真实黑鲨 Android 9 已有取消、进程终止与重建记录并直接作为当前证据；受控 AVD closeout 另验证活动读者在索引 `building` 时完成 2 次翻页，最终 `10/10 ready`，以及来源 hard-limit 场景 `4,900/4,900 ready`）。当前书章节内查找按 IPC 留给 F2 EPUB.js，不冒充后端索引能力。
 - [x] 使用 bundled SQLite FTS5 trigram 建立惰性增量索引；查询短于 3 个字符时使用参数化 `LIKE`。
 - [x] 索引按来源指纹失效，支持部分结果、手动重建和过期重建；实现未把整本 EPUB 一次性读入 `Vec<u8>`。
-- [x] 执行预算：单章节 8 MiB、单书 64 MiB；提取计数使用溢出检查。一次索引任务累计提取量 2 GiB 的总任务门禁仍需 Android/大文件运行态验证。
-- [x] 搜索索引持久化文本账面硬上限 256 MiB；超限保持事务一致性并返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷 135/135 重建期间实测 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`；这是当前样本的运行态记录，不替代低存储/长期压力验证。
+- [x] 执行预算：单章节 8 MiB、单书 64 MiB；提取计数使用溢出检查。一次索引任务累计提取量 2 GiB 已由辅助逻辑与受控 AVD 补充压力共同验证：6×46 固定 fixture 的逻辑累计输入为 `2,352,070,068` 字节；不外推唯一物理 2 GiB 或多样内容。
+- [x] 搜索索引持久化文本账面硬上限 256 MiB；超限保持事务一致性并返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷 135/135 重建期间实测 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`；补充 6 GiB AVD 低余量索引运行态返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: search index storage is full`，峰值主库 111,452,160 B、rollback journal 411,888 B，清理后 `integrity_check=ok`。WAL/SHM 未观察到，不把它们写成已使用或已通过。
 - [x] 覆盖 spine 顺序、中日韩文本、OPF 相对/百分号编码 href、短词 LIKE 字面 `%`/`_`/反斜杠、三字以上 trigram、跨章节结果、取消、同系列任务原子去重、结果上限、未就绪错误、损坏章节、章节资源超限、提取计数溢出、索引预算超限、单任务 2 GiB 累计预算、错误状态事务回滚，以及真实 SQLite `SQLITE_FULL` 到 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 的映射与旧索引保留；新增测试均完成“注入错误→目标测试变红→恢复变绿”。Android 缓存常见存储耗尽 OS 错误的稳定前缀映射仍由内存错误对象覆盖；未替代 Android 低存储运行态。
 - [x] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。
 - [x] 在 Android 真实设备验证索引取消与应用进程被系统终止后的恢复：当前 APK 在黑鲨 Android 9 上七卷系列取消后保留 101/135 章节部分结果；force-stop 后重启状态恢复为 `pending`（101/135），重新执行后恢复到 135/135 `ready`。
 - [x] 在 Android 真实设备以系统 picker 导入 13.20 MiB EPUB，并验证大章节索引限制：章节超过 8 MiB 得到 `ready`、0/1 且保留超限明细；此前已持久 URI 重拷贝并恢复原 EPUB 到 34/34。该证据覆盖单次大文件导入，不等于长期/2 GiB 压力。
-- [ ] **受控 Android 虚拟设备收口仍非总门禁：** 按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 已验证 ENOSPC/SQLite 满盘映射、复制中断/重试、单书后台索引 WebView 触发、6 轮×46 固定 fixture 的 `2,352,070,068` 字节逻辑累计压力，以及 1 本书/1 个系列/1 条关系的持久业务保留与来源/封面/索引重建；完整 Gradle release lint 也已通过。仍未覆盖读者并发读取、索引取消/重建运行态、来源/封面 hard-limit、完整多记录业务恢复、SQLite page/WAL 低存储峰值和真实设备/OEM 矩阵。长期压力使用同一固定 EPUB，不外推唯一物理 2 GiB 或内容多样性。虚拟设备例外只覆盖破坏性存储压力，不替代 SAF Provider、OEM 进程管理、性能或手势实机证据，也不能用桌面纯辅助逻辑替代。
+- [x] **受控 Android 虚拟设备收口（限定范围，2026-08-23）：** 按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 已完成活动读者与后台索引并发（`building` 中 2 次翻页，最终 `10/10 ready`）、来源 hard-limit 拒绝（补充 6 GiB AVD，保护租约时返回稳定资源错误，慢索引 `4,900/4,900 ready`）、ENOSPC/SQLite 低余量峰值、复制中断/重试、6 轮×46 固定 fixture 的 `2,352,070,068` 字节逻辑累计压力，以及 4 本书/2 个系列/4 条关系/标签/设置/进度/批注和来源/封面/两个索引的综合恢复；完整 Gradle release lint 也已通过。封面 hard-limit 的公共 Android 路径只观察到 admission 串行化和软淘汰，保留辅助逻辑证据，不伪造受保护三候选重叠拒绝。真实黑鲨 Android 9 的取消、进程终止与重建记录直接接受，不在 AVD 重复；更广 OEM/真实设备矩阵移至 B3/F2。长期压力使用同一固定 EPUB，不外推唯一物理 2 GiB 或内容多样性；受控 AVD 例外仍不替代 SAF Provider、OEM 进程管理、性能或手势实机证据。
 
 ### 5. 目录、系列、标签、设置和批注后端收口
 
@@ -98,7 +98,7 @@
 - [x] 自动化覆盖缓存命中时间、真实文件大小、持久 LRU、活动租约、硬上限、重启预算、孤儿/缺失协调、原子候选、失败清理、并发候选与 ENOSPC/SQLite full 稳定映射；初始新增 17 个测试，复核新增 6 个并强化 1 个，均完成目标步骤变红→恢复变绿，完整套件 181/181。未覆盖 Android 真实磁盘、进程和文件系统行为。
 - [x] 保持缓存统计/清理为后端内部维护，不新增公开 Command 或 stub；V2 字段足够，本次无迁移。
 - [x] **完整 Gradle release lint（2026-08-23）：** 从阿里云 Maven 镜像取得四个缺失 AndroidX 制品及 JUnit/Hamcrest 元数据，使用既有 Gradle module SHA-256 与 Maven Central SHA-1 校验后组装独立本地 Maven 仓库；未手工改写 Gradle 缓存。补齐依赖后首次真实 lint 以 scaffold 遗留的 `MissingTvBanner` / `ImpliedTouchscreenHardware` 两条 error 变红；项目不支持 Android TV，移除 Leanback feature/category 后，`:app:lintUniversalRelease` 与 `:app:lintArmRelease` 均 `BUILD SUCCESSFUL`，各为 0 error、31 warning、1 hint。未处理非阻塞 warning，也未把此前跳过 lint 生成的 APK/AAB 追认为完整发布候选。
-- [ ] **Android 环境部分通过、总门禁仍阻塞：** 受控 `EpubStart_B2_API35` AVD 已完成新 profile 空白安装、46 份逐份导入、WebView 修复后的固定 EPUB 单书首屏读取、复制中断/重试、受控 ENOSPC、单书后台索引 `34/34 ready`、6 轮×46 固定 fixture 的 `2,352,070,068` 字节逻辑压力，以及限定范围综合恢复。恢复验证保留 1 本书、1 个系列、1 条关系和索引，并通过持久化 SAF 重新导入重建来源/封面。未完成/未覆盖：读者并发读取、索引取消/重建运行态、来源/封面 hard-limit、完整多记录业务数据、SQLite page/WAL 低存储峰值和 OEM/真实设备矩阵。证据见 `target/android-b2-acceptance-20260822-184117`、`target/android-b2-closeout-20260822`、`target/android-b2-pressure-20260823-direct` 与 `target/android-b2-recovery-20260823`；不得用限定范围证据替代完整 Android 门禁。
+- [x] **Android B2 受控环境收口（限定范围，2026-08-23）：** 受控 AVD 已完成活动读者与后台索引并发（索引 `building` 中完成 2 次翻页，最终 `10/10 ready`）、来源 hard-limit 拒绝（补充 6 GiB AVD，保护租约时返回稳定资源错误，慢索引 `4,900/4,900 ready`）、复制中断/重试、来源复制 ENOSPC、SQLite 低余量峰值、6 轮×46 固定 fixture 的 `2,352,070,068` 字节逻辑压力，以及 4 本书/2 个系列/4 条关系/标签/设置/进度/批注和来源/封面/两个索引的综合恢复。完整 Gradle release lint 也已通过。封面 hard-limit 的公共 Android 路径只观察到 admission 串行化和软淘汰，保留辅助逻辑证据，不伪造受保护三候选重叠拒绝；真实黑鲨 Android 9 的取消、进程终止与重建记录直接接受，不在 AVD 重复；更广 OEM/真实设备矩阵移至 B3/F2。证据见 `target/android-b2-runtime-closeout-20260823`、`target/android-b2-acceptance-20260822-184117`、`target/android-b2-closeout-20260822`、`target/android-b2-pressure-20260823-direct` 与 `target/android-b2-recovery-20260823`。长期压力使用同一固定 EPUB，不外推唯一物理 2 GiB 或内容多样性；受控 AVD 例外仍不替代 SAF Provider、OEM 进程管理、性能或手势实机证据。
 
 ### 7. B2 完成标准
 
