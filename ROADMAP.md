@@ -35,7 +35,7 @@ Android 不再只作为发布前的一次性验收项。普通模拟器只能用
 | --- | --- |
 | B0 | SDK/NDK、Rust targets、双机和固定样本已具备；V1/V3 回滚测试完成变红自证，官方命令已从干净、无本地绕过的 scaffold 产出 debug APK/AAB。 |
 | B1 | **第一次真实设备门禁已通过。** 已验证 SAF 选择、持久授权、打开、完全重启、授权撤销、重新定位、私有缓存、文件描述符生命周期和后端资源协议；未自动化的 Provider/WebView 行为继续单列。 |
-| B2 | 在真实设备验证搜索/索引取消、进程被系统终止后的恢复、来源失效和大文件；低存储与长期压力按受控 Android 虚拟设备例外补测。建立 Android 发布制品与运行时存储预算并验证淘汰。 |
+| B2 | 在真实设备验证搜索/索引取消、进程被系统终止后的恢复、来源失效和大文件；低存储与长期压力按受控 Android 虚拟设备例外补测。建立 Android 发布制品与运行时存储预算并验证淘汰；受控 AVD 已补齐限定范围的低存储、长期压力、后台索引和业务/缓存恢复证据，未覆盖项仍单列。 |
 | B3 | 完成后端冻结前的 Android 来源链和资源预算回归；未通过时不得把后端标记为全平台冻结，也不得进入 Android 功能接入。 |
 | F2 | 在真实设备上验证书架、阅读器、目录、搜索、批注、设置、图片查看和来源重新定位等功能。 |
 | F3 | 验证触控/手势、窄屏、软键盘、深色模式、耗电、内存、不同 Android/WebView 版本和发布候选回归。 |
@@ -92,7 +92,7 @@ B0 的输出是缺口清单和每个缺口的验收标准。审计完成前，�
 - 全局/单书阅读设置的持久化和字段覆盖规则（已实现并完成默认值、逐字段继承与 V3/V4 迁移回归；桌面/Android 前端运行态留待 B3/F2）；
 - 批注的 CFI、长度、颜色、删除级联和缺失错误语义（已完成辅助逻辑自动化收口；桌面/Android 的选区、高亮与重启运行态留待 B3/F2）；
 - Android SAF 权限重启校验、失效来源处理；能在目标设备上验证的导出/手势能力也必须在此阶段完成后端链路。
-- Android 搜索/索引任务已在黑鲨 Android 9 的当前 APK 验证取消、进程终止恢复、系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和来源授权撤销后的索引失效；七卷重建期间记录主库与 rollback journal 占用。缓存存储耗尽映射已用内存错误对象自证，SQLite `SQLITE_FULL` 已用受限 page_count 的真实写事务自证并验证回滚保留旧索引；低存储、长期/2 GiB 压力仍待受控 Android 虚拟设备门禁，不能只依据桌面测试推断。
+- Android 搜索/索引任务已在黑鲨 Android 9 的当前 APK 验证取消、进程终止恢复、系统 picker 的 13.20 MiB 单次导入、超大章节拒绝和来源授权撤销后的索引失效；七卷重建期间记录主库与 rollback journal 占用。缓存存储耗尽映射已用内存错误对象自证，SQLite `SQLITE_FULL` 已用受限 page_count 的真实写事务自证并验证回滚保留旧索引；受控 AVD 已补齐 ENOSPC、复制中断/重试、单书后台索引、六轮固定 fixture 累计 2 GiB 逻辑输入和限定范围综合恢复，但不外推真实设备性能、唯一物理 2 GiB、多样内容或完整业务数据。
 
 ### Android 制品与运行时存储预算
 
@@ -112,11 +112,12 @@ B2 采用以下初始门禁，首次可重复 release 基线建立后只允许�
 
 若需要暴露缓存统计或清理能力，先在 [IPC.md](IPC.md) 设计 Command、返回模型和错误语义，再实现和注册；本规划不授权预注册 stub。数据库应优先复用 `source_cache_entries.cache_size_bytes` 与 `last_accessed_at`，确有字段缺口时只能追加迁移。
 
-2026-08-22 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。完整 Gradle release lint 仍因 Google Maven 的四个 AndroidX runtime 制品发生 TLS 握手中断而阻塞；受控 AVD 后续已补充 ENOSPC、重启中断、单书缓存重建和单书后台索引 WebView 触发/`34/34 ready` 持久结果，六轮长期压力和完整业务数据重建仍待 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
+2026-08-22 最终复核状态：来源/封面预算、重启协调、孤儿清理、稳定存储错误、来源租约/淘汰竞态闭合、封面并发候选预算和 896 MiB 实际硬预算（受 1 GiB ceiling 约束）均已实现并完成辅助逻辑变红自证；arm64 release 最终静态基线为 APK 11,557,632 B、AAB 11,365,807 B、Cargo release `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B。门禁核对完整工具链及 APK/AAB 各自的 ABI/ELF 后通过。完整 Gradle release lint 仍因 Google Maven 的四个 AndroidX runtime 制品发生 TLS 握手中断而阻塞；受控 AVD 后续已补充 ENOSPC、重启中断、单书缓存重建和单书后台索引 WebView 触发/`34/34 ready` 持久结果，六轮长期压力和限定范围综合恢复随后在 2026-08-23 完成，具体边界见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)，因此 B2/B3 总门禁尚未签发。
 
 2026-08-22 受控 AVD 首轮复测状态（修复前）：新增 `custom-protocol` Cargo feature 别名并修正验收文档的实际 `app_data_dir` 路径；新 profile 包空白安装与 46 份逐份导入成功，来源/封面预算观察、缺失元数据协调和孤儿清理有证据。Android WebView 拒绝当前 `epub:///localhost/...` URL，活动读取/后台索引未通过；ENOSPC、复制中断和六轮 2 GiB 压力仍未完成，B2 总门禁继续未签发。
 2026-08-22 受控 AVD WebView 修复复测：Android 根地址切换为 `http://epub.localhost/...`，前端在 EPUB.js 请求边界归一化 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...`。重新编译并安装 x86_64 profile APK 后，固定 EPUB 重新定位及单书首屏读取通过，输出 `WEBVIEW_REGRESSION=GREEN`，未出现不支持 scheme、`Failed to fetch`、`epub:///` 或 `localhost:1420`；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`。后台索引、ENOSPC、复制中断、清理重建和六轮 2 GiB 压力仍未完成，B2 总门禁继续未签发。
-2026-08-22 受控 AVD B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理 `.source.tmp` 且重试成功；全新 profile 在约 4 MiB 可用空间下导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无临时文件；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性保持 `ok`。同一 AVD 的临时 closeout debug APK 新增可观察后台索引入口，单书测试系列任务最终 `34/34 ready`，SQLite `integrity_check=ok`、FTS=34。证据目录为 `target/android-b2-closeout-20260822`。六轮 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态未执行，B2 总门禁继续未签发。
+2026-08-22 受控 AVD B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理 `.source.tmp` 且重试成功；全新 profile 在约 4 MiB 可用空间下导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无临时文件；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性保持 `ok`。同一 AVD 的临时 closeout debug APK 新增可观察后台索引入口，单书测试系列任务最终 `34/34 ready`，SQLite `integrity_check=ok`、FTS=34。证据目录为 `target/android-b2-closeout-20260822`。六轮 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态当时尚未执行，B2 总门禁继续未签发。
+2026-08-23 受控 AVD B2 收口补测：`target/android-b2-pressure-20260823-direct` 完成 6 轮×46 份固定 EPUB fixture 的 direct IPC/SAF 导入，累计逻辑输入 `2,352,070,068` 字节（约 2.19 GiB）；每 15 份导入重启 profile、轮末 force-stop/restart，第 6 轮保留 30 分钟后清理，日志以 `LONG_PRESSURE_DONE` 正常结束。`target/android-b2-recovery-20260823` 通过持久化 SAF locator 的真实重新导入，验证 1 本书、1 个系列、1 条关系和 `34/34 ready` 索引保留，同时来源/封面缓存可重建；启动协调单独运行不会凭空生成缓存。该压力使用同一固定样本，不证明唯一物理 2 GiB、多样内容或完整多记录业务恢复；来源/封面 hard-limit、并发活动读取和完整 Gradle release lint 仍未覆盖，B2 总门禁继续未签发。
 
 EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于 F 阶段；B 阶段只交付它们依赖的稳定数据和 IPC 契约，不提前实现 UI。
 
@@ -130,7 +131,7 @@ EPUB.js 的 DOM 选区、目录树渲染、CFI 视口恢复和视觉交互属于
 4. 所有已交付 Command 都有 IPC 文档、Rust serde 模型、TypeScript 镜像和调用契约；未实现能力不注册 stub；
 5. 搜索/索引后台任务具备取消、状态、上限、预算、错误和重建行为；
 6. Windows 运行态完成导入、打开、资源协议、删除、批注、设置、搜索、系列、标签和重启恢复回归；
-7. Android 代码链已完成静态审计，并在真实设备通过 B1 来源链门禁；B2 的后台任务和缓存淘汰回归必须完成，低存储/长期压力按批准的受控 Android 虚拟设备例外补齐，不能用桌面构建或纯辅助逻辑替代；
+7. Android 代码链已完成静态审计，并在真实设备通过 B1 来源链门禁；B2 的后台任务、缓存淘汰和受控 AVD 低存储/长期压力已形成限定范围证据，但来源/封面 hard-limit、并发活动读取和完整业务恢复仍须单列，不能用桌面构建或纯辅助逻辑替代；
 8. arm64 release APK、原生库、前端 `dist` 与安装后/运行时分项占用均有可重复基线，满足绝对上限与 10% 回归门禁；缓存/索引软硬上限、LRU、活动租约和清理语义已经验证并冻结；
 9. [README.md](README.md)、[ARCHITECTURE.md](ARCHITECTURE.md)、[DATABASE.md](DATABASE.md)、[IPC.md](IPC.md)、[CONVENTIONS.md](CONVENTIONS.md)、[TODO.md](TODO.md) 和 [SECURITY.md](SECURITY.md) 与实现一致。
 

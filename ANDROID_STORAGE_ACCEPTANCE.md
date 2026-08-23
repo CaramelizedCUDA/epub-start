@@ -1,6 +1,6 @@
 # B2 Android 运行时存储延期验收包
 
-状态：**部分执行，Android WebView、复制中断重试、受控 ENOSPC 和后台索引已有运行态证据；长期压力、综合业务数据恢复和完整 release lint 仍未完成**。
+状态：**部分执行，Android WebView、复制中断重试、受控 ENOSPC、后台索引、六轮累计压力和限定范围的业务数据/可重建缓存恢复已有运行态证据；完整 Gradle release lint 仍受 Google Maven TLS 阻塞，来源/封面 hard-limit 与更广 Android 矩阵仍未覆盖**。
 
 本文件用于在受控 Android 虚拟设备上关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
 
@@ -12,6 +12,10 @@
 
 2026-08-22 B2 收口补测：同一受控 AVD 使用 `target/android-b2-closeout-20260822` 证据目录。143 MB 有效 EPUB 在 `copy_source_atomically start` 之后 force-stop，重启后 `.source.tmp` 被启动协调清除，重新导入成功；`interrupt-retry-verification.txt` 记录 `integrity=ok`、大文件缓存 `142743869` 字节且无临时文件。全新 profile 删除 `source-cache/` 与 `covers/` 后重新启动，固定 SAF 来源使缓存/封面重建，数据库为 `ok`、1 本书、1 条 `source_cache_entries`（8,521,993 字节）和 1 个封面；这只是单书可重建数据证据，不覆盖系列、标签、设置、批注和搜索索引保留。受控 ENOSPC 最终保留 4,088 KiB，导入新 locator `b2-enospc-runtime.epub` 在复制阶段显示 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；证据为 `enospc-runtime-after.png`、`enospc-runtime-result.txt` 和对应 `df` 文件。后台索引补测已形成独立运行态证据；六轮累计 2 GiB、综合业务数据恢复、来源/封面 hard-limit 运行态和完整 Gradle release lint 仍未签发。
 2026-08-22 后台索引补测：为避免把隐藏 Command 调用冒充产品运行态，使用 `VITE_B2_CLOSEOUT=1` 的临时 closeout debug APK（包名 `com.epubstart.reader`，SHA-256 `CE83A2C0AFC78535B6A9F819FC5BDE2129C50E35E8ED7505A75845CCE9036E24`）在同一 `EpubStart_B2_API35` / `emulator-5554` AVD 中从 WebView 触发既有系列与索引 Command。导入固定 EPUB（8,521,993 字节）后建立 `B2 Android Closeout` 测试系列并归属 1 本书；后台任务 `dc110e4b-87fe-41f0-b908-ebc2a6b9e59d` 最终为 `ready; 34/34`。拉回 SQLite 后 `integrity_check=ok`、`series=1`、`book_series=1`、`search_documents=34`、FTS=34；证据为 `index-series-prepared.png`、`index-building.png`、`index-result.png`、`index-result-summary.txt` 和 `index-result.sqlite`。本次覆盖 Android WebView 触发、系列归属、任务状态轮询、FTS 持久结果和数据库完整性；未覆盖读者同时打开/翻页的并发活动读取、取消/重建分支、长期多书索引。
+
+2026-08-23 长期压力补测：在同一受控 AVD 使用 `target/android-b2-pressure-20260823-direct`，以固定 EPUB（每份 8,521,993 字节）的 46 份 fixture 为一轮，完成 6 轮、每轮 46 次真实 SAF/IPC 导入，自动计算累计逻辑输入 `2,352,070,068` 字节（约 2.19 GiB）。每轮按每 15 份导入重启 profile，并在轮末 force-stop/restart；第 6 轮保留 46 本图书 30 分钟后清理。六轮重启快照均为 `integrity=ok`、`books=46`、31 条来源缓存/`264,181,783` 字节，清理快照均为 0 本书、0 条缓存；日志以 `LONG_PRESSURE_DONE totalBytes=2352070068 expected=2352070068` 正常结束。本轮是重复固定样本的 direct IPC/SAF 压力，未计入多 URI 后台索引，不证明唯一物理磁盘写入达到 2 GiB，也未覆盖多样 EPUB 内容或来源/封面 hard-limit 运行态。
+
+2026-08-23 综合恢复补测：在 `target/android-b2-recovery-20260823` 中先保留 1 本书、1 个 `B2 Android Closeout` 系列、1 条 `book_series` 关系和 `34/34 ready` 索引，删除 `source-cache/` 与 `covers/` 后重启。启动协调只完成目录/元数据清理，缓存实体仍为空；随后使用持久化 SAF locator 通过真实 `import_book` 重新导入，最终快照恢复为 `integrity_check=ok`、1 本书、1 个系列、1 条关系、1 条来源缓存（8,521,993 字节）、1 个封面和 `34/34` 索引，证实保存型业务数据保留且可重建缓存可恢复。该证据只覆盖一组书籍/系列/关系和搜索索引，不外推设置、批注、标签或多记录业务数据。
 
 ## 1. 固定环境与安全门
 
@@ -239,11 +243,11 @@ if ($LASTEXITCODE -ne 0) { throw 'fallocate unavailable or failed; do not substi
 Start-Sleep -Seconds 5
 ```
 
-通过条件：目录被安全重建；来源缓存元数据与缺失文件完成协调；图书、阅读进度、设置、系列、标签和批注不丢失。重新打开或重新导入固定 EPUB 后来源与封面可重建；搜索索引通过现有“重建索引”流程重建。任何一步都不得通过删除业务表来满足预算。
+通过条件：目录被安全重建；来源缓存元数据与缺失文件完成协调；已保存的业务数据不丢失。启动协调本身只负责目录/元数据一致性，不把空目录误报为缓存已重建；本轮进一步使用持久化 SAF locator 重新导入固定 EPUB，验证来源、封面和搜索索引可恢复，且未删除业务表。当前运行态证据覆盖 1 本书、1 个系列、1 条关系和 `34/34` 索引；阅读进度、设置、标签、批注及多记录业务数据仍未覆盖。
 
 ## 8. 长期与累计 2 GiB 压力
 
-以 46 份固定样本为一轮，执行“批量导入 → 打开/翻页 → 索引 → force-stop/重启 → 逐本删除”六轮。六轮输入字节为 `8,521,993 × 46 × 6 = 2,352,070,068`（约 2.19 GiB）；执行前仍必须用下面命令生成准确数字并把输出写入证据，禁止只依赖手抄统计：
+本轮以 46 份固定样本为一轮，执行 direct IPC/SAF 导入、分段重启、轮末清理六轮。六轮逻辑输入字节为 `8,521,993 × 46 × 6 = 2,352,070,068`（约 2.19 GiB），实际日志与每轮 SQLite 快照位于 `target/android-b2-pressure-20260823-direct`；本轮不把多 URI 后台索引、读者打开/翻页或 hard-limit 运行态混入压力结论。执行前仍必须用下面命令生成准确数字并把输出写入证据，禁止只依赖手抄统计：
 
 ```powershell
 $PerFile = (Get-Item -LiteralPath $Fixture).Length
@@ -259,7 +263,7 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 } | Format-List | Out-File -Encoding utf8 (Join-Path $Evidence 'pressure-input.txt')
 ```
 
-每轮前后执行第 3 节快照；第 2、4 轮在导入或索引的目标步骤中 force-stop，第 6 轮保留全部图书并等待 30 分钟后复测。缓存命中不计入“复制压力”；若同 URI 命中缓存，必须先通过应用删除图书并确认来源缓存文件已删除后再计入下一轮。
+实际补测每轮每 15 份导入重启 profile，并在轮末 force-stop/restart 后执行快照；第 6 轮保留 46 本图书等待 30 分钟后再复测并清理。缓存命中不计入“复制压力”；fixture 由同一固定 EPUB 复制生成，因此本轮证明的是逻辑累计输入与重启/清理行为，不是不同内容覆盖或唯一物理磁盘写入量。
 
 通过条件：累计输入超过 2 GiB；无崩溃、死锁、永久 pending/building、数据库损坏或不可解释的单调存储增长；来源/封面回落到软上限；搜索账面硬上限与任务累计上限返回稳定错误并保留旧索引。主库、journal/WAL 峰值、缓存峰值、每轮耗时及失败前缀必须逐轮记录。
 
@@ -268,19 +272,19 @@ $CumulativeBytes = $PerFile * $Rounds * $CopiesPerRound
 | 项目 | 必须记录 | 通过条件 | 当前状态 |
 | --- | --- | --- | --- |
 | 空白安装 | APK hash、镜像/AVD、`df`、`du`、日志 | 可启动且私有目录为空/一致 | Android 已通过：新 profile 安装、`run-as`、实际根目录和无 `localhost:1420` |
-| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本后来源缓存 31 条/约 256 MiB；Android 单书首屏资源读取已通过；索引期间读者并发打开/翻页未执行，长期压力未执行 |
+| 来源软预算/活动读取 | 文件与 DB 字节、LRU 顺序、活动读取 | 256 MiB 回落；租约生命周期内文件存在 | 部分：46 本基线与六轮 direct IPC/SAF 压力均观察到来源缓存回落；Android 单书首屏资源读取已通过；索引期间读者并发打开/翻页未执行 |
 | 来源硬预算 | 受保护项总量、拒绝前缀 | 512 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
 | 封面软预算 | 文件与 `cover_cache_path` | 64 MiB 回落、无孤儿 | 部分：46 个封面约 54.1 MB，未越过 64 MiB 触发淘汰 |
 | 封面硬预算 | 并发候选总量、拒绝前缀 | 128 MiB 分支稳定拒绝且旧状态一致 | 辅助逻辑已测；Android 未执行 |
 | 中断/重启 | 目标步骤日志、重启前后快照 | 无 `.tmp`/半提交，可重试 | Android 已通过：143 MB 样本在 `copy_source_atomically start` 后 force-stop；重启清理临时文件，重试成功且 DB `integrity=ok`；限单书/缓存链路 |
 | ENOSPC | fill 大小、`df`、错误前缀、DB 校验 | 稳定拒绝并保留旧状态 | Android 部分通过：余量 4,088 KiB，UI 显示 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，清理后无 `.tmp`；使用全新 profile，未覆盖已有业务数据保留 |
-| 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | Android 部分通过：删除 `source-cache/` 与 `covers/` 后单书来源/封面重建，DB `ok`；完整业务数据、系列/标签/设置/批注/索引未覆盖 |
+| 清理/重建 | 删除前后 DB/目录 | 只重建可重建数据 | Android 部分通过：持久业务数据保留，真实 SAF 重新导入后来源/封面和 `34/34` 索引重建，DB `ok`；仅覆盖 1 本书/1 系列/1 关系，标签/设置/批注/多记录未覆盖 |
 | 后台索引 | WebView 触发、任务状态、索引/FTS 行、DB 校验 | 任务到 `ready` 且结果持久、数据库完整 | Android 部分通过：closeout debug APK 单书系列 `34/34 ready`，`integrity_check=ok`；并发读者、取消/重建和长期多书索引未覆盖 |
-| 长期/2 GiB | 自动计算累计字节、六轮快照 | 无泄漏/损坏/永久任务 | Android 阻塞 |
+| 长期/2 GiB | 自动计算累计字节、六轮快照 | 无泄漏/损坏/永久任务 | Android 部分通过：6×46 固定 fixture，累计 `2,352,070,068` 字节；第 6 轮保留 30 分钟并清理归零，direct IPC/SAF 范围通过；不证明唯一物理 2 GiB、多 URI 索引、内容多样性或 hard-limit |
 
 本轮最终数据库快照为：`integrity_check=ok`、`books=46`、`source_cache_entries=31`、来源缓存数据库账面 `264,181,783` 字节、来源缓存实体文件 62 个、封面实体 46 个/`54,084,201` 字节；`search_documents=0` 与 `search_index_state=0`。该快照来自 WebView 修复前的导入/协调轮，不作为修复后后台索引证据。
 
-补测快照不替换上述 46 本基线：中断重试快照为 `integrity=ok`、3 本书、1 条 142,743,869 字节来源缓存；缓存重建快照为 `integrity=ok`、1 本书、1 条 8,521,993 字节来源缓存和 1 个封面；ENOSPC 使用空白 profile，错误发生在来源复制阶段且没有提交业务书籍行；后台索引补测为 1 个测试系列、1 本书、`34/34 ready`、`search_documents=34`、FTS=34。长期/2 GiB、并发活动读取、完整多业务数据重建和完整 Gradle release lint 仍没有覆盖清单，不能据此签发 B2 总完成证明。
+补测快照不替换上述 46 本基线：中断重试快照为 `integrity=ok`、3 本书、1 条 142,743,869 字节来源缓存；ENOSPC 使用空白 profile，错误发生在来源复制阶段且没有提交业务书籍行；后台索引补测为 1 个测试系列、1 本书、`34/34 ready`、`search_documents=34`、FTS=34；长期压力为 6 轮×46 份固定 fixture、累计 `2,352,070,068` 字节并完成第 6 轮 30 分钟保留/清理；综合恢复为持久业务行保留、真实 SAF 重新导入后来源/封面/索引恢复。仍未覆盖索引期间并发活动读取、取消/重建分支、完整多记录业务数据、来源/封面 hard-limit 运行态和完整 Gradle release lint，不能据此签发 B2 总完成证明。
 
 最终结论必须分别写：
 
