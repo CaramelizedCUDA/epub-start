@@ -1,8 +1,8 @@
 # B3 Android arm64 release 候选复测
 
 日期：2026-08-24
-来源提交：`ce97a535e452eb90e5a08cb5c64fa1432c38e5b3`
-状态：**静态候选通过；设备安装/运行时占用未签发**。
+来源提交：`ce97a535e452eb90e5a08cb5c64fa1432c38e5b3`（与当前 `HEAD` 的生产代码和 Android 工程无差异；后续提交仅加入隔离设计探索材料）
+状态：**静态候选通过；两台真实 arm64 设备已完成空白安装与首次启动运行态复测；固定样本运行时占用和正式 release 签名仍未签发**。
 
 ## 构建方式
 
@@ -45,6 +45,25 @@ APK 与 AAB 的 ABI 集均只有 `arm64-v8a`；打包 ELF 均为 AArch64，未�
 
 没有使用 lint baseline、禁用检查或跳过 lint 分析任务。release 打包自身的 `lintVitalArm64Release` 也通过。现存 warning 为非阻塞上游/兼容性提示；Gradle 8.14.3 另提示项目使用了将在 Gradle 9 移除的 deprecated features。
 
+## arm64 设备空白安装与首次启动
+
+本轮使用当前提交生成的 **unsigned arm64 release APK** 做静态候选；为使 Android 接受本地安装，先用现有 debug keystore 重新签名了一份仅用于运行态复测的副本。签名只改变 APK 签名块，不改变当前候选的 arm64 原生库、前端资源或 release manifest；该副本不是正式发布签名。
+
+| 设备 | Android | 当前 ABI | 空白安装 | 首次启动 | 运行态摘要 |
+| --- | --- | --- | --- | --- | --- |
+| 黑鲨 SKW-A0 | 9 / API 28 | `arm64-v8a`（abilist 还列出 32-bit ABI） | 卸载后全新安装成功 | `am start -W`：`Status: ok`，主 Activity 可见 | 无 crash；主进程 PSS 146,233 KiB，WebView 1 个 |
+| 荣耀 PPG-AN00 | 15 / API 35 | `arm64-v8a` | 卸载后全新安装成功 | `monkey` 启动成功，主 Activity 可见 | 无 crash；主进程 PSS 151,491 KiB、RSS 315,348 KiB，WebView 1 个 |
+
+黑鲨第一次通过 `monkey` 触发后仍回到桌面，不能直接算作启动通过；随后使用显式 `am start -W -n com.epubstart.reader/.MainActivity` 重试，得到 `Status: ok`、`Displayed ... +145ms`，进程保持运行，`stopped=false`、`notLaunched=false`，无 crash buffer 记录。因此黑鲨最终运行态按显式启动复测结果记录，不掩盖第一次观察。
+
+两台设备的包管理器均确认 `primaryCpuAbi=arm64-v8a`、`secondaryCpuAbi=null`、`versionCode=1000`、`versionName=0.1.0`，并能解析 `dataDir=/data/user/0/com.epubstart.reader`。本轮设备证据位于：
+
+- `target/b3-arm64-runtime-20260824/blackshark-skw-a0/`
+- `target/b3-arm64-runtime-20260824/honor-ppg-an00/`
+- `target/b3-arm64-runtime-20260824/app-arm64-release-debug-signed.apk`
+
+release 变体本身不是 debuggable，两个设备上的 `run-as com.epubstart.reader` 均按预期拒绝；Android shell 也无权遍历应用私有目录。因此本轮**不声称精确的应用私有 data 字节分项**。`df` 的设备级可用空间差值会受系统 dexopt、厂商服务和后台活动影响，只作为环境记录，不当作应用 data 大小。固定 EPUB 导入后的运行时占用尚未在这份 arm64 候选上执行。
+
 ## 覆盖清单
 
 已验证：
@@ -52,12 +71,15 @@ APK 与 AAB 的 ABI 集均只有 `arm64-v8a`；打包 ELF 均为 AArch64，未�
 - 当前提交的前端 production build 与 aarch64 Rust release 编译；
 - arm64 APK/AAB 的重新打包、ABI、ELF、禁止载荷、绝对体积和相对基线；
 - 当前 arm64 变体的完整 Gradle release lint；
-- 候选制品与原生库 SHA-256。
+- 候选制品与原生库 SHA-256；
+- 两台真实 arm64 设备的卸载后空白安装、包 ABI、主 Activity 首次启动、WebView 进程/实例和主进程内存占用；
+- 黑鲨首次 `monkey` 启动未保持运行后的显式 `am start -W` 重试与无 crash 复核。
 
 未验证：
 
-- 当前 arm64 候选的空白安装、首次启动 code/data 分项及固定样本运行时占用；
+- release 私有 data 的精确字节分项（release 不可 `run-as`，设备 shell 无权读取）；
+- 当前 arm64 候选导入固定 EPUB 后的运行时占用；
 - 正式 release 签名；
 - 更广 OEM/真实设备上的前端消费、WebView、性能和手势矩阵。
 
-本轮 `adb devices -l` 没有在线设备；现有受控 `EpubStart_B2_API35` AVD 为 `x86_64`，不能安装 arm64-only APK。B2 已有的 x86_64 profile 空白安装与受控存储证据继续有效，但不能替代本候选的 arm64 安装证据。因此本文件关闭 B3 发布候选门禁的静态部分，不签发其设备运行时部分。
+本轮 `adb devices -l` 在线设备为黑鲨 `SKW-A0` 与荣耀 `PPG-AN00`，两者均为 arm64；受控 `EpubStart_B2_API35` AVD 仍为 `x86_64`，不参与本轮 arm64 证据。当前已关闭本候选的空白安装、首次启动和主进程运行态证据缺口，但因固定样本运行时占用、精确私有 data 分项和正式 release 签名仍未完成，本文件仍不签发完整 B3 发布候选。

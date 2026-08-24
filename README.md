@@ -2,11 +2,11 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。当前阶段为 B3：Windows legacy shell 已覆盖其实际具备的运行态链，系列/标签 UI 消费按 Backend First 边界留给 F2；2026-08-24 已从当前提交重新生成 arm64 APK/AAB，完整 arm64 lint 与静态体积/ABI/ELF 门禁通过。当前仅缺 arm64 设备上的空白安装和固定样本运行时占用；更广 OEM/前端消费矩阵归 F2，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。当前阶段为 B3：Windows legacy shell 已覆盖其实际具备的运行态链，系列/标签 UI 消费按 Backend First 边界留给 F2；2026-08-24 已从当前提交重新生成 arm64 APK/AAB，完整 arm64 lint 与静态体积/ABI/ELF 门禁通过，并在黑鲨 SKW-A0 与荣耀 PPG-AN00 上完成同一 release payload 的空白安装、首次启动和主进程运行态复测。当前仍缺固定样本运行时占用、release 私有 data 精确分项和正式 release 签名；更广 OEM/前端消费矩阵归 F2，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。2026-08-24 的 B3 当前提交复测通过 181/181 Rust 测试、Windows x64 安装包构建、arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。Android arm64 空白安装与固定样本运行时占用尚无在线同架构设备证据，不能由 x86_64 AVD 代替。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。2026-08-24 的 B3 当前提交复测通过 181/181 Rust 测试、Windows x64 安装包构建、arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。Android arm64 空白安装与首次启动已在黑鲨 SKW-A0、荣耀 PPG-AN00 完成；固定样本运行时占用、release 私有 data 精确分项和正式 release 签名仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)，执行顺序见 [TODO.md](TODO.md)。
 
 当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 

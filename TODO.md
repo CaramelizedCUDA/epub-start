@@ -111,11 +111,11 @@
 
 - [x] Windows 运行态回归：legacy shell 实际具备的导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索和重启恢复均已覆盖；系列/标签的 Rust/IPC/事务契约由自动化覆盖，管理/消费 UI 按 Backend First 边界留给 F2，不再用尚未解锁的前端入口循环阻塞 B3。详见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
 - [x] Android 静态链、B1 首次实机来源链，以及 B2 搜索任务、活动读者、来源 hard-limit、缓存/低存储、长期压力和综合恢复均已有对应范围证据；真实黑鲨取消/进程终止/重建记录直接接受。更广 OEM/前端消费矩阵归 F2，不由 B3 后端冻结重复执行。
-- [ ] 以当前提交的 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用。2026-08-24 静态部分已通过：APK 11,960,465 B、AAB 11,769,321 B、Cargo `.so` 13,040,512 B、打包 `.so` 8,952,024 B、`dist` 596,444 B；增长均低于 10%，ABI/ELF/禁止载荷与完整 arm64 lint（0 error、31 warning、1 hint）通过。未完成：当前无在线 arm64 设备，现有 x86_64 AVD 不能替代本候选的空白安装与固定样本运行时占用。详见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。
+- [ ] 以当前提交的 arm64 release 候选复测 APK/AAB、原生库、前端 `dist`、空白安装和固定样本运行时占用。2026-08-24 静态部分已通过：APK 11,960,465 B、AAB 11,769,321 B、Cargo `.so` 13,040,512 B、打包 `.so` 8,952,024 B、`dist` 596,444 B；增长均低于 10%，ABI/ELF/禁止载荷与完整 arm64 lint（0 error、31 warning、1 hint）通过。黑鲨 SKW-A0 与荣耀 PPG-AN00 已完成同一 release payload 的卸载后空白安装、ABI 确认、首次启动、WebView 和主进程内存复测；仍未完成固定 EPUB 运行时占用、release 私有 data 精确字节分项和正式 release 签名。详见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。
 - [x] 2026-08-24 当前提交执行 `cargo fmt --check`、`cargo check`、完整 `cargo test`（181/181）、`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release` 和 `npm.cmd run tauri build` 均通过；Windows x64 产出 MSI 5,537,792 B、NSIS 3,215,710 B。已知非阻塞警告：Android/Kotlin 上游 deprecated API、Gradle 9 deprecated features、arm64 lint 31 warning/1 hint。
 - [x] 2026-08-24 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与当前实现一致；Rust 注册 44 个 Command == TypeScript 44 个 wrapper，V1–V4 迁移与 DATABASE 对齐，17 个公共稳定错误前缀均在 IPC 登记，Markdown 本地链接 0 个缺失，`audit:check` 仍为 575 行/590 次，当前无生产代码 diff。未测/不由文档审计替代：新前端 UI、arm64 候选设备占用及更广 OEM 运行态。
 - [ ] 建立后端契约冻结点：冻结 Command、模型、错误前缀、数据库字段、资源预算和来源状态语义。
-- 当前已形成候选冻结清单 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)；Windows 与 B2 Android 后端范围已关闭，仍因当前 arm64 候选缺少同架构设备安装/占用证据而未签发。
+- 当前已形成候选冻结清单 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)；Windows 与 B2 Android 后端范围已关闭，arm64 设备空白安装/首次启动证据已补齐，仍因固定样本运行时占用、release 私有 data 精确分项和正式 release 签名未签发。
 
 ## F1–F3 前端（B3 通过后才解锁）
 
@@ -160,4 +160,4 @@
 - 2026-08-23：完整 Gradle release lint 收口。阿里云镜像下载与独立哈希校验关闭 AndroidX/JUnit/Hamcrest 依赖缺口；`generateReleaseLintModel` 先变绿，完整 lint 随后以 scaffold Leanback TV 声明的两条 error 变红。移除未承诺的 TV 声明后，Universal/Arm release lint 均为 0 error、31 warning、1 hint，且全程未使用 lint baseline、禁用检查或跳过 lint 任务。
 - 2026-08-23：启动 B3 Windows 桌面回归；开发态与 x64 release 的打开、资源链、目录、搜索、批注、设置、进度、全屏和基础重启已记录。修复 `section.load()` Promise 被误当回调导致的桌面搜索空结果；导入、删除、失效来源重新定位、系列/标签消费仍待后续覆盖。
 - 2026-08-24：B3 Windows 边界裁决完成。导入、删除与失效来源重新定位已由隔离 fixture 补齐；系列/标签已有 Rust/IPC/事务自动化，但 legacy shell 没有 UI，按 Backend First 规则把真实消费留给 F2，不再形成“必须先做 F2 才能通过 B3”的循环门禁。更广 Android OEM/前端消费矩阵同样归 F2。
-- 2026-08-24：从当前提交重新生成 arm64 release 静态候选。完整 `lintArm64Release` 为 0 error、31 warning、1 hint，`audit:android-release` 通过 ABI/ELF/禁止载荷、绝对上限和 10% 回归门禁；全仓 `cargo fmt/check/test`（181/181）、前端 build、audit:check 与 Windows x64 Tauri build 均通过。当前没有在线 arm64 设备，x86_64 受控 AVD 不能替代空白安装和固定样本运行时占用，因此 B3 契约仍保持候选未签发。
+- 2026-08-24：从当前提交重新生成 arm64 release 静态候选。完整 `lintArm64Release` 为 0 error、31 warning、1 hint，`audit:android-release` 通过 ABI/ELF/禁止载荷、绝对上限和 10% 回归门禁；全仓 `cargo fmt/check/test`（181/181）、前端 build、audit:check 与 Windows x64 Tauri build 均通过。随后在黑鲨 SKW-A0（Android 9）和荣耀 PPG-AN00（Android 15）上完成同一 release payload 的卸载后空白安装、`primaryCpuAbi=arm64-v8a`、首次启动、WebView 和主进程内存复测；设备运行态证据已补齐，但固定样本运行时占用、release 私有 data 精确字节分项和正式 release 签名仍未完成，B3 契约保持候选未签发。

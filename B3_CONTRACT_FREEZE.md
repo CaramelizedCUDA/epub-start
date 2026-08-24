@@ -2,7 +2,7 @@
 
 日期：2026-08-24
 分支：`codex/b3-contract-freeze`
-状态：**候选冻结，未签发**。Windows legacy shell 实际具备的运行态链、系列/标签后端契约、B1/B2 Android 后端范围和当前 arm64 静态候选均已关闭；当前唯一未满足的 B3 发布候选证据是同一 arm64 候选的空白安装与固定样本运行时占用。因此本文件记录当前实现边界，但尚不正式解锁 F1/F2。
+状态：**候选冻结，未签发**。Windows legacy shell 实际具备的运行态链、系列/标签后端契约、B1/B2 Android 后端范围、当前 arm64 静态候选以及两台真实 arm64 设备的空白安装/首次启动均已关闭；当前仍缺固定样本运行时占用、release 私有 data 精确分项和正式 release 签名。因此本文件记录当前实现边界，但尚不正式解锁 F1/F2。
 
 ## Command 契约
 
@@ -70,6 +70,7 @@ Rust `src-tauri/src/db/models.rs` 与 TypeScript `src/types/models.ts` 保持 sn
 
 仍未满足冻结签发条件：
 
-- 本轮 `adb devices -l` 没有在线 arm64 设备；现有受控 AVD 为 x86_64，不能安装 arm64-only APK。当前候选尚未取得空白安装、首次启动 code/data 分项和固定样本运行时占用。
-- 正式签发前须用 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md) 中记录的当前 APK，或从同一提交可重复生成且静态门禁等价的 arm64 APK，补齐上述设备证据并复核哈希。
+- 两台真实 arm64 设备已取得空白安装、首次启动、ABI、WebView 和主进程内存证据；但固定 EPUB 导入后的运行时占用仍未执行，release 私有 data 精确字节分项因 release 不可 `run-as` 未取得。
+- 当前设备复测使用同一 unsigned release payload 的本地 debug-keystore 签名副本；正式 release 签名仍未完成，不能把该副本当作发布签名证明。
+- 正式签发前须补齐上述剩余证据并复核 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md) 中的当前 APK/AAB 哈希。
 - 因此本文件仍是候选冻结快照，不表示 B3 已完成，也不解锁 F1/F2 的生产开发。
