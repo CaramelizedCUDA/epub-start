@@ -239,7 +239,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 
 ## B3 受控诊断 Command（非稳定接口）
 
-`get_b3_private_data_report` 只在显式启用 `b3-diagnostics` Cargo feature 的 release-like 诊断构建中注册，用于两台 arm64 真机的私有 data 精确分项取证；普通 release 不注册该 Command，因此它不计入稳定的 49 个生产 Command，也不能由前端产品功能调用。该 Command 无入参，返回 `B3PrivateDataReport`：`schema_version`、`total_bytes`、`database_bytes`、`source_cache_bytes`、`cover_cache_bytes`、`other_bytes`、`search_index_text_bytes` 和 `search_document_count`。
+`get_b3_private_data_report` 只在显式启用 `b3-diagnostics` Cargo feature 的 release-like 诊断构建中注册，用于两台 arm64 真机的私有 data 精确分项取证；普通 release 不注册该 Command，因此它不计入稳定的 49 个生产 Command，也不能由前端产品功能调用。该 Command 无入参，返回 `B3PrivateDataReport`：`schema_version`、`book_count`、`total_bytes`、`database_bytes`、`source_cache_bytes`、`cover_cache_bytes`、`other_bytes`、`search_index_text_bytes` 和 `search_document_count`。`book_count` 只统计当前 SQLite `books` 行数，用来解释样本导入规模，不改变物理字节分类。
 
 其中前五个字节字段是应用 data 根目录内 regular file 的物理字节分类，`total_bytes` 等于四个物理分类之和；`search_index_text_bytes` 复用现有搜索预算的 UTF-8 账面口径，位于 SQLite 内部，不重复计入 `total_bytes`。诊断路径只读取并通过 logcat 返回结果，不写入被测 data 根目录，不改变稳定 IPC、数据库 Schema 或发布制品内容。
 

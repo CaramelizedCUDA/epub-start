@@ -279,6 +279,7 @@ export interface DeleteReadingHistoryResult {
 /** Returned only by the feature-gated B3 release-like diagnostic build. */
 export interface B3PrivateDataReport {
   schema_version: number;
+  book_count: number;
   total_bytes: number;
   database_bytes: number;
   source_cache_bytes: number;

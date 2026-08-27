@@ -205,6 +205,18 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - **未测/边界**：桌面端和 Android 当前没有生产 Reader/书架消费，因此没有把前端心跳、锁屏/切后台、WebView 或 UI 排版写成运行态通过；这些属于 F2/F3 的人工运行态验证。未声明多进程/多连接数据库并发、真实断电/损坏数据库或真实物理写满；正文推荐的候选段落、语言组织、剧透规避、隐私和模型/本地算法仍待后续单独评审。
 - **B3 样本集更新（2026-08-28）**：新增 [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)，将当前 arm64 真机固定样本从单个 `6.epub` 扩大为 37 个唯一 EPUB（215,965,079 字节）；根目录与附件重复副本按 SHA-256 排除。该清单只更新下一轮 B3 运行态占用/私有 data 复测的输入，不把结构检查或旧候选证据升级为完成证明；B2 的单固定 EPUB 长期压力口径保持不变。
 
+### 0.2.21 B3 arm64 技术冻结收口（2026-08-28）
+
+- **普通 release 静态候选**：从本轮工作树重新生成 arm64 APK/AAB；`npm.cmd run audit:android-release` 通过。APK 为 11,960,465 B，AAB 为 11,769,321 B，Cargo release `.so` 为 13,229,512 B，打包运行时 `.so` 为 8,952,024 B，前端 `dist` 为 596,824 B；相对已提交基线分别为 3.49%、3.55%、1.45%、0.00%、0.20%，ABI 为 arm64-only，打包 ELF 为 AArch64，未发现禁止调试段或测试/缓存/宿主路径 payload。
+- **制品指纹**：APK SHA-256 为 `626C60F025C14A4CC4CAE3F55A0BFEBADDD93F1EB2F03BFDA5BDD266E526E194`；AAB SHA-256 为 `44BFFA39CD149C147EE6714EE46DDB80B6728DEEA41B3CABF994856EF5FF5FF9`；Cargo release `.so` SHA-256 为 `449FEC7032D64316C19C58A7BD032C831616AA7ABE4FD8703093075204A105A6`。
+- **Gradle lint**：固定 SDK/JDK、本地已校验 Google Maven 仓库下执行当前 arm64 release 变体 `:app:lintArm64Release`，`BUILD SUCCESSFUL`；报告为 0 error、31 warning、1 hint。warning 仍是上游/兼容性提示，不使用 lint baseline 或跳过分析任务掩盖问题。
+- **双机固定样本**：黑鲨 SKW-A0（Android 9/API 28，arm64）和荣耀 PPG-AN00（Android 15/API 35，arm64）均按 [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md) 完成 37/37 个 EPUB 的选择/导入。release-like `b3-diagnostics` 诊断报告观察到：黑鲨总 data 232,900,308 B（数据库 487,424 B、来源缓存 216,516,206 B、封面 15,807,896 B、其它 88,782 B）；荣耀总 data 231,629,804 B（数据库 471,040 B、来源缓存 211,942,939 B、封面 14,908,943 B、其它 4,306,882 B）；两次搜索账面均为 0 B/0 文档。报告只通过 logcat 读取，不写入应用 data。
+- **取证边界**：样本复测没有在两台设备上重新卸载/清空数据，荣耀复测前已有旧书数据，故上述值是完整样本导入后的实际占用观察，不是干净基线下的逐本增量，也不用于推导 OEM 差异。追加的只读 `book_count` 字段已完成辅助逻辑的变红→修复→变绿自证，诊断包也已重新构建、签名和安装；但设备随后锁屏，未取得该字段的现场计数，因此不把它写成 Android 运行态已验证项。
+- **本轮验证（辅助逻辑/静态）**：`cargo fmt --check`、`cargo check`、`cargo check --features b3-diagnostics`、`cargo test --features b3-diagnostics`（196/196）、`npm.cmd run build`、`npm.cmd run audit:unwrap`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release`、`git diff --check` 和当前 `:app:lintArm64Release` 均通过；unwrap 自动统计为 49 个 Rust 文件、672 行/687 次，并与登记一致。
+- **本轮验证（Android 环境）**：双机 arm64 包安装/ABI/首次启动的既有证据、37 项固定样本选择/导入和 release-like data 分类观察已纳入 B3 技术冻结；普通 release 正式签名、重新卸载后的干净基线/PSS 增量、追加 `book_count` 的现场面板以及更广 OEM/前端消费矩阵未验证。正式签名属于候选签发门禁；前端消费属于 F2/F3，不由本轮后端证据替代。
+
+本节将 B3 标记为**技术冻结完成、候选未签发**。它冻结后端 Command、模型、错误、V5 数据、资源预算和来源状态语义，并允许生产 F1–F3 以这些契约为输入推进；不等同于正式 release 已签名。
+
 ## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 
 1. 审计结果与缺口清单已经形成，IPC.md 的 `BOOK_RESOURCE_NOT_FOUND:` 文档缺口已经修复。

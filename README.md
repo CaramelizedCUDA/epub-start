@@ -2,13 +2,13 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。B3 目前处于技术冻结待收口、正式签发待发布：固定样本集运行时占用和 release-like 私有 data 精确分项仍待完成；正式 release 签名单列为最终发布门禁。B4 阅读洞察后端已完成：阅读时长、可独立删除的历史、继续阅读、足迹聚合和离线推荐已冻结并接入 49 个真实 Command；不包含生产书架/Reader UI。技术冻结后才解锁生产 F1–F3，隔离设计探索可提前继续，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。B3 技术冻结已于 2026-08-28 完成：当前 arm64 静态候选、双机空白安装/首次启动、37 个固定样本运行态占用和 release-like 私有 data 分项均已有范围证据；候选仍未正式签发，正式 release 签名另属最终发布门禁。B4 阅读洞察后端已完成：阅读时长、可独立删除的历史、继续阅读、足迹聚合和离线推荐已冻结并接入 49 个真实 Command；不包含生产书架/Reader UI。生产 F1–F3 现可在冻结契约上推进，隔离设计探索继续保留多方案，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
-仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。2026-08-24 的 B3 当前提交复测通过 181/181 Rust 测试、Windows x64 安装包构建、arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。Android arm64 空白安装与首次启动已在黑鲨 SKW-A0、荣耀 PPG-AN00 完成；B3 固定样本集运行时占用、release 私有 data 精确分项和正式 release 签名仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)、[B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)，执行顺序见 [TODO.md](TODO.md)。
+仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。B3 收口验证通过 196/196 Rust feature 测试、Windows x64 安装包构建、当前 arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。黑鲨 SKW-A0、荣耀 PPG-AN00 已完成 37 个固定 EPUB 的导入/选择和 release-like data 分项观察；由于样本复测未重新卸载设备，报告保留为实际占用观察而非干净增量。正式 release 签名仍未执行。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)、[B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)，执行顺序见 [TODO.md](TODO.md)。
 
-当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。B4 是在 B3 候选基础上经用户明确批准的追加后端变更，不追认 B3 已签发；生产前端仍需等待 B3 技术冻结，隔离设计探索不在此限制内。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
+当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。B4 是在 B3 候选基础上经用户明确批准的追加后端变更，现已纳入技术冻结输入；生产 F1–F3 已解锁，但会继续以隔离、多方案、逐步收敛的方式推进，正式签名不提前冒充完成。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块职责、目录边界与资源访问原则。
 - [DATABASE.md](DATABASE.md)：SQLite 的唯一 Schema 定义与迁移规则。
@@ -19,7 +19,7 @@
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
 - [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论、B3 边界与 B4 追加复核。
 - [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)：2026-08-23 Windows 开发态与 release 桌面回归的已测项、未测项和搜索修复证据。
-- [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)：2026-08-24 历史 arm64 APK/AAB、完整 lint、静态门禁与待补设备占用证据。
+- [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)：B3 技术冻结、当前 arm64 APK/AAB、完整 lint、双机固定样本占用证据与候选未签发边界。
 - [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)：B3 当前 arm64 真机复测使用的 37 个唯一 EPUB、哈希和固定导入顺序。
 - [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)：B3 Command、模型、错误、数据库、资源预算和来源状态的冻结候选及未签发条件。
 - [docs/adr/0001-reading-duration-history.md](docs/adr/0001-reading-duration-history.md)：B4 阅读时长、历史独立性、继续阅读与离线推荐的已接受决策。

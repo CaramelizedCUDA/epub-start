@@ -9,6 +9,7 @@ use std::path::Path;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrivateDataReport {
     pub schema_version: u32,
+    pub book_count: u64,
     pub total_bytes: u64,
     pub database_bytes: u64,
     pub source_cache_bytes: u64,
@@ -26,10 +27,12 @@ pub fn collect_private_data_report(
     db: &Connection,
 ) -> Result<PrivateDataReport, String> {
     let physical = collect_physical_bytes(app_data_root)?;
+    let book_count = book_count(db)?;
     let (search_index_text_bytes, search_document_count) = search_index_ledger(db)?;
 
     Ok(PrivateDataReport {
         schema_version: 1,
+        book_count,
         total_bytes: physical.total_bytes()?,
         database_bytes: physical.database_bytes,
         source_cache_bytes: physical.source_cache_bytes,
@@ -38,6 +41,13 @@ pub fn collect_private_data_report(
         search_index_text_bytes,
         search_document_count,
     })
+}
+
+fn book_count(db: &Connection) -> Result<u64, String> {
+    let count: i64 = db
+        .query_row("SELECT COUNT(*) FROM books", [], |row| row.get(0))
+        .map_err(|_| "INTERNAL_ERROR: book count cannot be read".to_string())?;
+    non_negative_i64(count, "book counter")
 }
 
 #[derive(Debug, Default)]
@@ -225,6 +235,7 @@ mod tests {
 
         let report = collect_private_data_report(&root, &db)?;
         assert_eq!(report.schema_version, 1);
+        assert_eq!(report.book_count, 1);
         assert_eq!(report.database_bytes, 5);
         assert_eq!(report.source_cache_bytes, 7);
         assert_eq!(report.cover_cache_bytes, 11);

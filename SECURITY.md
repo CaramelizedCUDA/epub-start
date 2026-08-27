@@ -56,10 +56,10 @@ B2 初始制品门禁为 arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 Mi
 
 - desktop dialog 依赖/Capability 已从 Android 隔离，外部 Android 子项目的 build 目录重定向到工程 build 树，原 `tauri-plugin-fs/android/.tauri/tauri-api` 目录冲突不再出现；NDK 固定为 27.3.13750724。
 - arm64 release：APK 11,557,632 B（11.022 MiB）、AAB 11,365,807 B（10.839 MiB）、Cargo release `.so` 13,040,288 B（12.436 MiB）、打包运行时 `.so` 8,951,720 B（8.537 MiB）、前端 `dist` 595,644 B（0.568 MiB）。`npm run audit:android-release` 已检查完整基线工具链、APK/AAB 各自的 arm64-only/AArch64、无 `.debug*`/`.symtab`/`.strtab`、无测试 EPUB/缓存/宿主路径 payload，并通过绝对与当前基线门禁。
-- 2026-08-24 B3 当前提交候选：APK 11,960,465 B、AAB 11,769,321 B、Cargo release `.so` 13,040,512 B、打包运行时 `.so` 8,952,024 B、前端 `dist` 596,444 B；相对基线增长分别为 3.49%、3.55%、0.00%、0.00%、0.13%，静态门禁继续通过。该候选未在 arm64 设备完成空白安装或固定样本占用，不能把静态结果写成运行态证明。
+- 2026-08-28 B3 技术冻结候选：APK 11,960,465 B、AAB 11,769,321 B、Cargo release `.so` 13,229,512 B、打包运行时 `.so` 8,952,024 B、前端 `dist` 596,824 B；相对基线增长分别为 3.49%、3.55%、1.45%、0.00%、0.20%，静态门禁继续通过。黑鲨与荣耀已按 37 个固定 EPUB 完成 release-like 诊断导入和私有 data 分类观察；样本复测未重新卸载设备，故数值不解释为干净基线下的逐本增量。正式 release 签名仍未执行。
 - profile 使用 release Rust、独立 `.profile` 包名、可调试应用、关闭 JNI debug/R8 和 debug 签名。历史 arm64/x86_64 profile APK/AAB 已完成 ABI、签名和打包 ELF 检查；它们只用于诊断/AVD，不是发布证明，正式延期验收前必须从当前提交重新生成并记录 hash。
-- 完整 Gradle release lint 已于 2026-08-23 通过：从阿里云镜像取得缺失 AndroidX/JUnit/Hamcrest 制品并以既有 Gradle module SHA-256/Maven Central SHA-1 校验，`:app:lintUniversalRelease` 与 `:app:lintArmRelease` 报告均为 0 error、31 warning、1 hint。项目不支持 Android TV，因此移除了初始 scaffold 的 Leanback feature/category，而未用 TV banner 或 lint baseline 掩盖错误。此前显式跳过 lint model/vital 任务生成的 APK/AAB 仍只用于静态体积审计，不追认为完整发布候选。
-- Android profile 空白安装、WebView、受控低存储、中断重试、来源 hard-limit、六轮累计压力、SQLite 低余量峰值和限定范围多记录恢复已有 AVD 证据；封面 hard-limit 的公共并发分支仅观察到 admission 串行化/软淘汰，因此仍以辅助逻辑作为 hard-limit 证据。当前 arm64 候选的同架构安装/占用仍属 B3；更广 OEM/真实设备前端矩阵移至 F2/F3，验收边界见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
+- 完整 Gradle release lint 已于 2026-08-28 对当前 arm64 release 变体通过：使用固定 SDK/JDK 与已校验的本地 Google Maven 仓库，`:app:lintArm64Release` 为 0 error、31 warning、1 hint。项目不支持 Android TV，因此移除了初始 scaffold 的 Leanback feature/category，而未用 TV banner 或 lint baseline 掩盖错误。此前显式跳过 lint model/vital 任务生成的 APK/AAB 仍只用于静态体积审计，不追认为完整发布候选。
+- Android profile 空白安装、WebView、受控低存储、中断重试、来源 hard-limit、六轮累计压力、SQLite 低余量峰值和限定范围多记录恢复已有 AVD 证据；封面 hard-limit 的公共并发分支仅观察到 admission 串行化/软淘汰，因此仍以辅助逻辑作为 hard-limit 证据。当前 arm64 候选的同架构安装/固定样本占用与私有 data 分类已完成 B3 技术冻结；正式签名和更广 OEM/真实设备前端矩阵分别移至最终发布门禁与 F2/F3，验收边界见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)。
 
 ### CSP 策略
 
@@ -141,7 +141,7 @@ V1、V2、V3、V4、V5 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，
 - Android SAF 持久权限的运行时撤销检测依赖平台插件
 - 当前无自动化的 Android 设备验收流水线
 - Android SDK/NDK、Rust targets 与双机环境已经具备；官方干净 debug 构建和 B1 首次实机来源链门禁已完成，导入卡住 workaround 已有黑鲨 30 轮与荣耀连续导入记录。未覆盖自动化设备回归、所有 DocumentsProvider；长期压力和低存储故障已按批准的受控 AVD 例外完成限定范围取证，不外推真实设备/OEM 矩阵。
-- arm64 release 静态分项基线、体积/ELF 门禁和完整 Gradle release lint 已建立；2026-08-24 已从当前提交重新生成 arm64 静态候选。正式签名、同一候选的 arm64 空白安装/固定样本占用、封面可控保护重叠分支与更广 Android 前端/OEM 矩阵仍未完成，不能签发正式发布候选或全设备 Android 运行态证明。历史 debug 296.16 MiB 与设备约 338 MB 仍不得写成 release 体积结论。
+- arm64 release 静态分项基线、体积/ELF 门禁和完整 Gradle release lint 已建立；2026-08-28 技术冻结候选已从当前工作树重新生成，并在黑鲨与荣耀上完成 37 个固定 EPUB 的 release-like 导入/私有 data 分类观察。样本复测未重新卸载设备，不能把结果写成干净基线下的逐本增量；正式签名、封面可控保护重叠分支与更广 Android 前端/OEM 矩阵仍未完成，不能签发正式发布候选或全设备 Android 运行态证明。历史 debug 296.16 MiB 与设备约 338 MB 仍不得写成 release 体积结论。
 - legacy 前端/WebView 如何请求 EPUB 资源属于前端集成范围，不作为 B0 后端安全审计是否通过的判据
 - EPUB.js 的 iframe 隔离依赖其内置安全策略，而非 Tauri 主 WebView 的 CSP
 - 封面文件通过 `asset://` 协议暴露，需确认 `asset` scope 配置正确

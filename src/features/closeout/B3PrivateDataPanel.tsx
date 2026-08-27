@@ -41,6 +41,7 @@ export function B3PrivateDataPanel() {
 
       {report && (
         <div className="mt-3 grid gap-1 text-xs text-violet-100/85 sm:grid-cols-2">
+          <p>书籍记录：{report.book_count} 本</p>
           <p>总计：{formatBytes(report.total_bytes)}</p>
           <p>数据库文件：{formatBytes(report.database_bytes)}</p>
           <p>来源缓存：{formatBytes(report.source_cache_bytes)}</p>
