@@ -4,10 +4,10 @@
 
 ## Backend First 工作边界
 
-- B0–B3 后端阶段优先处理 `src-tauri/`、SQLite、平台、协议、后台任务和 IPC；现有 `src/` 视为 legacy shell。
+- B0–B4 后端阶段优先处理 `src-tauri/`、SQLite、平台、协议、后台任务和 IPC；现有 `src/` 视为 legacy shell。
 - 后端阶段禁止新增前端功能、视觉优化或交互重构。只有 IPC 契约同步、类型检查、安全修复和构建阻塞允许最小前端改动。
 - 后端完成必须以 Rust/数据库/协议/错误路径/运行态验收为证据；`npm run build`、页面截图和前端人工操作不能单独证明后端完成。
-- 只有通过 [ROADMAP.md](ROADMAP.md) 的 B3 门禁，才可进入前端 F1–F3。进入前端阶段后，先重建信息架构和状态处理，再做视觉美化。
+- 只有完成 [ROADMAP.md](ROADMAP.md) 的 B3 未签发条件与经批准追加的 B4 契约，才可进入前端 F1–F3。进入前端阶段后，先重建信息架构和状态处理，再做视觉美化。
 - 后端契约冻结后，任何为 UI 便利而修改 Command、模型、错误前缀、数据库字段或资源预算的行为都必须重新记录迁移、更新契约并补充测试。
 
 ## Rust
@@ -17,6 +17,7 @@
 - Command 保持薄；文件 I/O、ZIP/XML、SQLite 和平台代码必须归入其职责模块。
 - `platform/`、`source/`、`formats/`、`protocol/`、`services/` 必须遵守 ARCHITECTURE 的单向职责；`protocol/` 禁止引用 `formats::epub::*`。
 - 格式能力不得以 `Option` 默认空结果、`panic!`、`todo!` 或 `unimplemented!()` 伪装支持；不支持的格式或能力返回稳定错误。
+- 未来能力不得以空 Command、永远为 `null` 的字段、永不产生的枚举分支或通用 JSON 预占契约；进入对应阶段时通过显式契约变更加入。
 - 任何来源读取前必须校验文件存在性/可读性或 Android URI 权限。失效时持久化 `missing` 状态并返回 `BOOK_SOURCE_UNAVAILABLE:`。
 - 编写 Rust 后先在心中检查所有权、借用与生命周期，再使用 README 规定的 `cargo check` 验证。
 

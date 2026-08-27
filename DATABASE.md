@@ -246,6 +246,73 @@ WHERE singleton_id = 1
 
 全局保存由 `settings_service` 一次性更新整行；单书设置以可空字段保存，`NULL` 表示该字段继承全局值。清除单书设置删除覆盖行并恢复全局有效值。所有设置写入和读取均通过服务/仓储的参数化 SQL 完成。
 
+## V5 Schema（阅读时长、历史与继续阅读状态）
+
+V5 是 B4 的追加迁移，禁止改写 V1–V4。它把“仍在书架中的最近阅读状态”与“用户可独立删除的阅读历史”分开：删除历史不得删除图书、`reading_progress` 或 `book_reading_state`；删除图书级联删除 `book_reading_state`，但只把历史活动的实时 `book_id` 设为 `NULL`，历史快照继续保留。
+
+```sql
+CREATE TABLE book_reading_state (
+  book_id TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  last_read_at INTEGER NOT NULL CHECK (last_read_at >= started_at)
+);
+
+INSERT INTO book_reading_state (book_id, started_at, last_read_at)
+SELECT book_id, updated_at, updated_at
+FROM reading_progress;
+
+CREATE TABLE reading_activity_sessions (
+  id TEXT PRIMARY KEY,
+  recorded_book_id TEXT NOT NULL,
+  book_id TEXT REFERENCES books(id) ON DELETE SET NULL,
+  book_title TEXT NOT NULL,
+  book_authors_json TEXT NOT NULL,
+  series_id_snapshot TEXT,
+  series_name_snapshot TEXT,
+  series_volume_label_snapshot TEXT,
+  state TEXT NOT NULL CHECK (state IN ('visible', 'paused', 'ended')),
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  last_observed_at INTEGER NOT NULL CHECK (last_observed_at >= started_at),
+  last_sequence INTEGER NOT NULL CHECK (last_sequence >= 0),
+  ended_at INTEGER,
+  CHECK (ended_at IS NULL OR ended_at >= started_at),
+  CHECK (
+    (state = 'ended' AND ended_at IS NOT NULL)
+    OR (state IN ('visible', 'paused') AND ended_at IS NULL)
+  )
+);
+
+CREATE TABLE reading_presence_segments (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES reading_activity_sessions(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL CHECK (length(local_date) = 10),
+  utc_offset_minutes INTEGER NOT NULL CHECK (utc_offset_minutes BETWEEN -840 AND 840),
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  confirmed_until_at INTEGER NOT NULL CHECK (confirmed_until_at >= started_at),
+  closed_at INTEGER,
+  CHECK (closed_at IS NULL OR closed_at = confirmed_until_at)
+);
+
+CREATE INDEX idx_book_reading_state_last_read
+  ON book_reading_state(last_read_at DESC, book_id);
+CREATE INDEX idx_reading_activity_recorded_book
+  ON reading_activity_sessions(recorded_book_id, started_at DESC);
+CREATE INDEX idx_reading_activity_live_book
+  ON reading_activity_sessions(book_id, started_at DESC);
+CREATE INDEX idx_reading_presence_local_date
+  ON reading_presence_segments(local_date, started_at);
+CREATE INDEX idx_reading_presence_session
+  ON reading_presence_segments(session_id, started_at);
+CREATE UNIQUE INDEX idx_reading_presence_one_open
+  ON reading_presence_segments(session_id) WHERE closed_at IS NULL;
+```
+
+`book_reading_state` 的行存在即表示该书曾开始阅读。迁移会用现有 `reading_progress.updated_at` 为旧进度补种首次/最近阅读时间；之后保存进度和开始阅读活动都会推进 `last_read_at`，以兼容尚未接入 B4 活动观察的 legacy shell。
+
+每个活动只保存书名、作者、系列 ID/名称/卷标快照，不保存 `source_locator`、Android URI 或正文。可见区段以 UTC epoch 毫秒保存确认区间，并记录该区间归属的本地日期与 UTC 偏移；`confirmed_until_at - started_at` 是可累计阅读时长。自然跨本地午夜时拆分区段；偏移变化或超过 90 秒的未知间隔不补算。启动恢复把未结束活动停在最后确认点，不向进程退出后外推。
+
+按活动、日期、历史图书身份或全部删除历史时，活动删除级联区段；按日期删除只移除匹配日期的区段，再清理没有区段的空活动。上述删除均不得修改 `books`、`reading_progress` 或 `book_reading_state`。删书只将历史活动 `book_id` 置空，`recorded_book_id` 与展示快照保留。
+
 ## 来源失效与重新定位
 
 打开前，Rust 比对当前来源的可读性及可获取的大小、修改时间。来源失效或 Android 持久授权缺失时，在事务中把 `books.status` 设为 `missing`、更新 `status_detail` 和 `updated_at`，随后返回 IPC 定义的不可用错误。

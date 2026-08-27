@@ -4,6 +4,8 @@
 分支：`codex/b3-contract-freeze`
 状态：**候选冻结，未签发**。Windows legacy shell 实际具备的运行态链、系列/标签后端契约、B1/B2 Android 后端范围、当前 arm64 静态候选以及两台真实 arm64 设备的空白安装/首次启动均已关闭；当前仍缺固定样本运行时占用、release 私有 data 精确分项和正式 release 签名。因此本文件记录当前实现边界，但尚不正式解锁 F1/F2。
 
+> 2026-08-28 后续说明：用户已批准在前端解锁前追加 B4 阅读洞察后端。本文件继续作为 `16ed42a` 的 44 Command / V1–V4 历史候选快照，不回写为 49 Command / V1–V5；B4 完成后以当前 [DATABASE.md](DATABASE.md)、[IPC.md](IPC.md) 与 [TODO.md](TODO.md) 重新形成最终冻结输入。
+
 ## Command 契约
 
 - `src-tauri/src/lib.rs` 的 `invoke_handler` 注册 44 个 Command。

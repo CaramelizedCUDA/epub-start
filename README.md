@@ -8,18 +8,20 @@
 
 仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。2026-08-24 的 B3 当前提交复测通过 181/181 Rust 测试、Windows x64 安装包构建、arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。Android arm64 空白安装与首次启动已在黑鲨 SKW-A0、荣耀 PPG-AN00 完成；固定样本运行时占用、release 私有 data 精确分项和正式 release 签名仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)，执行顺序见 [TODO.md](TODO.md)。
 
-当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
+当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。B4 是在 B3 候选冻结之后经用户明确批准的追加后端变更，不追认 B3 已签发，也不提前解锁前端。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块职责、目录边界与资源访问原则。
 - [DATABASE.md](DATABASE.md)：SQLite 的唯一 Schema 定义与迁移规则。
 - [IPC.md](IPC.md)：Rust Command 和 TypeScript 调用方的唯一公开契约。
 - [CONVENTIONS.md](CONVENTIONS.md)：代码风格、依赖白名单和 Agent 行为约束。
+- [CONTEXT.md](CONTEXT.md)：产品、文档与代码共享的领域词汇。
 - [ROADMAP.md](ROADMAP.md)：阶段边界与冻结区。
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
 - [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论与缺口清单（2026-08-14）。
 - [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)：2026-08-23 Windows 开发态与 release 桌面回归的已测项、未测项和搜索修复证据。
 - [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)：2026-08-24 当前提交的 arm64 APK/AAB、完整 lint、静态门禁与待补设备占用证据。
 - [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)：B3 Command、模型、错误、数据库、资源预算和来源状态的冻结候选及未签发条件。
+- [docs/adr/0001-reading-duration-history.md](docs/adr/0001-reading-duration-history.md)：B4 阅读时长、历史独立性、继续阅读与离线推荐的已接受决策。
 - [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力验收包；已记录活动读者、来源 hard-limit、SQLite 低余量、长期压力和多记录恢复证据，并明确封面 hard-limit 与 B3/F2 设备矩阵边界。
 
 若文档间存在冲突，以职责更专门的文档为准：依赖与命令以本文件为准，目录职责以架构文档为准，表字段以数据库文档为准，Command 签名和错误语义以 IPC 文档为准。
@@ -85,4 +87,4 @@ npm run tauri build
 - EPUB ZIP 内部资源统一由 Rust 的 `epub` 协议处理，不能将 `asset://` 当作 ZIP 文件读取器；Windows/Android WebView 通过 `http://epub.localhost/...` 映射，其他桌面平台保留 `epub://localhost/...` 形式。
 - P3 解锁后，外层 ZIP 只能作为导入分发容器，或在内容全为受支持图片时以 CBZ 漫画语义导入；项目不得新增 `BookFormat::Zip`。当前 `zip` crate 只批准用于 EPUB 与既有安全读取，不代表通用 ZIP/CBZ 已进入实现范围。
 - 用户明确删除图书时会按数据库契约级联删除进度与批注；之后重新导入属于新记录。数据库中仍存在的同 `source_locator` 记录会复用原 `book_id`；文件移动后，通用导入也只会按指纹恢复唯一匹配的 `missing/error` 记录，多候选时拒绝猜测。
-- 每次工作从 [TODO.md](TODO.md) 第一个未完成且无外部阻塞的 `[ ]` 任务开始，并满足该任务的完成标准后再勾选。后端 B0–B3 未通过前，禁止新增前端功能或视觉优化；仅允许为 IPC 契约同步、类型检查、安全修复和构建阻塞进行最小前端改动。
+- 每次工作从 [TODO.md](TODO.md) 第一个未完成且无外部阻塞的 `[ ]` 任务开始，并满足该任务的完成标准后再勾选。后端 B0–B4 未通过前，禁止新增前端功能或视觉优化；仅允许为 IPC 契约同步、类型检查、安全修复和构建阻塞进行最小前端改动。

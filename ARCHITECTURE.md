@@ -120,6 +120,26 @@ CFI 的 DOM 解析、高亮 range 生成和渲染继续属于后端冻结后的�
 
 搜索索引必须按 `book_id -> SourceLease -> ActiveFormat -> SearchContentProvider -> search_service` 流转；`search_service` 不得直接依赖 `formats::epub::*`。后端结果以 `book_id + spine_index + OPF manifest href` 标识命中章节，B2 的 `cfi` 固定为 `null`；精确 CFI 只能在打开目标图书后由 EPUB.js 根据真实 package/DOM 生成。
 
+## B4 阅读洞察模块
+
+B4 增加一个独立的阅读洞察模块，不把计时、历史聚合或推荐查询塞进 Reader 渲染状态：
+
+```text
+commands/reading_activity.rs
+  -> services/reading_activity_service.rs   # 公开 seam：状态机、时间确认、聚合与候选选择
+  -> db/reading_activity_repository.rs       # 持久化活动、区段、书籍阅读状态与只读查询
+  -> db/models.rs                            # Rust/TypeScript 共用契约模型的 Rust 来源
+```
+
+该模块保持以下边界：
+
+- Command 只适配参数、锁定数据库并转换错误；时间戳、UUID、活动状态迁移、序列幂等和 90 秒确认上限都由 `reading_activity_service` 处理。
+- `book_reading_state` 是继续阅读与离线推荐的独立模块，不属于历史删除 seam；`reading_activity_sessions` 与 `reading_presence_segments` 是可删除历史模块。两者不得通过“删除历史”互相清理。
+- `get_library_reading_overview` 是书架的深接口，一次返回按日/周/月/季度聚合的中性时间桶、继续阅读项和最多三类离线推荐；桌面左右排布、Android 上下排布及时间轮盘形态不进入后端模型。
+- `get_reading_footprint` 按年或全部历史返回日级阅读时长、图书数和系列数；后端不返回颜色、热力等级、连续天数或成就语义。
+- 离线推荐只读取书架元数据、系列关系、阅读进度和图书阅读状态。`SearchContentProvider`、`search_documents` 与正文片段不依赖本模块；未来正文推荐必须经过单独契约评审，不通过空字段或占位理由提前耦合。
+- Reader 后续只在正文成功显示且页面前台可见时调用活动观察 seam；B4 当前只同步 TypeScript 契约与 wrapper，不修改 legacy shell、EPUB.js 生命周期或生产 UI。
+
 ## P3 多格式目标边界（冻结设计）
 
 当前代码不得提前实现本节，但现有架构也不得把 EPUB 的 CFI、EPUB.js Rendition 或文本排版设置误写成所有格式的通用能力。长期阅读模型分为可重排文档（EPUB/TXT）和固定页面（PDF/CBZ/CBR）；PDF 的文本层能力按文件声明，不是固定保证。

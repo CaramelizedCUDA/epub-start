@@ -2,7 +2,7 @@
 
 本文件是 Tauri Command 的唯一公开接口定义。数据库字段定义以 [DATABASE.md](DATABASE.md) 为准，前端调用位置以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。serde 结构体字段与 TypeScript 镜像字段使用 `snake_case`；Tauri 扁平 Command 参数键遵循 Tauri v2 调用约定，在 TypeScript 中使用 `camelCase`（例如 Rust `book_id` 对应 `bookId`）。禁止对嵌套 serde 对象做隐式重命名。
 
-项目当前处于后端 B0–B3。此阶段新增能力必须先交付真实 Rust 实现、测试和本文件契约，再允许最小 TypeScript 镜像同步；不得为了展示页面注册 stub Command。通过 B3 后，本文件、serde 模型、TypeScript 镜像、稳定错误前缀和资源预算共同形成前端重建所依赖的契约冻结点。
+项目当前处于后端 B4（叠加在未签发的 B3 候选上）。此阶段新增能力必须先交付真实 Rust 实现、测试和本文件契约，再允许最小 TypeScript 镜像同步；不得为了展示页面注册 stub Command。B3 未签发条件与 B4 完成后，本文件、serde 模型、TypeScript 镜像、稳定错误前缀和资源预算共同形成前端重建所依赖的契约冻结点。
 
 ## 共享模型
 
@@ -194,6 +194,49 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 
 目录树解析、DOM 渲染、当前书的章节内查找与搜索命中的精确 CFI 生成由后端冻结后的 EPUB.js 适配层完成；同系列/多卷搜索由 B2 后端索引 Command 提供。跨卷命中先按 `book_id` 打开图书，再用 `href` 导航；后端不得根据 spine 序号拼接伪 CFI。查询词最大 200 字符，默认最多返回 100 条；批注正文最大 20,000 字符，选中文本最大 10,000 字符，单个由前端提交保存的 CFI 最大 4,096 字符。
 
+## B4 阅读时长、足迹、继续阅读与离线推荐
+
+本节是已接受、实现中的 B4 目标契约；只有对应 Rust 实现、测试和 TypeScript wrapper 同步完成后，5 个新 Command 才计入当前总数（44 → 49）。它不授权实现书架或 Reader UI。
+
+### 共享模型
+
+- `ReadingActivityState`：`visible | paused | ended`。`ended` 是终态。
+- `ReadingActivityReceipt`：`session_id`、`sequence`、`state`、`accepted_at`。
+- `ReadingOverviewPeriod`：`day | week | month | quarter`。
+- `ReadingTimeBucketKind`：`hour | day | week`。
+- `ReadingDurationBucket`：`kind`、`start_local_date`、`end_local_date`、`hour: number | null`、`reading_ms`。日视图固定返回 24 个 `hour` 桶；周固定 7 个 `day` 桶；月按自然日；季度从季度首日开始按最多 7 天的 `week` 桶覆盖完整季度。
+- `ReadingDurationSummary`：`period`、`range_start_local_date`、`range_end_local_date`、`total_reading_ms`、`buckets`。
+- `ContinueReadingItem`：`book: BookSummary`、`progress: ReadingProgress | null`、`last_read_at`。
+- `ReadingRecommendationReason` 使用 `kind` 内部标记，只有三种 JSON 形状：
+  - `{ kind: 'next_in_series', series_id, series_name, previous_book_title }`
+  - `{ kind: 'unfinished_return', days_since_last_read }`
+  - `{ kind: 'unstarted_in_library' }`
+- `ReadingRecommendation`：`book: BookSummary`、`reason: ReadingRecommendationReason`。
+- `LibraryReadingOverview`：`duration`、`continue_reading: ContinueReadingItem | null`、`recommendations: ReadingRecommendation[]`。
+- `ReadingFootprintScope`：`{ kind: 'year', year } | { kind: 'all' }`。
+- `ReadingFootprintDay`：`local_date`、`reading_ms`、`distinct_books`、`distinct_series`。
+- `ReadingFootprintTotals`：`reading_ms`、`active_days`、`distinct_books`、`distinct_series`。
+- `ReadingFootprintYear`：`year`、`totals`、`days`；年视图与总计中的每个年份都返回该自然年的 365/366 个日单元，包含零值日期。
+- `ReadingFootprint`：`scope`、`totals`、`first_local_date: string | null`、`last_local_date: string | null`、`years`。`all` 在无历史时返回空 `years`，否则覆盖首末记录之间的每个自然年。
+- `ReadingHistoryScope`：`{ kind: 'session', session_id } | { kind: 'date', local_date } | { kind: 'book', recorded_book_id } | { kind: 'all' }`。
+- `DeleteReadingHistoryResult`：`deleted_sessions`、`deleted_segments`。
+
+所有日期字符串严格使用 `YYYY-MM-DD`。时间戳是后端生成的 UTC epoch 毫秒；`utc_offset_minutes` 只允许 `-840..840`。嵌套对象保持上述 `snake_case`，不得在 TypeScript 层改写为 camelCase。
+
+### Commands
+
+| Command | Args | 成功返回 | 关键语义 |
+| --- | --- | --- | --- |
+| `begin_reading_activity` | Rust：`book_id`, `utc_offset_minutes`; TS：`{ bookId, utcOffsetMinutes }` | `ReadingActivityReceipt` | 只在正文成功显示且页面前台可见后调用；后端生成 UUID/时间戳、快照书名/作者/系列并打开首个零时长可见区段，同时推进独立的图书阅读状态。 |
+| `observe_reading_activity` | Rust：`session_id`, `sequence`, `activity_state`, `utc_offset_minutes`; TS：`{ sessionId, sequence, activityState, utcOffsetMinutes }` | `ReadingActivityReceipt` | `sequence` 从 1 严格递增；重复最后一次序列幂等返回，过旧或跳号返回冲突。`visible` 延长/开启区段，`paused` 关闭区段，`ended` 关闭并终止活动。确认间隔超过 90 秒、偏移变化或启动恢复均不补算未知时间。 |
+| `get_library_reading_overview` | Rust：`period`, `anchor_local_date`; TS：`{ period, anchorLocalDate }` | `LibraryReadingOverview` | 返回中性时间桶、最近仍在书架中的继续阅读项，以及按“系列下一本 → 较久未读完 → 未开始”稳定优先级去重后的最多 3 个离线候选。未读完默认指 progression `< 0.98` 且至少 14 天未读。 |
+| `get_reading_footprint` | Rust/TS：`{ scope }` | `ReadingFootprint` | 只读历史区段，按本地日期返回阅读毫秒、接触图书数和接触系列数；不计算 streak、目标或成就。 |
+| `delete_reading_history` | Rust/TS：`{ scope }` | `DeleteReadingHistoryResult` | 按活动、日期、历史图书身份或全部删除历史；不存在的范围返回零计数。不得删除图书、进度或图书阅读状态。 |
+
+直接终止进程时，阅读时长只保留到最后一次已接受观察；正常 30 秒确认下通常最多少记一个周期，不向退出后外推。删书后历史快照仍可查询，但 `ContinueReadingItem` 与推荐只返回仍在书架中的 `BookSummary`。保存进度也会推进图书阅读状态，以兼容尚未接入活动观察的 legacy shell。
+
+推荐理由由后续前端根据结构化 `reason` 本地化组织。正文、精彩文段、`search_documents` 和搜索索引不参与 B4 推荐；未来正文推荐必须在 Reader 完成后单独评审并显式扩展枚举/Command，不预留空字段、通用 JSON 或永不返回的理由分支。
+
 ## 错误契约
 
 每个 Command 统一返回 `Result<T, String>`。错误字符串必须含稳定前缀和人类可读的简短详情：
@@ -209,6 +252,8 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | `SERIES_NOT_FOUND:` | `series_id` 无对应记录 | 刷新系列列表。 |
 | `TAG_NOT_FOUND:` | `tag_id` 无对应记录 | 刷新标签列表。 |
 | `TAG_GROUP_NOT_FOUND:` | `group_id` 无对应记录 | 刷新标签组与标签列表。 |
+| `READING_ACTIVITY_NOT_FOUND:` | `session_id` 无对应阅读活动，或已被历史删除 | 停止观察并丢弃本地活动句柄；不得自动补记时间。 |
+| `READING_ACTIVITY_CONFLICT:` | 活动已结束、序列过旧/跳号或状态迁移冲突 | 停止当前活动并在下次正文可见时重新开始；不得重放未知区间。 |
 | `VALIDATION_ERROR:` | 参数格式/值不合法，或系列、标签组、同组标签等唯一名称冲突 | 保留当前 UI，显示可操作错误。 |
 | `BOOK_RESOURCE_NOT_FOUND:` | 请求的 EPUB 内部条目不存在或路径无效 | 资源加载失败或图片导出提示条目缺失；不暴露宿主路径。 |
 | `BOOK_RESOURCE_LIMIT_EXCEEDED:` | EPUB、来源/封面缓存或搜索索引超过安全预算，或受控写入遇到存储耗尽 | 停止当前导入、读取或索引，保留旧状态并提示释放空间、清理可重建缓存或选择较小文件。 |
