@@ -2,7 +2,7 @@
 
 状态：**B2 受控 AVD 收口项已完成限定范围运行态验证：来源 hard-limit、后台索引活动读者、六轮逻辑压力、综合多记录恢复和 SQLite 低余量峰值已有证据；封面 hard-limit 的可控并发分支仅保留辅助逻辑证据；完整 Gradle release lint 已通过。更广 OEM/真实设备矩阵延期至 B3/F2。**
 
-本文件用于在受控 Android 虚拟设备上关闭 B2 的低存储、缓存重启恢复和长期压力门禁。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
+本文件用于在受控 Android 虚拟设备上关闭 B2 的低存储、缓存重启恢复和长期压力门禁。B3 arm64 真机的扩大样本另见 [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)；本文件中的 `6.epub` 与复制 fixture 口径不因 B3 样本扩展而改变。当前代码侧的辅助逻辑测试、桌面构建与 Android 制品检查不替代本文件中的运行态验收。
 
 2026-08-22 已在 `EpubStart_B2_API35`、`emulator-5554`、`ro.kernel.qemu=1` 的受控 AVD 上执行一轮部分验收。证据目录为 `D:\epub_start\target\android-b2-acceptance-20260822-184117`；正式 profile APK SHA-256 为 `BF60936AA6F7601CE5062656FAB644F038B6CE0C9194702E473BC820D1D45C4D`。本轮覆盖空白安装、46 份逐份导入、来源/封面预算观察、缺失缓存元数据协调以及孤儿/临时文件启动清理；共享存储输入在每份导入后删除，以避免与应用私有缓存同时占满受控 `/data`，因此不等同于“46 个输入文件长期留在共享目录”的压力路径。
 
@@ -34,7 +34,7 @@
 - APK：`D:\epub_start\src-tauri\gen\android\app\build\outputs\apk\x86_64\profile\app-x86_64-profile.apk`
 - 包名：`com.epubstart.reader.profile`
 - profile 继承 release Rust 与 release 依赖，关闭 R8，使用 debug 签名并允许 `run-as`；x86_64 APK 只用于匹配 Windows AVD，不是 arm64 发布基线或发布制品。
-- 固定 EPUB：`D:\epub_start\这里是终末停滞委员会\epub\6.epub`
+- 固定 EPUB：`D:\epub_start\测试文档存放处\epub\6.epub`
 - EPUB 大小：8,521,993 字节
 - EPUB SHA-256：`1138B2A23BB79F9DF0727D0D34EA6055E8D1E4EA363EAC865D2F8FB2108E5980`
 
@@ -78,7 +78,7 @@ $Adb = 'D:\Android\Sdk\platform-tools\adb.exe'
 $Sqlite = 'D:\msys64\mingw64\bin\sqlite3.exe'
 $Package = 'com.epubstart.reader.profile'
 $Apk = Join-Path $Repo 'src-tauri\gen\android\app\build\outputs\apk\x86_64\profile\app-x86_64-profile.apk'
-$Fixture = Join-Path $Repo '这里是终末停滞委员会\epub\6.epub'
+$Fixture = Join-Path $Repo '测试文档存放处\epub\6.epub'
 $Evidence = Join-Path $Repo ('target\android-b2-acceptance-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $Evidence | Out-Null
 

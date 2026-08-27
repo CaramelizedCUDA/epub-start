@@ -1,8 +1,14 @@
 # B3 Android arm64 release 候选复测
 
 日期：2026-08-24
-来源提交：`ce97a535e452eb90e5a08cb5c64fa1432c38e5b3`（与当前 `HEAD` 的生产代码和 Android 工程无差异；后续提交仅加入隔离设计探索材料）
+来源提交：`ce97a535e452eb90e5a08cb5c64fa1432c38e5b3`（2026-08-24 历史候选；B4 后续提交已改变生产 Rust/IPC，因此本文件的旧制品不代表当前 `HEAD`）
 状态：**静态候选通过；两台真实 arm64 设备已完成空白安装与首次启动运行态复测；固定样本运行时占用和正式 release 签名仍未签发**。
+
+## B3 样本集更新（2026-08-28）
+
+后续 B3 复测不再只使用单个 `6.epub`。当前固定样本改为 [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md) 中的 37 个唯一 EPUB，合计 215,965,079 字节（约 205.99 MiB）。37 个样本均已通过 ZIP、`META-INF/container.xml` 和 OPF rootfile 结构检查；根目录副本与附件副本因 SHA-256 完全相同而排除。
+
+这只是测试样本口径更新，不是运行态完成证明。下一轮必须以当前 `HEAD` 重新生成 arm64 release 候选，并在黑鲨与荣耀上按清单记录空白基线、逐本导入后的私有 data 分项和累计占用。B2 的单固定 EPUB 长期压力 fixture 仍按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 原口径执行。
 
 ## 构建方式
 
@@ -62,7 +68,7 @@ APK 与 AAB 的 ABI 集均只有 `arm64-v8a`；打包 ELF 均为 AArch64，未�
 - `target/b3-arm64-runtime-20260824/honor-ppg-an00/`
 - `target/b3-arm64-runtime-20260824/app-arm64-release-debug-signed.apk`
 
-release 变体本身不是 debuggable，两个设备上的 `run-as com.epubstart.reader` 均按预期拒绝；Android shell 也无权遍历应用私有目录。因此本轮**不声称精确的应用私有 data 字节分项**。`df` 的设备级可用空间差值会受系统 dexopt、厂商服务和后台活动影响，只作为环境记录，不当作应用 data 大小。固定 EPUB 导入后的运行时占用尚未在这份 arm64 候选上执行。
+release 变体本身不是 debuggable，两个设备上的 `run-as com.epubstart.reader` 均按预期拒绝；Android shell 也无权遍历应用私有目录。因此本轮**不声称精确的应用私有 data 字节分项**。`df` 的设备级可用空间差值会受系统 dexopt、厂商服务和后台活动影响，只作为环境记录，不当作应用 data 大小。B3 固定样本集导入后的运行时占用尚未在这份 arm64 候选上执行。
 
 ## 覆盖清单
 
@@ -78,8 +84,8 @@ release 变体本身不是 debuggable，两个设备上的 `run-as com.epubstart
 未验证：
 
 - release 私有 data 的精确字节分项（release 不可 `run-as`，设备 shell 无权读取）；
-- 当前 arm64 候选导入固定 EPUB 后的运行时占用；
+- 当前 arm64 候选导入 B3 固定样本集后的运行时占用；
 - 正式 release 签名；
 - 更广 OEM/真实设备上的前端消费、WebView、性能和手势矩阵。
 
-本轮 `adb devices -l` 在线设备为黑鲨 `SKW-A0` 与荣耀 `PPG-AN00`，两者均为 arm64；受控 `EpubStart_B2_API35` AVD 仍为 `x86_64`，不参与本轮 arm64 证据。当前已关闭本候选的空白安装、首次启动和主进程运行态证据缺口，但因固定样本运行时占用、精确私有 data 分项和正式 release 签名仍未完成，本文件仍不签发完整 B3 发布候选。
+本轮 `adb devices -l` 在线设备为黑鲨 `SKW-A0` 与荣耀 `PPG-AN00`，两者均为 arm64；受控 `EpubStart_B2_API35` AVD 仍为 `x86_64`，不参与本轮 arm64 证据。当前已关闭本候选的空白安装、首次启动和主进程运行态证据缺口，但因 B3 固定样本集运行时占用、精确私有 data 分项和正式 release 签名仍未完成，本文件仍不签发完整 B3 发布候选。
