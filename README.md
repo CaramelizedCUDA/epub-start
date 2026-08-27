@@ -2,13 +2,13 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。B3 仍是未签发候选，B4 阅读洞察后端已完成：阅读时长、可独立删除的历史、继续阅读、足迹聚合和离线推荐已冻结并接入 49 个真实 Command；不包含生产书架/Reader UI。B3 的固定样本集运行时占用、release 私有 data 精确分项、正式 release 签名及更广 OEM/前端消费矩阵仍按边界留给后续阶段，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。B3 目前处于技术冻结待收口、正式签发待发布：固定样本集运行时占用和 release-like 私有 data 精确分项仍待完成；正式 release 签名单列为最终发布门禁。B4 阅读洞察后端已完成：阅读时长、可独立删除的历史、继续阅读、足迹聚合和离线推荐已冻结并接入 49 个真实 Command；不包含生产书架/Reader UI。技术冻结后才解锁生产 F1–F3，隔离设计探索可提前继续，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
 仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。2026-08-24 的 B3 当前提交复测通过 181/181 Rust 测试、Windows x64 安装包构建、arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。Android arm64 空白安装与首次启动已在黑鲨 SKW-A0、荣耀 PPG-AN00 完成；B3 固定样本集运行时占用、release 私有 data 精确分项和正式 release 签名仍未完成。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)、[B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)，执行顺序见 [TODO.md](TODO.md)。
 
-当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。B4 是在 B3 候选冻结之后经用户明确批准的追加后端变更，不追认 B3 已签发，也不提前解锁前端。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
+当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。现有前端只作为 legacy shell 保留；后端阶段不再以页面完成度、截图或前端构建通过作为产品验收证据。B4 是在 B3 候选基础上经用户明确批准的追加后端变更，不追认 B3 已签发；生产前端仍需等待 B3 技术冻结，隔离设计探索不在此限制内。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块职责、目录边界与资源访问原则。
 - [DATABASE.md](DATABASE.md)：SQLite 的唯一 Schema 定义与迁移规则。
@@ -88,4 +88,4 @@ npm run tauri build
 - EPUB ZIP 内部资源统一由 Rust 的 `epub` 协议处理，不能将 `asset://` 当作 ZIP 文件读取器；Windows/Android WebView 通过 `http://epub.localhost/...` 映射，其他桌面平台保留 `epub://localhost/...` 形式。
 - P3 解锁后，外层 ZIP 只能作为导入分发容器，或在内容全为受支持图片时以 CBZ 漫画语义导入；项目不得新增 `BookFormat::Zip`。当前 `zip` crate 只批准用于 EPUB 与既有安全读取，不代表通用 ZIP/CBZ 已进入实现范围。
 - 用户明确删除图书时会按数据库契约级联删除进度与批注；之后重新导入属于新记录。数据库中仍存在的同 `source_locator` 记录会复用原 `book_id`；文件移动后，通用导入也只会按指纹恢复唯一匹配的 `missing/error` 记录，多候选时拒绝猜测。
-- 每次工作从 [TODO.md](TODO.md) 第一个未完成且无外部阻塞的 `[ ]` 任务开始，并满足该任务的完成标准后再勾选。后端 B0–B4 未通过前，禁止新增前端功能或视觉优化；仅允许为 IPC 契约同步、类型检查、安全修复和构建阻塞进行最小前端改动。
+- 每次工作从 [TODO.md](TODO.md) 第一个未完成且无外部阻塞的 `[ ]` 任务开始，并满足该任务的完成标准后再勾选。后端 B0–B4 技术门禁未通过前，禁止新增生产前端功能或视觉优化；仅允许隔离在 `design-exploration/` 的静态方案探索，以及为 IPC 契约同步、类型检查、安全修复和构建阻塞进行最小前端改动。

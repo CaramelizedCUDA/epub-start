@@ -23,6 +23,7 @@ import type {
   SearchIndexStatus,
   SearchResult,
   SearchTaskStatus,
+  B3PrivateDataReport,
 } from '../types/models';
 import type {
   SelectedSource,
@@ -302,6 +303,14 @@ export async function rebuildSearchIndex(
   args: SearchIndexSeriesArgs,
 ): Promise<SearchTaskStatus> {
   return invoke<SearchTaskStatus>('rebuild_search_index', args).catch(mapError);
+}
+
+/**
+ * Feature-gated B3 diagnostic only. Normal production builds do not register
+ * this command; it is intentionally not part of the stable 49-command set.
+ */
+export async function getB3PrivateDataReport(): Promise<B3PrivateDataReport> {
+  return invoke<B3PrivateDataReport>('get_b3_private_data_report').catch(mapError);
 }
 
 export async function saveGlobalReadingSettings(

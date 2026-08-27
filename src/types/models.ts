@@ -275,3 +275,15 @@ export interface DeleteReadingHistoryResult {
   deleted_sessions: number;
   deleted_segments: number;
 }
+
+/** Returned only by the feature-gated B3 release-like diagnostic build. */
+export interface B3PrivateDataReport {
+  schema_version: number;
+  total_bytes: number;
+  database_bytes: number;
+  source_cache_bytes: number;
+  cover_cache_bytes: number;
+  other_bytes: number;
+  search_index_text_bytes: number;
+  search_document_count: number;
+}

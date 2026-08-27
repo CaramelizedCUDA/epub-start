@@ -29,7 +29,7 @@ src-tauri/src/
   source/                     # 指纹、受控 Reader、Android 私有来源缓存与真实 LRU
   formats/                    # 格式能力、薄分派与 EPUB 实现
   protocol/                   # 资源 URI 路由与受控响应，不解析格式
-  services/                   # 导入、打开、删除、封面缓存、批注、设置、目录管理与索引等用例编排
+  services/                   # 导入、打开、删除、封面缓存、批注、设置、目录管理与索引等用例编排；B3 诊断只允许 feature-gated
   resource_budget.rs          # 来源、封面和搜索等可重建数据的统一硬预算
   lib.rs                      # 应用状态、插件和 Command 注册
 src-tauri/gen/android/app/src/main/java/com/epubstart/reader/
@@ -91,7 +91,7 @@ Android 体积必须分层测量，不能用系统设置页的单一数字替代
 - B2 已实施：来源缓存软/硬上限 256/512 MiB，封面缓存软/硬上限 64/128 MiB，搜索索引 UTF-8 文本字节账面硬上限 256 MiB；`resource_budget.rs` 冻结合计硬上限 896 MiB，不超过 1 GiB。同系列后台索引由任务注册表保证最多一个活动任务，错误状态清理、FTS 重建和状态更新使用单一事务。达到硬上限且无法安全淘汰时返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`，不得删除活动租约、数据库或用户明确保存的内容。辅助逻辑与重启恢复已有变红自证；Android 低存储和六轮累计压力已有受控 AVD 限定范围证据，page/WAL、来源/封面 hard-limit 与真实淘汰占用仍按延期验收包开放。
 - 构建侧门禁为 arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 MiB、前端 `dist` ≤ 2 MiB，且相对已提交基线增长超过 10% 必须解释。`scripts/audit-android-release.mjs` 同时检查工具链漂移、ABI、打包 ELF 调试段和测试/缓存 payload。debug 只用于原生诊断；profile 使用 release Rust、可调试应用、关闭 JNI debug/R8 并采用独立包名；release 不得包含原生调试段、测试样本和本机缓存。
 
-来源/封面预算与 release 静态门禁已经由代码和自动化满足，但这不替代 Android 运行态：搜索索引 256 MiB 仍只是持久化 UTF-8 文本字节账面上限，真实 page/WAL、ENOSPC、进程中断和长期压力必须按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 取证。首个完整 B2 release 基线位于 `release-baselines/android-arm64-release.json`；后续只允许收紧，放宽需人工批准并同步 [ROADMAP.md](ROADMAP.md)、[TODO.md](TODO.md) 与 [SECURITY.md](SECURITY.md)。2026-08-23 使用校验过的本地 Maven 仓库补齐依赖后，完整 `lintUniversalRelease` / `lintArmRelease` 均以 0 error、31 warning、1 hint 通过；这不会把此前跳过 lint 生成的 APK/AAB 追认为完整发布候选。缓存统计/清理目前保持内部维护，无需新增公开 Command；未来若暴露，必须先设计 [IPC.md](IPC.md) 契约，禁止预注册 stub。
+来源/封面预算与 release 静态门禁已经由代码和自动化满足，但这不替代 Android 运行态：搜索索引 256 MiB 仍只是持久化 UTF-8 文本字节账面上限，真实 page/WAL、ENOSPC、进程中断和长期压力必须按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 取证。首个完整 B2 release 基线位于 `release-baselines/android-arm64-release.json`；后续只允许收紧，放宽需人工批准并同步 [ROADMAP.md](ROADMAP.md)、[TODO.md](TODO.md) 与 [SECURITY.md](SECURITY.md)。B3 私有 data 取证只能通过 `services::private_data_report` 的 feature-gated 只读 seam 完成；普通 release 不暴露缓存统计/清理或诊断 Command。若未来向产品前端暴露任何统计能力，必须先设计 [IPC.md](IPC.md) 契约，禁止预注册 stub。
 
 ## B1–B2 后端能力边界
 

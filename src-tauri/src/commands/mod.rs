@@ -1,6 +1,8 @@
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "b3-diagnostics")]
+pub mod b3_diagnostics;
 pub mod catalog;
 pub mod delete_book;
 pub mod get_reading_progress;

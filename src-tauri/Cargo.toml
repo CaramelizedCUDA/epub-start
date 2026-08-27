@@ -13,6 +13,9 @@ crate-type = ["lib", "cdylib", "staticlib"]
 # Enable the embedded asset protocol for production/profile Android builds.
 # Keep this opt-in so `tauri dev` continues to use `build.devUrl`.
 custom-protocol = ["tauri/custom-protocol"]
+# Compile the private-data report only for the explicitly controlled B3
+# release-like diagnostic build. It is not part of the normal command set.
+b3-diagnostics = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

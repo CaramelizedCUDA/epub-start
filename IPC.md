@@ -2,7 +2,7 @@
 
 本文件是 Tauri Command 的唯一公开接口定义。数据库字段定义以 [DATABASE.md](DATABASE.md) 为准，前端调用位置以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。serde 结构体字段与 TypeScript 镜像字段使用 `snake_case`；Tauri 扁平 Command 参数键遵循 Tauri v2 调用约定，在 TypeScript 中使用 `camelCase`（例如 Rust `book_id` 对应 `bookId`）。禁止对嵌套 serde 对象做隐式重命名。
 
-项目当前处于后端 B4（叠加在未签发的 B3 候选上）。此阶段新增能力必须先交付真实 Rust 实现、测试和本文件契约，再允许最小 TypeScript 镜像同步；不得为了展示页面注册 stub Command。B3 未签发条件与 B4 完成后，本文件、serde 模型、TypeScript 镜像、稳定错误前缀和资源预算共同形成前端重建所依赖的契约冻结点。
+项目当前处于后端 B4（叠加在待技术冻结的 B3 候选上）。此阶段新增能力必须先交付真实 Rust 实现、测试和本文件契约，再允许最小 TypeScript 镜像同步；不得为了展示页面注册 stub Command。B3 技术冻结与 B4 完成后，本文件、serde 模型、TypeScript 镜像、稳定错误前缀和资源预算共同形成前端重建所依赖的契约冻结点；正式 release 签名另属最终发布门禁。
 
 ## 共享模型
 
@@ -236,6 +236,12 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 直接终止进程时，阅读时长只保留到最后一次已接受观察；正常 30 秒确认下通常最多少记一个周期，不向退出后外推。删书后历史快照仍可查询，但 `ContinueReadingItem` 与推荐只返回仍在书架中的 `BookSummary`。保存进度也会推进图书阅读状态，以兼容尚未接入活动观察的 legacy shell。
 
 推荐理由由后续前端根据结构化 `reason` 本地化组织。正文、精彩文段、`search_documents` 和搜索索引不参与 B4 推荐；未来正文推荐必须在 Reader 完成后单独评审并显式扩展枚举/Command，不预留空字段、通用 JSON 或永不返回的理由分支。
+
+## B3 受控诊断 Command（非稳定接口）
+
+`get_b3_private_data_report` 只在显式启用 `b3-diagnostics` Cargo feature 的 release-like 诊断构建中注册，用于两台 arm64 真机的私有 data 精确分项取证；普通 release 不注册该 Command，因此它不计入稳定的 49 个生产 Command，也不能由前端产品功能调用。该 Command 无入参，返回 `B3PrivateDataReport`：`schema_version`、`total_bytes`、`database_bytes`、`source_cache_bytes`、`cover_cache_bytes`、`other_bytes`、`search_index_text_bytes` 和 `search_document_count`。
+
+其中前五个字节字段是应用 data 根目录内 regular file 的物理字节分类，`total_bytes` 等于四个物理分类之和；`search_index_text_bytes` 复用现有搜索预算的 UTF-8 账面口径，位于 SQLite 内部，不重复计入 `total_bytes`。诊断路径只读取并通过 logcat 返回结果，不写入被测 data 根目录，不改变稳定 IPC、数据库 Schema 或发布制品内容。
 
 ## 错误契约
 

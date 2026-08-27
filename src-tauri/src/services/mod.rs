@@ -4,6 +4,8 @@ mod format_service;
 mod image_service;
 mod library_service;
 mod notes_service;
+#[cfg(feature = "b3-diagnostics")]
+mod private_data_report;
 mod reading_activity_service;
 mod search_service;
 mod settings_service;
@@ -17,6 +19,8 @@ pub use library_service::{
     save_reading_progress,
 };
 pub use notes_service::{create_note, delete_note, list_notes, update_note};
+#[cfg(feature = "b3-diagnostics")]
+pub use private_data_report::{collect_private_data_report, PrivateDataReport};
 pub use reading_activity_service::*;
 pub use search_service::{
     cancel_search_index, ensure_series_search_index, get_search_index_status,

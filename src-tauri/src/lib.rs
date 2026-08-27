@@ -109,6 +109,8 @@ pub fn run() {
             commands::search::cancel_search_index,
             commands::search::search_series,
             commands::search::rebuild_search_index,
+            #[cfg(feature = "b3-diagnostics")]
+            commands::b3_diagnostics::get_b3_private_data_report,
         ])
         .register_uri_scheme_protocol("epub", epub_protocol)
         .run(tauri::generate_context!())
