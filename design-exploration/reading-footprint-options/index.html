@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EpubStart · 阅读足迹扩展</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-option="dial" data-period="week" data-scope="year">
+    <div class="prototype-ribbon">ISOLATED DESIGN STUDY · MOCK DATA</div>
+    <div class="app-shell">
+      <aside class="side-rail" aria-label="主导航">
+        <div class="brand-mark" aria-label="EpubStart">E</div>
+        <nav>
+          <a class="rail-link is-active" href="#library"><span>⌂</span><small>藏书</small></a>
+          <a class="rail-link" href="#series"><span>Ⅱ</span><small>系列</small></a>
+          <a class="rail-link" href="#search"><span>⌕</span><small>搜索</small></a>
+          <a class="rail-link" href="#notes"><span>✎</span><small>批注</small></a>
+        </nav>
+        <div class="rail-foot">A+C<br />study</div>
+      </aside>
+
+      <main class="main-content" id="library">
+        <header class="masthead">
+          <div>
+            <p class="eyebrow">PERSONAL READING ARCHIVE</p>
+            <h1>今天想读哪一本？</h1>
+            <p class="subhead">先看看你在读什么，再决定下一页。</p>
+          </div>
+          <div class="masthead-actions">
+            <button class="quiet-button" type="button">⌕ <span>搜索书名、作者、系列</span><kbd>Ctrl K</kbd></button>
+            <button class="import-button" type="button">＋ 导入 EPUB</button>
+          </div>
+        </header>
+
+        <section class="study-switcher" aria-label="设计方向">
+          <span class="switcher-label">足迹表现</span>
+          <button class="option-button is-selected" type="button" data-option="dial">轮盘档案</button>
+          <button class="option-button" type="button" data-option="spine">书脊热图</button>
+          <button class="option-button" type="button" data-option="ribbon">季节书签</button>
+        </section>
+
+        <section class="workspace-grid">
+          <section class="footprint-column" aria-labelledby="duration-title">
+            <div class="section-heading">
+              <div>
+                <p class="section-kicker">阅读时长</p>
+                <h2 id="duration-title">本周</h2>
+              </div>
+              <div class="period-tabs" role="tablist" aria-label="阅读时长周期">
+                <button class="period-tab" type="button" role="tab" aria-selected="false" data-period="day">日</button>
+                <button class="period-tab is-selected" type="button" role="tab" aria-selected="true" data-period="week">周</button>
+                <button class="period-tab" type="button" role="tab" aria-selected="false" data-period="month">月</button>
+                <button class="period-tab" type="button" role="tab" aria-selected="false" data-period="quarter">季度</button>
+              </div>
+            </div>
+
+            <div class="duration-stage">
+              <div class="duration-copy">
+                <span class="duration-number" id="duration-total">4h 36m</span>
+                <span class="duration-range" id="duration-range">08.24 — 08.30 · 6 次可见阅读</span>
+                <p id="option-caption">一周的阅读，在这里留下一个轻微的圆。</p>
+              </div>
+              <div class="time-graphic" id="time-graphic" role="img" aria-label="本周阅读时长轮盘"></div>
+            </div>
+
+            <section class="history-strip" aria-labelledby="history-title">
+              <div class="history-header">
+                <div>
+                  <p class="section-kicker">阅读足迹</p>
+                  <h3 id="history-title">这一年留下的痕迹</h3>
+                </div>
+                <div class="scope-tabs" role="tablist" aria-label="足迹范围">
+                  <button class="scope-tab is-selected" type="button" role="tab" aria-selected="true" data-scope="year">2026</button>
+                  <button class="scope-tab" type="button" role="tab" aria-selected="false" data-scope="all">总计</button>
+                </div>
+              </div>
+              <div class="footprint-summary">
+                <strong id="footprint-total">42h 18m</strong>
+                <span><b id="active-days">58</b> 个阅读日 · <b id="distinct-books">18</b> 本书 · <b id="distinct-series">6</b> 个系列</span>
+              </div>
+              <div class="heatmap-wrap">
+                <div class="month-labels" aria-hidden="true"><span>1月</span><span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span><span>9月</span><span>10月</span><span>11月</span><span>12月</span></div>
+                <div class="heatmap-row">
+                  <div class="weekday-labels" aria-hidden="true"><span>一</span><span>三</span><span>五</span></div>
+                  <div class="heatmap" id="heatmap" aria-label="2026 年阅读足迹热力图"></div>
+                </div>
+              </div>
+              <div class="heatmap-legend" aria-label="热力图图例"><span>没有记录</span><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i><span>更久</span></div>
+            </section>
+
+            <section class="continue-card" aria-labelledby="continue-title">
+              <div class="continue-heading">
+                <div>
+                  <p class="section-kicker">下一步</p>
+                  <h3 id="continue-title">继续阅读</h3>
+                </div>
+                <button class="primary-action" type="button">继续阅读 <span>→</span></button>
+              </div>
+              <div class="book-leaf">
+                <div class="book-cover cover-blue" aria-label="《这里是终末停滞委员会 - 05》封面占位"><span>05</span><b>这里是终末<br />停滞委员会</b><small>THE END STASIS COMMITTEE</small></div>
+                <div class="book-meta">
+                  <p class="book-series">这里是终末停滞委员会</p>
+                  <h4>05 · 还在相处</h4>
+                  <p class="book-author">作者名 · 上次阅读：昨天 22:14</p>
+                  <div class="progress-line"><span style="width: 42%"></span></div>
+                  <div class="progress-meta"><span>第四章</span><strong>42%</strong></div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <aside class="recommendation-column" aria-labelledby="recommend-title">
+            <div class="recommendation-heading">
+              <div>
+                <p class="section-kicker">从你的书架里</p>
+                <h2 id="recommend-title">推荐阅读</h2>
+              </div>
+              <span class="recommend-count">03</span>
+            </div>
+            <p class="recommendation-intro">只根据书架关系和阅读状态，给你三个不剧透的方向。</p>
+
+            <article class="recommendation-leaf">
+              <div class="mini-cover cover-amber"><span>Ⅱ</span><b>关于邻家的<br />天使大人</b></div>
+              <div class="recommendation-copy"><p class="book-series">系列下一本</p><h3>关于我在无意间被隔壁的天使变成废柴这件事 · 02</h3><p>同一系列的下一本，接在你最近读过的第一卷之后。</p><button type="button">打开这本 <span>↗</span></button></div>
+            </article>
+            <article class="recommendation-leaf">
+              <div class="mini-cover cover-green"><span>未</span><b>室内<br />气候</b></div>
+              <div class="recommendation-copy"><p class="book-series">还没读完</p><h3>室内气候</h3><p>你已经读过一部分，隔了一段时间，可以从上次位置回来。</p><button type="button">打开这本 <span>↗</span></button></div>
+            </article>
+            <article class="recommendation-leaf">
+              <div class="mini-cover cover-red"><span>01</span><b>潮汐<br />备忘录</b></div>
+              <div class="recommendation-copy"><p class="book-series">书架里的新开始</p><h3>潮汐备忘录</h3><p>它还没有阅读记录，正好从第一页开始认识它。</p><button type="button">打开这本 <span>↗</span></button></div>
+            </article>
+
+            <div class="recommendation-boundary"><span class="boundary-mark">i</span><p>理由来自系列、进度和书架状态。正文摘录推荐将在 Reader 完成后另行评审。</p></div>
+          </aside>
+        </section>
+
+        <footer class="prototype-footer"><span>DESIGN EXPLORATION · NOT PRODUCTION UI</span><a href="README.md">查看方案说明与后端映射 →</a></footer>
+      </main>
+    </div>
+    <script src="prototype.js"></script>
+  </body>
+</html>

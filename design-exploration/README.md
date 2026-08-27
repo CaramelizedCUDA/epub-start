@@ -1,6 +1,6 @@
 # EpubStart Phase 1 前端设计探索
 
-> 状态：仅供人工评审的隔离设计草稿。这里的文件不是生产前端，不代表 F1 已解锁，也不建立最终 `FRONTEND_DESIGN.md`。
+> 状态：仅供人工评审的隔离设计草稿。B3 技术冻结已完成，生产 F1 已解锁但尚未开始；这里的文件不是生产前端，也不建立最终 `FRONTEND_DESIGN.md`。
 
 本目录只回答一个问题：在不改变 B2/B3 后端、IPC、数据库和生产前端的前提下，EpubStart 应以怎样的视觉与交互语言进入 F1 评审。
 
@@ -13,7 +13,7 @@
 
 ## 硬边界
 
-- 当前仍处于 B2 收口并向 B3 契约冻结推进；F1 未开始。
+- B3 技术冻结已完成；F1 尚未开始，生产实现必须先经过方案评审和单独的实现授权。
 - 原型只使用本目录内的静态 HTML/CSS 和本地 mock 文案，不导入 `src/`，不调用 Tauri，不注册 mock Command。
 - 不修改 React、Rust、SQLite、IPC、依赖、Tauri 能力或生产配置。
 - 不把视觉原型当作后端完成、运行态验证或跨端验收证据。
@@ -26,6 +26,7 @@
 - [Editorial / Ink & Paper](editorial/index.html)
 - [Personal Library / Reading Room](reading-room/index.html)
 - [Editorial Personal Library](editorial-personal/index.html)
+- [A+C 阅读足迹扩展：三种方案](reading-footprint-options/index.html)
 
 每页依次展示 Desktop Library、Desktop Reader 安静态、Desktop Reader 控件态，以及一个经过重新编排的 Android 代表屏；页面末尾还包含非 happy-path 状态样本。
 
@@ -230,5 +231,5 @@ reading column + 3px spine line → temporary top bar + side sheet
 
 - 已探索三套方向与代表屏，未覆盖全部页面。
 - 未创建或替换最终 `FRONTEND_DESIGN.md`。
-- 未开始 F1、F2 或 F3。
-- 下一步仅建议进行人工设计评审与方向裁决；任何生产实现必须等待 B3 门禁与单独授权。
+- 未开始生产 F1、F2 或 F3；新增阅读足迹目录仍是隔离方案比较。
+- 下一步建议进行人工设计评审与方向裁决；B3 门禁已满足，但任何生产实现仍需要单独授权。
