@@ -246,6 +246,63 @@ WHERE singleton_id = 1
   AND margin_right_percent = 5;
 "#;
 
+const V5_SCHEMA: &str = r#"
+CREATE TABLE book_reading_state (
+  book_id TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  last_read_at INTEGER NOT NULL CHECK (last_read_at >= started_at)
+);
+
+INSERT INTO book_reading_state (book_id, started_at, last_read_at)
+SELECT book_id, updated_at, updated_at
+FROM reading_progress;
+
+CREATE TABLE reading_activity_sessions (
+  id TEXT PRIMARY KEY,
+  recorded_book_id TEXT NOT NULL,
+  book_id TEXT REFERENCES books(id) ON DELETE SET NULL,
+  book_title TEXT NOT NULL,
+  book_authors_json TEXT NOT NULL,
+  series_id_snapshot TEXT,
+  series_name_snapshot TEXT,
+  series_volume_label_snapshot TEXT,
+  state TEXT NOT NULL CHECK (state IN ('visible', 'paused', 'ended')),
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  last_observed_at INTEGER NOT NULL CHECK (last_observed_at >= started_at),
+  last_sequence INTEGER NOT NULL CHECK (last_sequence >= 0),
+  ended_at INTEGER,
+  CHECK (ended_at IS NULL OR ended_at >= started_at),
+  CHECK (
+    (state = 'ended' AND ended_at IS NOT NULL)
+    OR (state IN ('visible', 'paused') AND ended_at IS NULL)
+  )
+);
+
+CREATE TABLE reading_presence_segments (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES reading_activity_sessions(id) ON DELETE CASCADE,
+  local_date TEXT NOT NULL CHECK (length(local_date) = 10),
+  utc_offset_minutes INTEGER NOT NULL CHECK (utc_offset_minutes BETWEEN -840 AND 840),
+  started_at INTEGER NOT NULL CHECK (started_at >= 0),
+  confirmed_until_at INTEGER NOT NULL CHECK (confirmed_until_at >= started_at),
+  closed_at INTEGER,
+  CHECK (closed_at IS NULL OR closed_at = confirmed_until_at)
+);
+
+CREATE INDEX idx_book_reading_state_last_read
+  ON book_reading_state(last_read_at DESC, book_id);
+CREATE INDEX idx_reading_activity_recorded_book
+  ON reading_activity_sessions(recorded_book_id, started_at DESC);
+CREATE INDEX idx_reading_activity_live_book
+  ON reading_activity_sessions(book_id, started_at DESC);
+CREATE INDEX idx_reading_presence_local_date
+  ON reading_presence_segments(local_date, started_at);
+CREATE INDEX idx_reading_presence_session
+  ON reading_presence_segments(session_id, started_at);
+CREATE UNIQUE INDEX idx_reading_presence_one_open
+  ON reading_presence_segments(session_id) WHERE closed_at IS NULL;
+"#;
+
 pub fn run_migrations(conn: &Connection) -> SqliteResult<()> {
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
@@ -384,6 +441,34 @@ pub fn run_migrations(conn: &Connection) -> SqliteResult<()> {
         }
     }
 
+    let current: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM _migrations",
+        [],
+        |row| row.get(0),
+    )?;
+    if current < 5 {
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let result = (|| -> SqliteResult<()> {
+            conn.execute_batch(V5_SCHEMA)?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_millis() as i64)
+                .unwrap_or(0);
+            conn.execute(
+                "INSERT INTO _migrations (version, applied_at) VALUES (5, ?1)",
+                [now],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => conn.execute_batch("COMMIT;")?,
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(error);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -457,7 +542,7 @@ mod tests {
             conn.query_row("SELECT MAX(version) FROM _migrations", [], |row| row
                 .get::<_, i64>(0))
                 .unwrap(),
-            4
+            5
         );
     }
 
@@ -763,8 +848,13 @@ mod tests {
     fn test_v4_default_normalization_rolls_back_after_commit_step_failure() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
-        conn.execute("DELETE FROM _migrations WHERE version = 4", [])
-            .unwrap();
+        conn.execute_batch(
+            "DELETE FROM _migrations WHERE version IN (4, 5);
+             DROP TABLE reading_presence_segments;
+             DROP TABLE reading_activity_sessions;
+             DROP TABLE book_reading_state;",
+        )
+        .unwrap();
         conn.execute(
             "UPDATE global_reading_settings SET margin_left_percent=5, margin_right_percent=5",
             [],
@@ -792,5 +882,117 @@ mod tests {
             )
             .unwrap();
         assert_eq!(margins, (5, 5));
+    }
+
+    #[test]
+    fn test_v5_migration_creates_reading_activity_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 5, "V5 migration was not applied");
+
+        for table in [
+            "book_reading_state",
+            "reading_activity_sessions",
+            "reading_presence_segments",
+        ] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 1, "{table} was not created by V5");
+        }
+    }
+
+    #[test]
+    fn test_v5_upgrade_seeds_book_reading_state_from_existing_progress() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.execute_batch(V4_SCHEMA).unwrap();
+        conn.execute_batch(
+            "INSERT INTO _migrations VALUES (1, 0);
+             INSERT INTO _migrations VALUES (2, 0);
+             INSERT INTO _migrations VALUES (3, 0);
+             INSERT INTO _migrations VALUES (4, 0);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO books VALUES ('b','Title','[]','epub',NULL,'/book.epub','desktop_path',1,2,NULL,'available',NULL,3,4)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO reading_progress VALUES ('b','epubcfi(/6/2)',0.5,1234)",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let seeded: (i64, i64) = conn
+            .query_row(
+                "SELECT started_at,last_read_at FROM book_reading_state WHERE book_id='b'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(seeded, (1234, 1234));
+    }
+
+    #[test]
+    fn test_v5_failure_rolls_back_every_v5_object() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);",
+        )
+        .unwrap();
+        conn.execute_batch(V1_SCHEMA).unwrap();
+        conn.execute_batch(V2_SCHEMA).unwrap();
+        conn.execute_batch(V3_SCHEMA).unwrap();
+        conn.execute_batch(V4_SCHEMA).unwrap();
+        conn.execute_batch(
+            "INSERT INTO _migrations VALUES (1, 0);
+             INSERT INTO _migrations VALUES (2, 0);
+             INSERT INTO _migrations VALUES (3, 0);
+             INSERT INTO _migrations VALUES (4, 0);
+             CREATE TRIGGER fail_v5_migration BEFORE INSERT ON _migrations
+             WHEN NEW.version = 5
+             BEGIN SELECT RAISE(ABORT, 'forced v5 failure'); END;",
+        )
+        .unwrap();
+
+        assert!(run_migrations(&conn).is_err());
+        assert_eq!(
+            conn.query_row("SELECT MAX(version) FROM _migrations", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            4
+        );
+        for table in [
+            "book_reading_state",
+            "reading_activity_sessions",
+            "reading_presence_segments",
+        ] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 0, "{table} was not rolled back");
+        }
     }
 }
