@@ -196,7 +196,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 
 ## B4 阅读时长、足迹、继续阅读与离线推荐
 
-本节是已接受、实现中的 B4 目标契约；只有对应 Rust 实现、测试和 TypeScript wrapper 同步完成后，5 个新 Command 才计入当前总数（44 → 49）。它不授权实现书架或 Reader UI。
+本节是已接受并已实现的 B4 契约；5 个新 Command 已与 Rust 实现、测试和 TypeScript wrapper 同步，当前总数为 49。它不授权实现书架或 Reader UI。
 
 ### 共享模型
 
@@ -229,7 +229,7 @@ P4 外部网盘解锁前，不增加登录、列目录、下载、刷新令牌�
 | --- | --- | --- | --- |
 | `begin_reading_activity` | Rust：`book_id`, `utc_offset_minutes`; TS：`{ bookId, utcOffsetMinutes }` | `ReadingActivityReceipt` | 只在正文成功显示且页面前台可见后调用；后端生成 UUID/时间戳、快照书名/作者/系列并打开首个零时长可见区段，同时推进独立的图书阅读状态。 |
 | `observe_reading_activity` | Rust：`session_id`, `sequence`, `activity_state`, `utc_offset_minutes`; TS：`{ sessionId, sequence, activityState, utcOffsetMinutes }` | `ReadingActivityReceipt` | `sequence` 从 1 严格递增；重复最后一次序列幂等返回，过旧或跳号返回冲突。`visible` 延长/开启区段，`paused` 关闭区段，`ended` 关闭并终止活动。确认间隔超过 90 秒、偏移变化或启动恢复均不补算未知时间。 |
-| `get_library_reading_overview` | Rust：`period`, `anchor_local_date`; TS：`{ period, anchorLocalDate }` | `LibraryReadingOverview` | 返回中性时间桶、最近仍在书架中的继续阅读项，以及按“系列下一本 → 较久未读完 → 未开始”稳定优先级去重后的最多 3 个离线候选。未读完默认指 progression `< 0.98` 且至少 14 天未读。 |
+| `get_library_reading_overview` | Rust：`period`, `anchor_local_date`, `utc_offset_minutes`; TS：`{ period, anchorLocalDate, utcOffsetMinutes }` | `LibraryReadingOverview` | 返回中性时间桶、最近仍在书架中的继续阅读项，以及按“系列下一本 → 较久未读完 → 未开始”稳定优先级去重后的最多 3 个离线候选。未读完默认指 progression `< 0.98` 且至少 14 天未读；偏移只用于本地日期归属。 |
 | `get_reading_footprint` | Rust/TS：`{ scope }` | `ReadingFootprint` | 只读历史区段，按本地日期返回阅读毫秒、接触图书数和接触系列数；不计算 streak、目标或成就。 |
 | `delete_reading_history` | Rust/TS：`{ scope }` | `DeleteReadingHistoryResult` | 按活动、日期、历史图书身份或全部删除历史；不存在的范围返回零计数。不得删除图书、进度或图书阅读状态。 |
 

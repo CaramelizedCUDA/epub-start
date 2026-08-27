@@ -336,3 +336,142 @@ pub struct SearchResult {
     /// B2 keeps this null; EPUB.js resolves an exact CFI after opening `href`.
     pub cfi: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadingActivityState {
+    Visible,
+    Paused,
+    Ended,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingActivityReceipt {
+    pub session_id: String,
+    pub sequence: i64,
+    pub state: ReadingActivityState,
+    pub accepted_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadingOverviewPeriod {
+    Day,
+    Week,
+    Month,
+    Quarter,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadingTimeBucketKind {
+    Hour,
+    Day,
+    Week,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingDurationBucket {
+    pub kind: ReadingTimeBucketKind,
+    pub start_local_date: String,
+    pub end_local_date: String,
+    pub hour: Option<i64>,
+    pub reading_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingDurationSummary {
+    pub period: ReadingOverviewPeriod,
+    pub range_start_local_date: String,
+    pub range_end_local_date: String,
+    pub total_reading_ms: i64,
+    pub buckets: Vec<ReadingDurationBucket>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContinueReadingItem {
+    pub book: BookSummary,
+    pub progress: Option<ReadingProgress>,
+    pub last_read_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReadingRecommendationReason {
+    NextInSeries {
+        series_id: String,
+        series_name: String,
+        previous_book_title: String,
+    },
+    UnfinishedReturn {
+        days_since_last_read: i64,
+    },
+    UnstartedInLibrary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadingRecommendation {
+    pub book: BookSummary,
+    pub reason: ReadingRecommendationReason,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LibraryReadingOverview {
+    pub duration: ReadingDurationSummary,
+    pub continue_reading: Option<ContinueReadingItem>,
+    pub recommendations: Vec<ReadingRecommendation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReadingFootprintScope {
+    Year { year: i64 },
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingFootprintDay {
+    pub local_date: String,
+    pub reading_ms: i64,
+    pub distinct_books: i64,
+    pub distinct_series: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ReadingFootprintTotals {
+    pub reading_ms: i64,
+    pub active_days: i64,
+    pub distinct_books: i64,
+    pub distinct_series: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingFootprintYear {
+    pub year: i64,
+    pub totals: ReadingFootprintTotals,
+    pub days: Vec<ReadingFootprintDay>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadingFootprint {
+    pub scope: ReadingFootprintScope,
+    pub totals: ReadingFootprintTotals,
+    pub first_local_date: Option<String>,
+    pub last_local_date: Option<String>,
+    pub years: Vec<ReadingFootprintYear>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReadingHistoryScope {
+    Session { session_id: String },
+    Date { local_date: String },
+    Book { recorded_book_id: String },
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteReadingHistoryResult {
+    pub deleted_sessions: i64,
+    pub deleted_segments: i64,
+}

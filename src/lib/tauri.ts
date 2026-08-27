@@ -13,6 +13,10 @@ import type {
   ReadingSettings,
   ReadingSettingsInput,
   ReadingSettingsResult,
+  ReadingActivityReceipt,
+  LibraryReadingOverview,
+  ReadingFootprint,
+  DeleteReadingHistoryResult,
   Series,
   Tag,
   TagGroup,
@@ -52,6 +56,11 @@ import type {
   SearchSeriesArgs,
   SearchIndexSeriesArgs,
   CancelSearchArgs,
+  BeginReadingActivityArgs,
+  ObserveReadingActivityArgs,
+  GetLibraryReadingOverviewArgs,
+  GetReadingFootprintArgs,
+  DeleteReadingHistoryArgs,
 } from '../types/ipc';
 
 function mapError(err: unknown): never {
@@ -71,6 +80,8 @@ function mapError(err: unknown): never {
     'BOOK_RESOURCE_NOT_FOUND:',
     'FORMAT_NOT_SUPPORTED:',
     'SEARCH_INDEX_UNAVAILABLE:',
+    'READING_ACTIVITY_NOT_FOUND:',
+    'READING_ACTIVITY_CONFLICT:',
     'INTERNAL_ERROR:',
   ];
   if (knownPrefixes.some((prefix) => msg.startsWith(prefix))) {
@@ -111,6 +122,36 @@ export async function saveReadingProgress(
   args: SaveReadingProgressArgs,
 ): Promise<ReadingProgress> {
   return invoke<ReadingProgress>('save_reading_progress', args).catch(mapError);
+}
+
+export async function beginReadingActivity(
+  args: BeginReadingActivityArgs,
+): Promise<ReadingActivityReceipt> {
+  return invoke<ReadingActivityReceipt>('begin_reading_activity', args).catch(mapError);
+}
+
+export async function observeReadingActivity(
+  args: ObserveReadingActivityArgs,
+): Promise<ReadingActivityReceipt> {
+  return invoke<ReadingActivityReceipt>('observe_reading_activity', args).catch(mapError);
+}
+
+export async function getLibraryReadingOverview(
+  args: GetLibraryReadingOverviewArgs,
+): Promise<LibraryReadingOverview> {
+  return invoke<LibraryReadingOverview>('get_library_reading_overview', args).catch(mapError);
+}
+
+export async function getReadingFootprint(
+  args: GetReadingFootprintArgs,
+): Promise<ReadingFootprint> {
+  return invoke<ReadingFootprint>('get_reading_footprint', args).catch(mapError);
+}
+
+export async function deleteReadingHistory(
+  args: DeleteReadingHistoryArgs,
+): Promise<DeleteReadingHistoryResult> {
+  return invoke<DeleteReadingHistoryResult>('delete_reading_history', args).catch(mapError);
 }
 
 export async function deleteBook(args: DeleteBookArgs): Promise<string> {

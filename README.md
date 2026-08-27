@@ -2,7 +2,7 @@
 
 一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。当前阶段为 B3：Windows legacy shell 已覆盖其实际具备的运行态链，系列/标签 UI 消费按 Backend First 边界留给 F2；2026-08-24 已从当前提交重新生成 arm64 APK/AAB，完整 arm64 lint 与静态体积/ABI/ELF 门禁通过，并在黑鲨 SKW-A0 与荣耀 PPG-AN00 上完成同一 release payload 的空白安装、首次启动和主进程运行态复测。当前仍缺固定样本运行时占用、release 私有 data 精确分项和正式 release 签名；更广 OEM/前端消费矩阵归 F2，状态见 [TODO.md](TODO.md)。
+目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。B3 仍是未签发候选，B4 阅读洞察后端已完成：阅读时长、可独立删除的历史、继续阅读、足迹聚合和离线推荐已冻结并接入 49 个真实 Command；不包含生产书架/Reader UI。B3 的固定样本运行时占用、release 私有 data 精确分项、正式 release 签名及更广 OEM/前端消费矩阵仍按边界留给后续阶段，状态见 [TODO.md](TODO.md)。
 
 ## 文档导航
 
@@ -17,7 +17,7 @@
 - [CONTEXT.md](CONTEXT.md)：产品、文档与代码共享的领域词汇。
 - [ROADMAP.md](ROADMAP.md)：阶段边界与冻结区。
 - [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
-- [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论与缺口清单（2026-08-14）。
+- [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论、B3 边界与 B4 追加复核。
 - [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)：2026-08-23 Windows 开发态与 release 桌面回归的已测项、未测项和搜索修复证据。
 - [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)：2026-08-24 当前提交的 arm64 APK/AAB、完整 lint、静态门禁与待补设备占用证据。
 - [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)：B3 Command、模型、错误、数据库、资源预算和来源状态的冻结候选及未签发条件。

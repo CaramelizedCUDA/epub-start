@@ -174,3 +174,104 @@ export interface SearchResult {
   snippet: string;
   cfi: string | null; // B2 always null; EPUB.js resolves an exact CFI after opening href.
 }
+
+export type ReadingActivityState = 'visible' | 'paused' | 'ended';
+
+export interface ReadingActivityReceipt {
+  session_id: string;
+  sequence: number;
+  state: ReadingActivityState;
+  accepted_at: number;
+}
+
+export type ReadingOverviewPeriod = 'day' | 'week' | 'month' | 'quarter';
+export type ReadingTimeBucketKind = 'hour' | 'day' | 'week';
+
+export interface ReadingDurationBucket {
+  kind: ReadingTimeBucketKind;
+  start_local_date: string;
+  end_local_date: string;
+  hour: number | null;
+  reading_ms: number;
+}
+
+export interface ReadingDurationSummary {
+  period: ReadingOverviewPeriod;
+  range_start_local_date: string;
+  range_end_local_date: string;
+  total_reading_ms: number;
+  buckets: ReadingDurationBucket[];
+}
+
+export interface ContinueReadingItem {
+  book: BookSummary;
+  progress: ReadingProgress | null;
+  last_read_at: number;
+}
+
+export type ReadingRecommendationReason =
+  | {
+      kind: 'next_in_series';
+      series_id: string;
+      series_name: string;
+      previous_book_title: string;
+    }
+  | {
+      kind: 'unfinished_return';
+      days_since_last_read: number;
+    }
+  | {
+      kind: 'unstarted_in_library';
+    };
+
+export interface ReadingRecommendation {
+  book: BookSummary;
+  reason: ReadingRecommendationReason;
+}
+
+export interface LibraryReadingOverview {
+  duration: ReadingDurationSummary;
+  continue_reading: ContinueReadingItem | null;
+  recommendations: ReadingRecommendation[];
+}
+
+export type ReadingFootprintScope = { kind: 'year'; year: number } | { kind: 'all' };
+
+export interface ReadingFootprintDay {
+  local_date: string;
+  reading_ms: number;
+  distinct_books: number;
+  distinct_series: number;
+}
+
+export interface ReadingFootprintTotals {
+  reading_ms: number;
+  active_days: number;
+  distinct_books: number;
+  distinct_series: number;
+}
+
+export interface ReadingFootprintYear {
+  year: number;
+  totals: ReadingFootprintTotals;
+  days: ReadingFootprintDay[];
+}
+
+export interface ReadingFootprint {
+  scope: ReadingFootprintScope;
+  totals: ReadingFootprintTotals;
+  first_local_date: string | null;
+  last_local_date: string | null;
+  years: ReadingFootprintYear[];
+}
+
+export type ReadingHistoryScope =
+  | { kind: 'session'; session_id: string }
+  | { kind: 'date'; local_date: string }
+  | { kind: 'book'; recorded_book_id: string }
+  | { kind: 'all' };
+
+export interface DeleteReadingHistoryResult {
+  deleted_sessions: number;
+  deleted_segments: number;
+}

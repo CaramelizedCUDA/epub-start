@@ -1,6 +1,6 @@
 # 后端审计与健康基线（B0 交付物）
 
-审计日期：2026-08-14。审计对象：`src-tauri/`（生产代码、测试、迁移、协议、平台适配），以及 [IPC.md](IPC.md)、`src/types/ipc.ts`、`src/lib/tauri.ts` 的契约一致性。
+审计日期：2026-08-14（B0 基线）；B4 追加复核：2026-08-28。审计对象：`src-tauri/`（生产代码、测试、迁移、协议、平台适配），以及 [IPC.md](IPC.md)、`src/types/ipc.ts`、`src/lib/tauri.ts` 的契约一致性。
 
 本文件是 B0 阶段的审计产出。2026-08-14 复核时曾撤回原“B0 完成”证明，随后在 V1/V3 变红自证与 Android 干净构建补齐后重新签发；B1 也已完成。下列状态仍用于避免把代码存在、命令为绿和人工探查混为一谈：
 
@@ -40,7 +40,7 @@
 ### 0.2.1 panic/unwrap/expect 与锁生命周期 — 通过
 
 - `panic!`、`todo!`、`unimplemented!`、`unreachable!`：生产代码 0 处（grep 全量确认）。
-- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 575 行（共 590 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
+- `.unwrap()`：`npm run audit:unwrap` 只扫描 `src-tauri/src`，按“包含调用的源码行”自动统计为 672 行（共 687 次调用），全部位于 `#[cfg(test)]` 测试模块内，无一处出现在生产路径；不再把 `src-tauri/target` 生成代码计入结果。
 - `.expect()`：生产代码仅 1 处，`lib.rs:106` 的 `.run(tauri::generate_context!()).expect("error while running tauri application")`。这是 Tauri 事件循环的标准启动收口；`setup` 闭包内的目录/数据库/迁移错误均已用 `map_err` + `?` 转成可诊断错误。风险等级：低。修复任务：可选，B2 保留现状即可。
 - 安全 unwrap 变体（`unwrap_or`/`unwrap_or_else`/`unwrap_or_default`）均为带默认值的非 panic 形式，合格。
 - 锁与生命周期：`AppState.db: Arc<Mutex<Connection>>` 由来源/封面服务共享，业务服务仍经 `lock_db` 辅助函数获取并把 poisoning 映射为错误；`source/cache.rs` 的 `active: Mutex<HashMap<String, Weak<()>>>` 同样映射 poisoning，租约由 `Arc<()>` 守护。未发现未受控线程或租约生命周期漏洞。
@@ -48,7 +48,7 @@
 
 ### 0.2.2 Command 薄适配审计 — 通过（3 个缺口已关闭，2026-08-14）
 
-44 个 Command 现在全部为薄适配（参数解析 + 服务调用 + 错误转换）。原 3 个缺口均已修复；B2 新增的 5 个搜索 Command、系列关系读取 Command 以及标签读取/筛选 Command 也已接入真实服务：
+截至 B3 候选的 44 个 Command 全部为薄适配（参数解析 + 服务调用 + 错误转换）。原 3 个缺口均已修复；B2 新增的 5 个搜索 Command、系列关系读取 Command 以及标签读取/筛选 Command 也已接入真实服务。B4 当前 49 个 Command 的复核见 0.2.20：
 
 1. `commands/save_reading_progress.rs`：progression 范围校验、unix 时间戳、upsert 与回查已下沉到 `services::save_reading_progress`（`services/library_service.rs`）。
 2. `commands/get_reading_progress.rs` 与 `commands/list_books.rs`：已改为经 `services::get_reading_progress` / `services::list_books` 编排（统一 `lock_db` 与错误转换）。
@@ -60,9 +60,9 @@
 - 插件注册（dialog、epub_saf 平台插件）与 `epub` 协议注册为声明式注册，失败由 Tauri 框架统一报告。
 - 唯一 `expect` 见 0.2.1，为事件循环收口。
 
-### 0.2.4 Command 注册清单比对 — 44/44 一致，历史文档缺口已修复
+### 0.2.4 Command 注册清单比对 — B3 历史 44/44 一致，历史文档缺口已修复
 
-Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、`src/types/ipc.ts`、`src/lib/tauri.ts` 逐一比对：
+Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、`src/types/ipc.ts`、`src/lib/tauri.ts` 逐一比对（B4 当前 49 个 Command 的复核见 0.2.20）：
 
 - **命名一致**：44 个 Command 名称在 Rust/IPC.md/tauri.ts 三方完全一致，无命名漂移。
 - **入参/返回一致**：ipc.ts 声明的 Args 类型覆盖所有带参 Command；`save_global_reading_settings` 的 Rust 参数为 `settings`（直接参数，非嵌套对象），tauri.ts 对应传 `{ settings }`，符合 Tauri v2 约定。
@@ -111,7 +111,7 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 - 已测（辅助逻辑/自动化）：创建/更新/读取/删除、空白规范化与空白 CFI 拒绝、字面纯文本、4096/10000/20000 Unicode 精确边界和越界、CFI 完整往返、颜色合法性/小写化、`book_id/created_at` 保留、缺失图书/批注、失败更新保留、并发创建、真实数据库重开恢复全部字段，以及删书后通过服务 seam 得到 `NOTE_NOT_FOUND:`。新增 3 个测试、强化 2 个测试，共 5 组目标变红自证：分别临时保留外层空白、把 CFI 上限收紧为 4,095、丢弃重开读取的 `cfi_range`、跳过起始 CFI 修剪、关闭外键级联；目标断言均在对应行为处失败，恢复后 notes 专项 21/21、完整 `cargo test` 175/175 通过。
 - 未测：桌面 legacy shell/EPUB.js 的真实选区、创建、重绘、跳转和应用重启恢复，标记“待 B3/F2 人工验证”；Android WebView、OEM 进程恢复和设备矩阵，标记“阻塞至 B3/F2”；真实损坏数据库、断电/满盘恢复，以及多进程/多连接并发语义。
 
-### 0.2.11 数据库迁移清单 — 通过（V1/V3/V4 已补变红自证）
+### 0.2.11 数据库迁移清单 — 通过（V1/V3/V4/V5 已补变红自证）
 
 | 迁移 | 内容 | 幂等 | 失败回滚 | 测试 |
 | --- | --- | --- | --- | --- |
@@ -119,9 +119,11 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 | V2 | source_cache_entries/series/标签/设置/search_documents + FTS5 trigram/search_index_state + notes.cfi_range | 同上 | 同上 | 冲突回滚、级联删除 |
 | V3 | 阅读设置新字段 + 数据转换 + 表重建 | 同上 | 同上 | 旧值转换、默认值；回滚测试已完成变红自证 |
 | V4 | 未修改 V2 阅读设置种子行的左右边距默认值归一 | 同上 | 同上 | 默认值回归、提交步骤失败回滚；已完成变红自证 |
+| V5 | 图书阅读状态、阅读活动/可见区段及历史快照 | 同上 | 同上 | 建表、旧进度补种、失败回滚、删书/删历史独立语义；已完成变红自证 |
 
 - 外键级联：`PRAGMA foreign_keys = ON` 在迁移入口开启；`test_v2_cascade_removes_all_book_owned_rows` 覆盖 books 删除后 8 张子表级联清空，系列/标签定义保留。
 - FTS5 trigram 虚拟表已在 V2 建立（仅 Schema），索引逻辑按 TODO B2 交付，无假进度。
+- V5 迁移的 `test_v5_failure_rolls_back_every_v5_object` 在建表后由 `_migrations` 触发器制造后段失败，临时把失败路径改为提交后，目标断言确认 `book_reading_state` 残留并变红；恢复回滚后 V5 三项迁移测试通过。旧 `reading_progress` 补种与 V5 真实表/索引检查同样已覆盖。
 - `test_v1_failure_rolls_back_every_v1_object` 与 `test_v3_failure_rolls_back_every_v3_object` 已完成变红自证（2026-08-14 补证）：将对应失败分支的 `ROLLBACK;` 临时替换为 `COMMIT;` 破坏事务回滚——V1 测试变红且失败断言为 `books was not rolled back`（证明失败发生在 V1 的 `notes` 冲突步骤之后）；V3 测试变红且失败断言为 `font_size_px` 列存在（证明失败发生在 V3 的 `global_reading_settings_v3` 冲突步骤之后）。本次 `test_v4_default_normalization_rolls_back_after_commit_step_failure` 在 V4 数据更新后用 `_migrations` 提交触发器制造目标步骤失败，确认左右边距更新回滚；恢复实现后迁移专项与完整套件通过。
 
 ### 0.2.12 安全边界清单 — 辅助逻辑有覆盖，运行态仍有缺口
@@ -189,8 +191,18 @@ Rust 注册（`lib.rs` invoke_handler）44 个 Command，与 [IPC.md](IPC.md)、
 
 ### 0.2.19 B3 契约冻结候选（2026-08-23）
 
-- 当前 Command 注册/TypeScript 封装为 44/44，Rust 与 TypeScript 模型按 snake_case 镜像；数据库迁移链冻结为不可回写的 V1→V4；书籍状态、搜索状态、错误前缀和 896 MiB 可重建数据预算均有实现与文档定位。
+- B3 候选时期的 Command 注册/TypeScript 封装为 44/44，Rust 与 TypeScript 模型按 snake_case 镜像；数据库迁移链冻结为不可回写的 V1→V4；书籍状态、搜索状态、错误前缀和 896 MiB 可重建数据预算均有实现与文档定位。B4 当前状态见 0.2.20。
 - 详细冻结表、资源预算、来源状态和未签发条件见 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)。由于 Windows UI 的导入/删除/失效来源重新定位、系列/标签消费和更广 Android/OEM 矩阵仍未覆盖，本候选不签发 B3 完成。
+
+### 0.2.20 B4 阅读洞察后端（2026-08-28）
+
+- **实现范围**：V5 追加 `book_reading_state`、`reading_activity_sessions`、`reading_presence_segments`；活动服务负责 `visible/paused/ended` 状态、严格序列幂等、90 秒确认上限、跨本地午夜拆分、偏移变化保守断开和启动恢复。历史只保存书名、作者、系列快照与可见区段，不保存来源路径、Android URI 或正文。
+- **读侧能力**：`get_library_reading_overview` 返回日/周/月/季度中性时间桶、仍在书架中的最近继续阅读项及进度、最多三个结构化离线推荐理由；`get_reading_footprint` 返回年/总计的自然日单元、阅读毫秒、接触图书数和系列数；`delete_reading_history` 支持活动、日期、历史图书身份和全部删除。删历史不改图书/进度/`book_reading_state`，删书保留历史快照并断开实时 `book_id`。
+- **推荐边界**：当前只读取书架元数据、系列关系、阅读进度和图书阅读状态，覆盖系列下一本、较久未读完、未开始三类理由；正文、精彩文段、`search_documents` 和搜索索引不参与推荐。正文推荐只登记为 Reader 完成后的单独评审项，未注册空 Command 或占位字段。
+- **IPC 对齐**：Rust `lib.rs` 已注册 49 个真实 Command，`src/types/ipc.ts` 与 `src/lib/tauri.ts` 已同步 49 个 wrapper；B4 新增 `begin_reading_activity`、`observe_reading_activity`、`get_library_reading_overview`、`get_reading_footprint`、`delete_reading_history`。Command 仍只做薄适配，时间戳/UUID/状态机/聚合均在服务层。
+- **已验证（辅助逻辑/单元）**：V5 空库创建、旧进度补种、幂等升级、后段失败回滚；活动快照、可见/暂停/结束计时、重复序列、跳号/终态冲突、长未知间隔、启动恢复、跨午夜；概览四类数据契约与三类推荐理由；年足迹零值日元数据、总计聚合；删书后快照/实时关联、按日期保留跨日活动、按活动/图书/全部删除，以及删历史后图书/进度/继续阅读状态保留。新增 B4 测试均完成目标步骤“故意注入缺陷→目标测试变红→恢复→变绿”。
+- **交付验证**：`cargo fmt --check`、`cargo check`、完整 `cargo test`（195/195）、`npm.cmd run build`、`npm.cmd run audit:unwrap` 和 `npm.cmd run audit:check` 均通过；当前 unwrap 自动统计为 672 行/687 次，并与本文件及 `TODO.md` 一致。未运行 Android 构建或设备测试，因为 B4 没有生产 Reader/书架 UI 消费改动。
+- **未测/边界**：桌面端和 Android 当前没有生产 Reader/书架消费，因此没有把前端心跳、锁屏/切后台、WebView 或 UI 排版写成运行态通过；这些属于 F2/F3 的人工运行态验证。未声明多进程/多连接数据库并发、真实断电/损坏数据库或真实物理写满；正文推荐的候选段落、语言组织、剧透规避、隐私和模型/本地算法仍待后续单独评审。
 
 ## 0.3 B0 完成标准（已满足，2026-08-14 重新签发）
 

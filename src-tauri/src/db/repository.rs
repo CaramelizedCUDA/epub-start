@@ -261,6 +261,30 @@ pub fn upsert_reading_progress(conn: &Connection, progress: &ReadingProgress) ->
     Ok(())
 }
 
+pub fn upsert_reading_progress_and_state(
+    conn: &Connection,
+    progress: &ReadingProgress,
+) -> SqliteResult<()> {
+    conn.execute_batch("BEGIN IMMEDIATE;")?;
+    let result = (|| -> SqliteResult<()> {
+        upsert_reading_progress(conn, progress)?;
+        conn.execute(
+            "INSERT INTO book_reading_state (book_id,started_at,last_read_at)
+             VALUES (?1,?2,?2)
+             ON CONFLICT(book_id) DO UPDATE SET last_read_at=MAX(last_read_at,excluded.last_read_at)",
+            params![progress.book_id, progress.updated_at],
+        )?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT;"),
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            Err(error)
+        }
+    }
+}
+
 pub fn list_notes(conn: &Connection, book_id: &str) -> SqliteResult<Vec<Note>> {
     let mut stmt = conn.prepare("SELECT id, book_id, cfi_start, cfi_end, cfi_range, selected_text, content, color, created_at, updated_at FROM notes WHERE book_id = ?1 ORDER BY created_at")?;
     let rows = stmt.query_map(params![book_id], |row| {

@@ -13,6 +13,10 @@ import type {
   CreateTagGroupInput,
   CreateTagInput,
   ReadingSettingsInput,
+  ReadingActivityState,
+  ReadingFootprintScope,
+  ReadingHistoryScope,
+  ReadingOverviewPeriod,
   SeriesBookPosition,
   SourceKind,
   UpdateNoteInput,
@@ -87,3 +91,29 @@ export type FilterBooksByTagsArgs = { tagIds: string[] };
 export type SearchSeriesArgs = { seriesId: string; query: string; limit?: number };
 export type SearchIndexSeriesArgs = { seriesId: string };
 export type CancelSearchArgs = { taskId: string };
+
+export type BeginReadingActivityArgs = {
+  bookId: string;
+  utcOffsetMinutes: number;
+};
+
+export type ObserveReadingActivityArgs = {
+  sessionId: string;
+  sequence: number;
+  activityState: ReadingActivityState;
+  utcOffsetMinutes: number;
+};
+
+export type GetLibraryReadingOverviewArgs = {
+  period: ReadingOverviewPeriod;
+  anchorLocalDate: string;
+  utcOffsetMinutes: number;
+};
+
+export type GetReadingFootprintArgs = {
+  scope: ReadingFootprintScope;
+};
+
+export type DeleteReadingHistoryArgs = {
+  scope: ReadingHistoryScope;
+};

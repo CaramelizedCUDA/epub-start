@@ -8,6 +8,7 @@ pub mod import_book;
 pub mod list_books;
 pub mod notes;
 pub mod open_book;
+pub mod reading_activity;
 pub mod relocate_book;
 pub mod save_book_image;
 pub mod save_reading_progress;

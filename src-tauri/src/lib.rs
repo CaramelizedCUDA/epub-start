@@ -45,6 +45,8 @@ pub fn run() {
                 services::CoverCache::new(app_data_dir.join("covers"), Arc::clone(&db))?;
             let source_manager =
                 source::SourceManager::new(app_data_dir.join("source-cache"), Arc::clone(&db))?;
+            services::recover_interrupted_reading_activities(db.as_ref())
+                .map_err(|e| format!("reading activity recovery failed: {}", e))?;
             services::recover_interrupted_search_tasks(db.as_ref())
                 .map_err(|e| format!("search recovery failed: {}", e))?;
 
@@ -66,6 +68,11 @@ pub fn run() {
             commands::delete_book::delete_book,
             commands::get_reading_progress::get_reading_progress,
             commands::save_reading_progress::save_reading_progress,
+            commands::reading_activity::begin_reading_activity,
+            commands::reading_activity::observe_reading_activity,
+            commands::reading_activity::get_library_reading_overview,
+            commands::reading_activity::get_reading_footprint,
+            commands::reading_activity::delete_reading_history,
             commands::save_book_image::save_book_image,
             commands::notes::list_notes,
             commands::notes::create_note,

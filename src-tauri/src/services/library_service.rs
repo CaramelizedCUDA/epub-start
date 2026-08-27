@@ -490,7 +490,7 @@ pub fn save_reading_progress(
     };
 
     let conn = lock_db(db)?;
-    repository::upsert_reading_progress(&conn, &progress)
+    repository::upsert_reading_progress_and_state(&conn, &progress)
         .map_err(|_| "INTERNAL_ERROR: db upsert failed".to_string())?;
 
     repository::get_reading_progress(&conn, &progress.book_id)
@@ -658,5 +658,30 @@ mod tests {
             Err(error) => assert_eq!(error, "BOOK_RESOURCE_LIMIT_EXCEEDED: cover cache is full"),
             Ok(_) => panic!("resource limit must abort the import"),
         }
+    }
+
+    #[test]
+    fn saving_progress_advances_independent_book_reading_state() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run_migrations(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO books VALUES ('book','Title','[]','epub',NULL,'/book.epub','desktop_path',1,2,NULL,'available',NULL,3,4)",
+            [],
+        )
+        .unwrap();
+        let db = Mutex::new(conn);
+
+        let saved = save_reading_progress(&db, "book".into(), "epubcfi(/6/2)".into(), 0.5).unwrap();
+
+        let state = db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT started_at,last_read_at FROM book_reading_state WHERE book_id='book'",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .unwrap();
+        assert_eq!(state, (saved.updated_at, saved.updated_at));
     }
 }

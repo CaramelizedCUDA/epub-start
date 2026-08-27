@@ -23,10 +23,10 @@
 
 ### 0.2 生产代码健康审计
 
-- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 575 行（共 590 次调用），当前 B2 Android 存储收口最终复核，全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
-- [x] 审计 44 个 `#[tauri::command]`：全部为薄适配；3 个历史缺口已关闭，B2 搜索 5 个 Command、系列关系读取和标签读取/筛选 Command 已接入真实服务，见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 注册清单。
+- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 672 行（共 687 次调用），全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
+- [x] 审计截至 B3 候选的 44 个 `#[tauri::command]`：全部为薄适配；3 个历史缺口已关闭，B2 搜索 5 个 Command、系列关系读取和标签读取/筛选 Command 已接入真实服务。B4 已追加 5 个真实 Command，当前注册总数为 49，见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.20。
 - [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
-- [x] 生成 Command 注册清单并三方比对：Rust 44 == IPC.md 44 == `tauri.ts` 44，命名一致；B2 搜索 5 个 Command 已接入真实服务；21 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行、系列关系读取以及标签读取/筛选契约的文档缺口。
+- [x] 生成 B3 历史 Command 注册清单并三方比对：Rust 44 == IPC.md 44 == `tauri.ts` 44，命名一致；B2 搜索 5 个 Command 已接入真实服务；21 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行、系列关系读取以及标签读取/筛选契约的文档缺口。B4 当前 49/49 对齐见 0.2.20。
 - [x] 迁移实现清单已生成，且 V1/V3 回滚测试已完成变红自证（2026-08-14）：V1/V2/V3 均使用 `BEGIN IMMEDIATE`+`COMMIT/ROLLBACK` 和版本门控。变红证据：在 V1/V3 目标失败分支注入 `COMMIT;` 破坏回滚后，`test_v1_failure_rolls_back_every_v1_object` 失败于 `books was not rolled back`（migrations.rs:640）、`test_v3_failure_rolls_back_every_v3_object` 失败于 `font_size_px` 列存在断言（migrations.rs:682）；恢复后 `cargo test db::migrations` 9/9、完整 `cargo test` 67/67 通过。
 - [x] 初次审计生成安全边界清单。辅助逻辑当时已测：ZIP 预算、路径规范化、MIME、CORS、错误脱敏以及桌面来源/租约相关单元测试；当时未测：Android 稳定导入、干净 Android 构建和自动化设备流水线，`Range` 仍是 B1 缺口。前两项与 Range 随后已关闭；自动化设备流水线及低存储/长期压力仍未覆盖。桌面保存对话框与实际写入只有历史人工运行态记录；legacy 前端/WebView 的资源请求方式不属于 B0 后端审计。
 
@@ -61,9 +61,9 @@
 
 ### 3. B1 完成标准
 
-- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 175/175；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8，阅读设置见 0.2.9，批注数据契约见 0.2.10，Android 制品/缓存见 0.2.13；桌面对话框类运行态与 Android Kotlin/WebView/低存储行为按三类口径标注，不计入自动覆盖）。
-- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 181/181；测试数 85→181，B2 搜索、目录/搜索、系列、标签、阅读设置、批注及缓存收口/复核测试均完成变红自证）。
-- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、批注纯文本/CFI/长度/颜色/重启恢复契约，以及 Android 制品/缓存预算与延期验收边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 575 行/590 次）。
+- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 195/195；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8，阅读设置见 0.2.9，批注数据契约见 0.2.10，Android 制品/缓存见 0.2.13，B4 阅读洞察见 0.2.20；桌面对话框类运行态与 Android Kotlin/WebView/低存储行为按三类口径标注，不计入自动覆盖）。
+- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 195/195；B2 搜索、目录/搜索、系列、标签、阅读设置、批注、缓存收口/复核及 B4 阅读洞察测试均完成目标变红自证）。
+- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、批注纯文本/CFI/长度/颜色/重启恢复契约，以及 Android 制品/缓存预算与延期验收边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 672 行/687 次）。
 
 ## B2 后端业务能力（已完成，2026-08-23）
 
@@ -117,16 +117,16 @@
 - [ ] 建立后端契约冻结点：冻结 Command、模型、错误前缀、数据库字段、资源预算和来源状态语义。
 - 当前已形成候选冻结清单 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)；Windows 与 B2 Android 后端范围已关闭，arm64 设备空白安装/首次启动证据已补齐，仍因固定样本运行时占用、release 私有 data 精确分项和正式 release 签名未签发。
 
-## B4 阅读洞察后端（用户批准的冻结前追加项）
+## B4 阅读洞察后端（已完成，2026-08-28）
 
 B3 剩余项依赖发布/设备条件；用户已明确批准先在其候选基础上推进本节。B4 不追认 B3 已签发、不合并生产前端，也不取消 B3 的剩余交付边界。
 
-- [ ] 冻结领域词汇、ADR、V5 Schema、5 个 Command、稳定错误和 TypeScript 模型；正文/精彩文段推荐只登记为 Reader 完成后的评审项，不加入占位实现。
-- [ ] 追加 V5 并完成空库、V1–V4 升级、重复启动、旧进度状态补种、后段失败回滚和删书/删历史独立语义测试；所有新增测试完成目标变红→恢复变绿。
-- [ ] 实现阅读活动：正文可见时开始，`visible/paused/ended` 状态、严格序列幂等、约 30 秒调用约定、90 秒确认上限、跨本地午夜拆分、偏移变化保守断开、启动中断恢复不外推。
-- [ ] 实现书架概览：日/周/月/季度中性时间桶、最近图书及已保存进度、系列下一本/较久未读完/未开始三类离线推荐；不读取正文或搜索索引。
-- [ ] 实现年/总计阅读足迹和按活动/日期/历史图书/全部删除历史；覆盖删书后历史快照保留、删历史后图书/进度/继续阅读状态保留。
-- [ ] 注册并同步 49 个 Rust Command / TypeScript wrapper，运行 `cargo fmt --check`、`cargo check`、完整 `cargo test`、`npm.cmd run build`、`npm.cmd run audit:unwrap`、`npm.cmd run audit:check`，更新覆盖与未测清单后提交并推送 B4 分支。
+- [x] 冻结领域词汇、ADR、V5 Schema、5 个 Command、稳定错误和 TypeScript 模型；正文/精彩文段/搜索索引推荐只登记为 Reader 完成后的评审项，不加入占位实现。
+- [x] 追加 V5 并完成空库、V1–V4 升级、重复启动、旧进度状态补种、后段失败回滚和删书/删历史独立语义测试；所有本轮新增测试完成目标变红→恢复变绿。
+- [x] 实现阅读活动：正文可见时开始，`visible/paused/ended` 状态、严格序列幂等、约 30 秒调用约定、90 秒确认上限、跨本地午夜拆分、偏移变化保守断开、启动中断恢复不外推。
+- [x] 实现书架概览：日/周/月/季度中性时间桶、最近图书及已保存进度、系列下一本/较久未读完/未开始三类离线推荐；不读取正文或搜索索引。
+- [x] 实现年/总计阅读足迹和按活动/日期/历史图书/全部删除历史；覆盖删书后历史快照保留、删历史后图书/进度/继续阅读状态保留。
+- [x] 注册并同步 49 个 Rust Command / TypeScript wrapper；`cargo fmt --check`、`cargo check`、完整 `cargo test`（195/195）、`npm.cmd run build`、`npm.cmd run audit:unwrap`、`npm.cmd run audit:check` 均通过，覆盖与未测清单已更新。B4 只交付后端与 IPC，不提前宣称桌面/Android Reader 消费完成。
 
 ## F1–F3 前端（B3 未签发条件与 B4 完成后才解锁）
 
