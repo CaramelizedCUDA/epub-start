@@ -81,6 +81,9 @@ a { color: inherit; text-decoration: none; }
 .rail-foot { margin-top: auto; margin-bottom: 24px; color: var(--muted); font: 10px/1.35 var(--utility); letter-spacing: 0.08em; text-align: center; }
 
 .main-content { width: min(1500px, 100%); margin: 0 auto; padding: 54px clamp(24px, 5vw, 84px) 28px; }
+.page-view { display: none; }
+.page-view.is-active { display: block; }
+.page-view[hidden] { display: none; }
 .masthead { display: flex; justify-content: space-between; gap: 32px; align-items: flex-start; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
 .eyebrow, .section-kicker, .switcher-label { margin: 0 0 5px; color: var(--seam); font: 11px/1.2 var(--utility); letter-spacing: 0.14em; text-transform: uppercase; }
 h1, h2, h3, h4, p { margin-top: 0; }
@@ -100,7 +103,7 @@ h1 { margin-bottom: 5px; font: 500 clamp(32px, 4vw, 52px)/1.05 var(--reading); l
 .option-button:hover, .option-button:focus-visible, .option-button.is-selected { border-color: var(--seam); color: var(--ink); }
 
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(330px, 0.95fr); gap: 28px; align-items: start; }
-.footprint-column { min-width: 0; }
+.library-reading-column { min-width: 0; }
 .section-heading, .history-header, .continue-heading, .recommendation-heading { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
 .section-heading { padding-bottom: 15px; border-bottom: 3px solid var(--seam); }
 .section-heading h2, .recommendation-heading h2 { margin: 0; font: 500 30px/1.1 var(--reading); }
@@ -146,6 +149,21 @@ h1 { margin-bottom: 5px; font: 500 clamp(32px, 4vw, 52px)/1.05 var(--reading); l
 .heatmap-legend i[data-level="2"] { background: #8fb3aa; }
 .heatmap-legend i[data-level="3"] { background: #5c9086; }
 .heatmap-legend i[data-level="4"] { background: var(--seam); }
+
+.footprint-page { padding-top: 6px; }
+.footprint-page .history-strip { padding: 4px 0 0; }
+.footprint-page .history-header { min-height: 170px; align-items: flex-start; padding-top: 12px; padding-bottom: 25px; border-bottom: 1px solid var(--line); }
+.footprint-page .history-header h1 { margin: 0 0 8px; font: 500 clamp(34px, 5vw, 58px)/1.04 var(--reading); letter-spacing: -0.04em; }
+.footprint-page-intro { margin: 0; color: var(--muted); font-family: var(--reading); font-size: 16px; }
+.footprint-page .footprint-summary { margin: 26px 0 20px; }
+.footprint-page .heatmap-wrap { max-width: 980px; }
+.footprint-page .heatmap { min-height: 126px; gap: 5px; }
+.footprint-page .heat-cell { min-height: 10px; }
+.footprint-notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; max-width: 840px; margin-top: 42px; padding-top: 19px; border-top: 1px solid var(--line); }
+.footprint-notes article { display: grid; grid-template-columns: 130px minmax(0, 1fr); column-gap: 14px; }
+.footprint-notes .section-kicker { grid-row: span 2; margin: 0; }
+.footprint-notes strong { font: 500 22px/1.1 var(--reading); }
+.footprint-notes p { grid-column: 2; margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 
 .continue-card { padding: 20px 0 0; border-top: 1px solid var(--line); }
 .primary-action { display: flex; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--seam); color: var(--seam); }
@@ -228,7 +246,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--brass); outline
   .quiet-button span { display: none; }
   .study-switcher { overflow-x: auto; margin-right: -18px; padding-right: 18px; }
   .workspace-grid { display: flex; flex-direction: column; gap: 0; }
-  .footprint-column, .recommendation-column { width: 100%; }
+  .library-reading-column, .recommendation-column { width: 100%; }
   .recommendation-column { padding: 25px 0 0; border-top: 1px solid var(--line); border-left: 0; }
   .duration-stage { grid-template-columns: minmax(0, 1fr) minmax(170px, 0.9fr); min-height: 240px; }
   .duration-number { font-size: 45px; }
@@ -236,6 +254,11 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--brass); outline
   .time-graphic svg { max-width: 190px; }
   .heatmap { gap: 2px; }
   .heat-cell { min-width: 3px; }
+  .footprint-page .history-header { min-height: 0; padding-top: 0; }
+  .footprint-page .history-header h1 { font-size: 38px; }
+  .footprint-page .heatmap { gap: 2px; min-height: 88px; }
+  .footprint-notes { grid-template-columns: 1fr; gap: 18px; }
+  .footprint-notes article { grid-template-columns: 105px minmax(0, 1fr); }
   .prototype-footer { display: block; line-height: 1.8; }
   .prototype-footer a { display: block; margin-top: 7px; }
 }

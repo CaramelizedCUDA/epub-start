@@ -12,19 +12,21 @@
       <aside class="side-rail" aria-label="主导航">
         <div class="brand-mark" aria-label="EpubStart">E</div>
         <nav>
-          <a class="rail-link is-active" href="#library"><span>⌂</span><small>藏书</small></a>
+          <a class="rail-link is-active" href="#library" data-page="library-page"><span>⌂</span><small>藏书</small></a>
           <a class="rail-link" href="#series"><span>Ⅱ</span><small>系列</small></a>
           <a class="rail-link" href="#search"><span>⌕</span><small>搜索</small></a>
           <a class="rail-link" href="#notes"><span>✎</span><small>批注</small></a>
+          <a class="rail-link" href="#footprint" data-page="footprint-page"><span>▦</span><small>足迹</small></a>
         </nav>
         <div class="rail-foot">A+C<br />study</div>
       </aside>
 
       <main class="main-content" id="library">
+        <section class="page-view is-active" id="library-page" aria-labelledby="library-page-title">
         <header class="masthead">
           <div>
             <p class="eyebrow">PERSONAL READING ARCHIVE</p>
-            <h1>今天想读哪一本？</h1>
+            <h1 id="library-page-title">今天想读哪一本？</h1>
             <p class="subhead">先看看你在读什么，再决定下一页。</p>
           </div>
           <div class="masthead-actions">
@@ -34,14 +36,14 @@
         </header>
 
         <section class="study-switcher" aria-label="设计方向">
-          <span class="switcher-label">足迹表现</span>
+          <span class="switcher-label">时长图形</span>
           <button class="option-button is-selected" type="button" data-option="dial">轮盘档案</button>
           <button class="option-button" type="button" data-option="spine">书脊热图</button>
           <button class="option-button" type="button" data-option="ribbon">季节书签</button>
         </section>
 
         <section class="workspace-grid">
-          <section class="footprint-column" aria-labelledby="duration-title">
+          <section class="library-reading-column" aria-labelledby="duration-title">
             <div class="section-heading">
               <div>
                 <p class="section-kicker">阅读时长</p>
@@ -63,31 +65,6 @@
               </div>
               <div class="time-graphic" id="time-graphic" role="img" aria-label="本周阅读时长轮盘"></div>
             </div>
-
-            <section class="history-strip" aria-labelledby="history-title">
-              <div class="history-header">
-                <div>
-                  <p class="section-kicker">阅读足迹</p>
-                  <h3 id="history-title">这一年留下的痕迹</h3>
-                </div>
-                <div class="scope-tabs" role="tablist" aria-label="足迹范围">
-                  <button class="scope-tab is-selected" type="button" role="tab" aria-selected="true" data-scope="year">2026</button>
-                  <button class="scope-tab" type="button" role="tab" aria-selected="false" data-scope="all">总计</button>
-                </div>
-              </div>
-              <div class="footprint-summary">
-                <strong id="footprint-total">42h 18m</strong>
-                <span><b id="active-days">58</b> 个阅读日 · <b id="distinct-books">18</b> 本书 · <b id="distinct-series">6</b> 个系列</span>
-              </div>
-              <div class="heatmap-wrap">
-                <div class="month-labels" aria-hidden="true"><span>1月</span><span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span><span>9月</span><span>10月</span><span>11月</span><span>12月</span></div>
-                <div class="heatmap-row">
-                  <div class="weekday-labels" aria-hidden="true"><span>一</span><span>三</span><span>五</span></div>
-                  <div class="heatmap" id="heatmap" aria-label="2026 年阅读足迹热力图"></div>
-                </div>
-              </div>
-              <div class="heatmap-legend" aria-label="热力图图例"><span>没有记录</span><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i><span>更久</span></div>
-            </section>
 
             <section class="continue-card" aria-labelledby="continue-title">
               <div class="continue-heading">
@@ -135,6 +112,39 @@
 
             <div class="recommendation-boundary"><span class="boundary-mark">i</span><p>理由来自系列、进度和书架状态。正文摘录推荐将在 Reader 完成后另行评审。</p></div>
           </aside>
+        </section>
+        </section>
+
+        <section class="page-view footprint-page" id="footprint-page" aria-labelledby="footprint-page-title" hidden>
+          <section class="history-strip" aria-labelledby="footprint-page-title">
+            <div class="history-header">
+              <div>
+                <p class="section-kicker">阅读足迹</p>
+                <h1 id="footprint-page-title">这一年留下的痕迹</h1>
+                <p class="footprint-page-intro">不评价读了多少，只把走过的日子留在这里。</p>
+              </div>
+              <div class="scope-tabs" role="tablist" aria-label="足迹范围">
+                <button class="scope-tab is-selected" type="button" role="tab" aria-selected="true" data-scope="year">2026</button>
+                <button class="scope-tab" type="button" role="tab" aria-selected="false" data-scope="all">总计</button>
+              </div>
+            </div>
+            <div class="footprint-summary">
+              <strong id="footprint-total">42h 18m</strong>
+              <span><b id="active-days">58</b> 个阅读日 · <b id="distinct-books">18</b> 本书 · <b id="distinct-series">6</b> 个系列</span>
+            </div>
+            <div class="heatmap-wrap">
+              <div class="month-labels" aria-hidden="true"><span>1月</span><span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span><span>8月</span><span>9月</span><span>10月</span><span>11月</span><span>12月</span></div>
+              <div class="heatmap-row">
+                <div class="weekday-labels" aria-hidden="true"><span>一</span><span>三</span><span>五</span></div>
+                <div class="heatmap" id="heatmap" aria-label="2026 年阅读足迹热力图"></div>
+              </div>
+            </div>
+            <div class="heatmap-legend" aria-label="热力图图例"><span>没有记录</span><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i><span>更久</span></div>
+            <div class="footprint-notes">
+              <article><span class="section-kicker">阅读时长</span><strong>每一格都是一天</strong><p>深浅只表示那天留下的时间，不是完成度，也不是排名。</p></article>
+              <article><span class="section-kicker">足迹范围</span><strong>2026 / 总计</strong><p>切换范围时保留同一套日历语义，避免把历史变成另一种产品。</p></article>
+            </div>
+          </section>
         </section>
 
         <footer class="prototype-footer"><span>DESIGN EXPLORATION · NOT PRODUCTION UI</span><a href="README.md">查看方案说明与后端映射 →</a></footer>

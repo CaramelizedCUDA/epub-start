@@ -14,6 +14,41 @@ const optionData = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+const pageLinks = $$('.rail-link[data-page]');
+const pageViews = $$('.page-view');
+
+function setPage(pageId, updateHash = true) {
+  const activePage = pageViews.some((view) => view.id === pageId) ? pageId : 'library-page';
+
+  pageViews.forEach((view) => {
+    const active = view.id === activePage;
+    view.classList.toggle('is-active', active);
+    view.hidden = !active;
+  });
+
+  pageLinks.forEach((link) => {
+    const active = link.dataset.page === activePage;
+    link.classList.toggle('is-active', active);
+    if (active) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
+
+  document.body.dataset.page = activePage;
+  if (updateHash) {
+    const hash = activePage === 'footprint-page' ? '#footprint' : '#library';
+    if (window.location.hash !== hash) window.history.replaceState(null, '', hash);
+  }
+}
+
+pageLinks.forEach((link) => link.addEventListener('click', (event) => {
+  event.preventDefault();
+  setPage(link.dataset.page);
+}));
+
+window.addEventListener('hashchange', () => {
+  setPage(window.location.hash === '#footprint' ? 'footprint-page' : 'library-page', false);
+});
+
 function renderDial() {
   const ticks = Array.from({ length: 18 }, (_, index) => {
     const angle = (index / 18) * Math.PI * 2 - Math.PI / 2;
@@ -68,7 +103,7 @@ function renderHeatmap(scope) {
   const heatmap = $('#heatmap');
   heatmap.style.gridTemplateColumns = `repeat(${scope === 'all' ? 15 : 53}, minmax(3px, 1fr))`;
   heatmap.innerHTML = cells;
-  $('#history-title').textContent = scope === 'all' ? '从第一天开始留下的痕迹' : '这一年留下的痕迹';
+  $('#footprint-page-title').textContent = scope === 'all' ? '从第一天开始留下的痕迹' : '这一年留下的痕迹';
   $('#footprint-total').textContent = scope === 'all' ? '126h 09m' : '42h 18m';
   $('#active-days').textContent = scope === 'all' ? '184' : '58';
   $('#distinct-books').textContent = scope === 'all' ? '31' : '18';
@@ -111,5 +146,6 @@ $$('.scope-tab').forEach((button) => button.addEventListener('click', () => {
 }));
 $$('.option-button').forEach((button) => button.addEventListener('click', () => setOption(button.dataset.option)));
 
+setPage(window.location.hash === '#footprint' ? 'footprint-page' : 'library-page');
 renderGraphic('dial');
 renderHeatmap('year');
