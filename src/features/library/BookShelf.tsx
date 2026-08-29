@@ -160,21 +160,21 @@ export function BookShelf({
   return (
     <div className="min-h-screen bg-[#edf1ee] text-[#18272c]">
       <div className="flex min-h-screen flex-col md:flex-row">
-        <aside className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-start border-t border-[#d0d9d4] bg-[#f9fbf7]/95 px-2 pb-[env(safe-area-inset-bottom)] md:sticky md:inset-auto md:top-0 md:h-screen md:w-[88px] md:flex-col md:items-center md:justify-start md:border-r md:border-t-0 md:px-0 md:pb-0" aria-label="主导航">
+        <aside className="mobile-app-nav fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-start border-t border-[#d0d9d4] bg-[#f9fbf7]/95 px-2 pb-[env(safe-area-inset-bottom)] md:sticky md:inset-auto md:top-0 md:h-screen md:w-[88px] md:flex-col md:items-center md:justify-start md:border-r md:border-t-0 md:px-0 md:pb-0" aria-label="主导航">
           <div className="hidden items-center gap-3 md:flex md:flex-col md:gap-2">
             <div className="grid h-9 w-9 place-items-center border border-[#18272c] font-serif text-xl text-[#5c7397] md:mt-6 md:h-10 md:w-10">E</div>
             <span className="hidden font-mono text-[0.55rem] leading-tight tracking-[0.18em] text-[#687571] md:block md:text-center">EPUB<br />START</span>
           </div>
-          <nav className="flex h-16 w-full items-stretch justify-around gap-1 md:mt-12 md:grid md:h-auto md:w-full md:gap-3" aria-label="版块">
+          <nav className="mobile-nav-list flex h-16 w-full items-stretch justify-around gap-1 md:mt-12 md:grid md:h-auto md:w-full md:gap-3" aria-label="版块">
             {NAV_ITEMS.map((item) => (
               <button
                 key={item.section}
                 type="button"
                 aria-current={activeSection === item.section ? 'page' : undefined}
                 onClick={() => changeSection(item.section)}
-                className={`relative grid min-w-[3.5rem] flex-1 place-content-center gap-1 px-2 py-1 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c5a76b] md:min-w-0 md:py-2 ${activeSection === item.section ? 'text-[#2e6e67]' : 'text-[#687571] hover:text-[#2e6e67]'}`}
+                className={`mobile-nav-item relative grid min-w-[3.5rem] flex-1 place-content-center gap-1 px-2 py-1 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c5a76b] md:min-w-0 md:py-2 ${activeSection === item.section ? 'text-[#2e6e67]' : 'text-[#687571] hover:text-[#2e6e67]'}`}
               >
-                {activeSection === item.section && <span className="absolute left-2 right-2 top-0 h-[3px] bg-[#2e6e67] md:bottom-0 md:left-0 md:right-auto md:h-auto md:w-[3px]" aria-hidden="true" />}
+                {activeSection === item.section && <span className="mobile-nav-active absolute left-2 right-2 top-0 h-[3px] bg-[#2e6e67] md:bottom-0 md:left-0 md:right-auto md:h-auto md:w-[3px]" aria-hidden="true" />}
                 <span className="text-lg leading-none" aria-hidden="true">{item.glyph}</span>
                 <span className="text-[0.65rem]">{item.label}</span>
               </button>
@@ -183,7 +183,7 @@ export function BookShelf({
           <div className="hidden text-center font-mono text-[0.58rem] leading-relaxed tracking-[0.12em] text-[#687571] md:mt-auto md:mb-6 md:block">A+C<br />READING SPACE</div>
         </aside>
 
-        <main className="relative flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+        <main className="mobile-main-content relative flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
           <header className="border-b border-[#d0d9d4] px-5 pb-7 pt-[calc(2.5rem+env(safe-area-inset-top))] sm:px-8 lg:px-16 lg:pt-14">
             <div className="mx-auto flex max-w-[1500px] flex-col justify-between gap-6 xl:flex-row xl:items-start">
               <div>
