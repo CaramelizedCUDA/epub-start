@@ -8,7 +8,7 @@
 
 仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。B3 收口验证通过 196/196 Rust feature 测试、Windows x64 安装包构建、当前 arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。黑鲨 SKW-A0、荣耀 PPG-AN00 已完成 37 个固定 EPUB 的导入/选择和 release-like data 分项观察；由于样本复测未重新卸载设备，报告保留为实际占用观察而非干净增量。正式 release 签名仍未执行。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)、[B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)，执行顺序见 [TODO.md](TODO.md)。
 
-当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。B0–B4 期间的前端曾作为 legacy shell 保留；随着后端冻结，生产 F1 已开始第一批壳层与书架信息架构重建，Reader 和其余功能仍按 F2/F3 逐步接入。页面完成度、截图或前端构建通过仍不能单独替代跨端运行态验收。B4 是在 B3 候选基础上经用户明确批准的追加后端变更，现已纳入技术冻结输入；正式签名不提前冒充完成。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
+当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。B0–B4 期间的前端曾作为 legacy shell 保留；随着后端冻结，生产 F1 第一批壳层与书架信息架构已进入桌面 Tauri 和荣耀 Android 15 WebView 真实运行态，Reader 的视觉与其余功能仍按 F2/F3 逐步接入。页面完成度、截图或前端构建通过仍不能单独替代跨端运行态验收；当前覆盖与未测清单见 [TODO.md](TODO.md)。B4 是在 B3 候选基础上经用户明确批准的追加后端变更，现已纳入技术冻结输入；正式签名不提前冒充完成。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)：模块职责、目录边界与资源访问原则。
 - [DATABASE.md](DATABASE.md)：SQLite 的唯一 Schema 定义与迁移规则。

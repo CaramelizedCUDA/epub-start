@@ -24,6 +24,7 @@ import {
 import { ImageViewer } from './ImageViewer';
 import { NotesPanel } from './NotesPanel';
 import { NoteEditorModal, NoteMenu, SelectionMenu } from './AnnotationMenu';
+import { useReadingActivity } from './useReadingActivity';
 
 const RESIZE_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 300;
@@ -93,6 +94,11 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const settingsScopeRef = useRef<'global' | 'book'>('global');
   const saveTimerRef = useRef<number | null>(null);
   const saveGenerationRef = useRef(0);
+
+  useReadingActivity({
+    bookId,
+    isReady: Boolean(rendition) && !isLoading && !error,
+  });
 
   useEffect(() => { settingsDraftRef.current = settingsDraft; }, [settingsDraft]);
   useEffect(() => { settingsResultRef.current = settingsResult; }, [settingsResult]);

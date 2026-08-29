@@ -298,13 +298,8 @@ export function FootprintPage() {
   };
 
   return (
-    <section className="border-t border-[#d0d9d4] pt-6" aria-labelledby="footprint-page-title" aria-busy={footprintLoading}>
-      <div className="flex flex-wrap items-end justify-between gap-5 border-b border-[#d0d9d4] pb-6">
-        <div>
-          <p className="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#2e6e67]">阅读足迹</p>
-          <h2 id="footprint-page-title" className="font-serif text-4xl font-medium tracking-[-0.05em] text-[#18272c] sm:text-5xl">这一年留下的痕迹</h2>
-          <p className="mt-3 font-serif text-base text-[#687571]">不评价读了多少，只把走过的日子留在这里。</p>
-        </div>
+    <section className="border-t border-[#d0d9d4] pt-6" aria-label="阅读足迹数据" aria-busy={footprintLoading}>
+      <div className="flex justify-end border-b border-[#d0d9d4] pb-6">
         <div className="flex items-center gap-1" role="tablist" aria-label="足迹范围">
           <button type="button" role="tab" aria-selected={scope === 'year'} onClick={() => setScope('year')} className={scopeTabClass(scope === 'year')}>{year}</button>
           <button type="button" role="tab" aria-selected={scope === 'all'} onClick={() => setScope('all')} className={scopeTabClass(scope === 'all')}>总计</button>
