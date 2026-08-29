@@ -1,16 +1,16 @@
 import { useState, useCallback } from 'react';
 import type { BookSummary } from './types/models';
-import { BookShelf } from './features/library/BookShelf';
+import { BookShelf, type LibrarySection } from './features/library/BookShelf';
 import { EpubReader } from './features/reader/EpubReader';
 import { openBook as openBookIpc } from './lib/tauri';
 import { useLibraryStore } from './stores/libraryStore';
 
 type View =
-  | { kind: 'shelf' }
+  | { kind: 'shelf'; section: LibrarySection }
   | { kind: 'reader'; bookId: string; epubRootUrl: string };
 
 function App() {
-  const [view, setView] = useState<View>({ kind: 'shelf' });
+  const [view, setView] = useState<View>({ kind: 'shelf', section: 'library' });
   const [readerError, setReaderError] = useState<string | null>(null);
   const loadBooks = useLibraryStore((state) => state.loadBooks);
 
@@ -44,34 +44,27 @@ function App() {
   }, [loadBooks]);
 
   const handleCloseReader = useCallback(() => {
-    setView({ kind: 'shelf' });
+    setView({ kind: 'shelf', section: 'library' });
   }, []);
 
+  if (view.kind === 'reader') {
+    return (
+      <EpubReader
+        bookId={view.bookId}
+        epubRootUrl={view.epubRootUrl}
+        onClose={handleCloseReader}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-900">
-      {view.kind === 'shelf' ? (
-        <>
-          {readerError && (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-red-900/90 border border-red-700 rounded-xl shadow-2xl max-w-lg">
-              <p className="text-red-200 text-sm">{readerError}</p>
-              <button
-                onClick={() => setReaderError(null)}
-                className="mt-2 text-xs text-red-400 hover:text-red-200 underline"
-              >
-                关闭
-              </button>
-            </div>
-          )}
-          <BookShelf onOpenBook={handleOpenBook} />
-        </>
-      ) : (
-        <EpubReader
-          bookId={view.bookId}
-          epubRootUrl={view.epubRootUrl}
-          onClose={handleCloseReader}
-        />
-      )}
-    </div>
+    <BookShelf
+      activeSection={view.section}
+      onSectionChange={(section) => setView({ kind: 'shelf', section })}
+      onOpenBook={handleOpenBook}
+      readerError={readerError}
+      onDismissReaderError={() => setReaderError(null)}
+    />
   );
 }
 

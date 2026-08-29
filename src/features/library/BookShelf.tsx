@@ -6,12 +6,61 @@ import { getGlobalReadingSettings, saveGlobalReadingSettings } from '../../lib/t
 import type { BookSummary, ReadingSettings } from '../../types/models';
 import { B2CloseoutPanel } from '../closeout/B2CloseoutPanel';
 import { B3PrivateDataPanel } from '../closeout/B3PrivateDataPanel';
+import { FootprintPage, LibraryInsights } from './ReadingInsights';
+
+export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'footprint';
 
 interface BookShelfProps {
+  activeSection: LibrarySection;
+  onSectionChange: (section: LibrarySection) => void;
   onOpenBook: (book: BookSummary) => void;
+  readerError: string | null;
+  onDismissReaderError: () => void;
 }
 
-export function BookShelf({ onOpenBook }: BookShelfProps) {
+const NAV_ITEMS: Array<{ section: LibrarySection; label: string; glyph: string }> = [
+  { section: 'library', label: '藏书', glyph: '⌂' },
+  { section: 'series', label: '系列', glyph: 'Ⅱ' },
+  { section: 'search', label: '搜索', glyph: '⌕' },
+  { section: 'notes', label: '批注', glyph: '✎' },
+  { section: 'footprint', label: '足迹', glyph: '▦' },
+];
+
+const SECTION_META: Record<LibrarySection, { eyebrow: string; title: string; subtitle: string }> = {
+  library: {
+    eyebrow: 'PERSONAL READING ARCHIVE',
+    title: '今天想读哪一本？',
+    subtitle: '先看看你在读什么，再决定下一页。',
+  },
+  series: {
+    eyebrow: 'COLLECTION RELATIONSHIPS',
+    title: '系列还在整理中。',
+    subtitle: '先把位置留好，系列管理将在后续功能阶段接入。',
+  },
+  search: {
+    eyebrow: 'SEARCH THE ARCHIVE',
+    title: '搜索还没打开。',
+    subtitle: '搜索入口已放在这里，真实查询将在后续功能阶段接入。',
+  },
+  notes: {
+    eyebrow: 'MARGINALIA',
+    title: '批注还没打开。',
+    subtitle: '先保留阅读边栏的位置，批注消费将在 Reader 完成后接入。',
+  },
+  footprint: {
+    eyebrow: 'READING HISTORY',
+    title: '这一年留下的痕迹。',
+    subtitle: '不评价读了多少，只把走过的日子留在这里。',
+  },
+};
+
+export function BookShelf({
+  activeSection,
+  onSectionChange,
+  onOpenBook,
+  readerError,
+  onDismissReaderError,
+}: BookShelfProps) {
   const {
     books,
     isLoading,
@@ -29,17 +78,21 @@ export function BookShelf({ onOpenBook }: BookShelfProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    loadBooks();
+    void loadBooks();
   }, [loadBooks]);
 
   useEffect(() => {
     let disposed = false;
     const appWindow = getCurrentWindow();
-    void appWindow.isFullscreen().then((value) => { if (!disposed) setIsFullscreen(value); });
+    void appWindow.isFullscreen()
+      .then((value) => { if (!disposed) setIsFullscreen(value); })
+      .catch(() => undefined);
     let unlisten: (() => void) | undefined;
     void appWindow.onResized(() => {
-      void appWindow.isFullscreen().then((value) => { if (!disposed) setIsFullscreen(value); });
-    }).then((cleanup) => { unlisten = cleanup; });
+      void appWindow.isFullscreen()
+        .then((value) => { if (!disposed) setIsFullscreen(value); })
+        .catch(() => undefined);
+    }).then((cleanup) => { unlisten = cleanup; }).catch(() => undefined);
     return () => { disposed = true; unlisten?.(); };
   }, []);
 
@@ -97,111 +150,304 @@ export function BookShelf({ onOpenBook }: BookShelfProps) {
     }
   };
 
+  const changeSection = (section: LibrarySection) => {
+    setShowSettings(false);
+    onSectionChange(section);
+  };
+
+  const meta = SECTION_META[activeSection];
+
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-white">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
-        <h1 className="text-xl font-bold tracking-wide">EpubStart</h1>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void openSettings()} className="reader-control">设置</button>
-          <button type="button" onClick={() => void toggleFullscreen()} className="reader-control">
-            {isFullscreen ? '退出全屏' : '全屏'}
-          </button>
-          <button
-            onClick={importFromDialog}
-            disabled={isLoading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium transition hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isLoading ? '导入中…' : '+ 导入 EPUB'}
-          </button>
-        </div>
-      </header>
-
-      {import.meta.env.VITE_B2_CLOSEOUT === '1' && <B2CloseoutPanel />}
-      {import.meta.env.VITE_B3_DIAGNOSTICS === '1' && <B3PrivateDataPanel />}
-
-      {showSettings && (
-        <aside className="absolute right-6 top-16 z-40 w-80 rounded-lg border border-gray-700 bg-gray-800 p-4 shadow-xl">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold">全局阅读设置</h2>
-              <p className="text-xs text-gray-400">新打开书籍默认使用这些设置；单书覆盖保持不变。</p>
-            </div>
-            <button type="button" onClick={() => setShowSettings(false)} className="text-xl text-gray-400 hover:text-white">×</button>
+    <div className="min-h-screen bg-[#edf1ee] text-[#18272c]">
+      <div className="flex min-h-screen flex-col md:flex-row">
+        <aside className="flex h-16 shrink-0 items-center justify-between border-b border-[#d0d9d4] bg-[#f9fbf7]/80 px-4 md:sticky md:top-0 md:h-screen md:w-[88px] md:flex-col md:justify-start md:border-b-0 md:border-r md:px-0" aria-label="主导航">
+          <div className="flex items-center gap-3 md:flex-col md:gap-2">
+            <div className="grid h-9 w-9 place-items-center border border-[#18272c] font-serif text-xl text-[#5c7397] md:mt-6 md:h-10 md:w-10">E</div>
+            <span className="hidden font-mono text-[0.55rem] leading-tight tracking-[0.18em] text-[#687571] md:block md:text-center">EPUB<br />START</span>
           </div>
-          {settings ? (
-            <div className="space-y-3 text-sm">
-              <ShelfSelect label="主题" value={settings.theme} options={[['light', '浅色'], ['sepia', '暖色'], ['dark', '深色']]} onChange={(value) => setSettings({ ...settings, theme: value as ReadingSettings['theme'] })} />
-              <ShelfSelect label="字体" value={settings.font_family} options={[['publisher', '出版方'], ['serif', '衬线'], ['sans', '无衬线'], ['system', '系统']]} onChange={(value) => setSettings({ ...settings, font_family: value as ReadingSettings['font_family'] })} />
-              <ShelfNumber label="字号" value={settings.font_size_px} min={12} max={32} step={1} unit="px" onChange={(value) => setSettings({ ...settings, font_size_px: value })} />
-              <ShelfNumber label="行距" value={settings.line_height_multiplier} min={1} max={3} step={0.1} onChange={(value) => setSettings({ ...settings, line_height_multiplier: value })} />
-              <ShelfNumber label="段落间距" value={settings.paragraph_spacing_multiplier} min={0} max={2} step={0.1} onChange={(value) => setSettings({ ...settings, paragraph_spacing_multiplier: value })} />
-              <ShelfNumber label="首行缩进" value={settings.text_indent_em} min={0} max={4} step={0.5} unit="em" onChange={(value) => setSettings({ ...settings, text_indent_em: value })} />
-              <ShelfNumber label="上边距" value={settings.margin_top_px} min={0} max={100} step={1} unit="px" onChange={(value) => setSettings({ ...settings, margin_top_px: value })} />
-              <ShelfNumber label="下边距" value={settings.margin_bottom_px} min={0} max={100} step={1} unit="px" onChange={(value) => setSettings({ ...settings, margin_bottom_px: value })} />
-              <ShelfNumber label="左边距" value={settings.margin_left_percent} min={0} max={20} step={1} unit="%" onChange={(value) => setSettings({ ...settings, margin_left_percent: value })} />
-              <ShelfNumber label="右边距" value={settings.margin_right_percent} min={0} max={20} step={1} unit="%" onChange={(value) => setSettings({ ...settings, margin_right_percent: value })} />
-              <ShelfNumber label="最大列宽" value={settings.max_column_width_px} min={300} max={1200} step={10} unit="px" onChange={(value) => setSettings({ ...settings, max_column_width_px: value })} />
-              <ShelfSelect label="排版" value={settings.flow} options={[['paginated', '分页'], ['scrolled', '滚动']]} onChange={(value) => setSettings({ ...settings, flow: value as ReadingSettings['flow'] })} />
-              <ShelfSelect label="跨页" value={settings.spread} options={[['auto', '自动'], ['none', '单页'], ['always', '双页']]} onChange={(value) => setSettings({ ...settings, spread: value as ReadingSettings['spread'] })} />
-              <div className="flex justify-end">
-                <button type="button" disabled={isSavingSettings} onClick={() => void persistSettings()} className="reader-control">
-                  {isSavingSettings ? '保存中…' : '保存设置'}
+          <nav className="flex items-center gap-1 md:mt-12 md:grid md:w-full md:gap-3" aria-label="版块">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.section}
+                type="button"
+                aria-current={activeSection === item.section ? 'page' : undefined}
+                onClick={() => changeSection(item.section)}
+                className={`relative grid min-w-[3.5rem] gap-1 px-2 py-1 text-center transition focus:outline-none focus:ring-2 focus:ring-[#c5a76b] md:min-w-0 md:py-2 ${activeSection === item.section ? 'text-[#2e6e67]' : 'text-[#687571] hover:text-[#2e6e67]'}`}
+              >
+                {activeSection === item.section && <span className="absolute bottom-0 left-0 top-0 w-[3px] bg-[#2e6e67] md:bottom-auto" aria-hidden="true" />}
+                <span className="text-lg leading-none" aria-hidden="true">{item.glyph}</span>
+                <span className="text-[0.65rem]">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="hidden text-center font-mono text-[0.58rem] leading-relaxed tracking-[0.12em] text-[#687571] md:mt-auto md:mb-6 md:block">A+C<br />READING SPACE</div>
+        </aside>
+
+        <main className="relative flex min-w-0 flex-1 flex-col">
+          <header className="border-b border-[#d0d9d4] px-5 pb-7 pt-10 sm:px-8 lg:px-16 lg:pt-14">
+            <div className="mx-auto flex max-w-[1500px] flex-col justify-between gap-6 xl:flex-row xl:items-start">
+              <div>
+                <p className="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[#2e6e67]">{meta.eyebrow}</p>
+                <h1 className="font-serif text-4xl font-medium tracking-[-0.055em] text-[#18272c] sm:text-5xl lg:text-6xl">{meta.title}</h1>
+                <p className="mt-3 max-w-xl font-serif text-base text-[#687571]">{meta.subtitle}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 xl:pt-3">
+                <button type="button" onClick={() => changeSection('search')} className="border-b border-transparent px-2 py-2 text-sm text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
+                  <span aria-hidden="true">⌕</span> <span className="hidden sm:inline">搜索书名、作者、系列</span><kbd className="ml-2 hidden font-mono text-[0.6rem] sm:inline">Ctrl K</kbd>
                 </button>
+                <button type="button" onClick={() => void openSettings()} className="border-b border-transparent px-2 py-2 text-sm text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">设置</button>
+                <button type="button" onClick={() => void toggleFullscreen()} className="border-b border-transparent px-2 py-2 text-sm text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">{isFullscreen ? '退出全屏' : '全屏'}</button>
+                <button type="button" onClick={() => void importFromDialog()} disabled={isLoading} className="bg-[#18272c] px-4 py-2.5 text-sm text-[#f9fbf7] transition hover:bg-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:cursor-not-allowed disabled:opacity-50">＋ 导入 EPUB</button>
               </div>
             </div>
-          ) : !settingsError ? (
-            <p className="text-sm text-gray-400">正在读取设置…</p>
-          ) : null}
-          {settingsError && <p className="mt-3 text-xs text-red-300">{settingsError}</p>}
-        </aside>
-      )}
+          </header>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mx-6 mt-4 px-4 py-3 bg-red-900/60 border border-red-700 rounded-lg flex items-start justify-between">
-          <div>
-            <p className="text-red-300 text-sm font-medium">导入错误</p>
-            <p className="text-red-200 text-xs mt-1 break-all">{error}</p>
+          {showSettings && (
+            <SettingsPanel
+              settings={settings}
+              error={settingsError}
+              isSaving={isSavingSettings}
+              onClose={() => setShowSettings(false)}
+              onChange={setSettings}
+              onSave={() => void persistSettings()}
+            />
+          )}
+
+          <div className="mx-auto w-full max-w-[1500px] flex-1 px-5 pb-12 sm:px-8 lg:px-16">
+            {import.meta.env.VITE_B2_CLOSEOUT === '1' && <B2CloseoutPanel />}
+            {import.meta.env.VITE_B3_DIAGNOSTICS === '1' && <B3PrivateDataPanel />}
+
+            {readerError && <ErrorNotice title="无法打开这本书" message={readerError} onDismiss={onDismissReaderError} />}
+            {error && <ErrorNotice title="书架暂时没有更新" message={error} onDismiss={clearError} onRetry={() => void loadBooks()} />}
+
+            {activeSection === 'library' && (
+              <>
+                <div className="pt-8 lg:pt-10">
+                  <LibraryInsights onOpenBook={onOpenBook} />
+                </div>
+                <BookCollection
+                  books={books}
+                  isLoading={isLoading}
+                  onImport={() => void importFromDialog()}
+                  onOpenBook={onOpenBook}
+                  onRelocate={(bookId) => void relocateSource(bookId)}
+                  onDelete={(bookId) => void removeBook(bookId)}
+                />
+              </>
+            )}
+            {activeSection === 'footprint' && <div className="pt-8 lg:pt-10"><FootprintPage /></div>}
+            {(activeSection === 'series' || activeSection === 'search' || activeSection === 'notes') && <PlaceholderPage section={activeSection} />}
+
+            <footer className="mt-12 flex flex-col gap-2 border-t border-[#d0d9d4] pt-4 font-mono text-[0.62rem] tracking-[0.08em] text-[#687571] sm:flex-row sm:items-center sm:justify-between">
+              <span>EpubStart · PERSONAL READING ARCHIVE</span>
+              <span>F1 · 壳层与信息架构</span>
+            </footer>
           </div>
-          <button
-            onClick={clearError}
-            className="text-red-300 hover:text-white text-lg leading-none ml-4"
-          >
-            ×
-          </button>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function BookCollection({
+  books,
+  isLoading,
+  onImport,
+  onOpenBook,
+  onRelocate,
+  onDelete,
+}: {
+  books: BookSummary[];
+  isLoading: boolean;
+  onImport: () => void;
+  onOpenBook: (book: BookSummary) => void;
+  onRelocate: (bookId: string) => void;
+  onDelete: (bookId: string) => void;
+}) {
+  return (
+    <section className="mt-14 border-t-[3px] border-[#2e6e67] pt-5" aria-labelledby="all-books-title" aria-busy={isLoading}>
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#d0d9d4] pb-4">
+        <div>
+          <p className="mb-1 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#2e6e67]">收藏现场</p>
+          <h2 id="all-books-title" className="font-serif text-3xl font-medium tracking-[-0.04em]">全部藏书</h2>
+        </div>
+        <span className="font-mono text-2xl text-[#5c7397]">{String(books.length).padStart(2, '0')}</span>
+      </div>
+
+      {isLoading && books.length === 0 ? (
+        <ShelfSkeleton />
+      ) : books.length === 0 ? (
+        <EmptyShelf onImport={onImport} />
+      ) : (
+        <div className={`grid gap-x-4 gap-y-10 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 ${isLoading ? 'opacity-60' : ''}`}>
+          {books.map((book) => (
+            <ShelfBookCard
+              key={book.id}
+              book={book}
+              disabled={isLoading}
+              onOpen={() => onOpenBook(book)}
+              onRelocate={() => onRelocate(book.id)}
+              onDelete={() => onDelete(book.id)}
+            />
+          ))}
         </div>
       )}
+    </section>
+  );
+}
 
-      {/* Book list */}
-      <main className="flex-1 overflow-y-auto p-6">
-        {isLoading && books.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-400" />
-          </div>
-        ) : books.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-500">
-              <p className="text-lg mb-2">书架为空</p>
-              <p className="text-sm">点击「+ 导入 EPUB」添加第一本书</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {books.map((book) => (
-              <BookCard
-                key={book.id}
-                book={book}
-                onOpen={() => onOpenBook(book)}
-                onRelocate={() => relocateSource(book.id)}
-                onDelete={() => removeBook(book.id)}
-                disabled={isLoading}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+function ShelfBookCard({
+  book,
+  disabled,
+  onOpen,
+  onRelocate,
+  onDelete,
+}: {
+  book: BookSummary;
+  disabled: boolean;
+  onOpen: () => void;
+  onRelocate: () => void;
+  onDelete: () => void;
+}) {
+  const canRelocate = book.status === 'missing';
+  const canOpen = book.status !== 'error';
+  return (
+    <article className="group min-w-0 border-t-[3px] border-[#2e6e67] bg-[#f9fbf7] p-3 shadow-[0_14px_28px_rgba(24,39,44,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(24,39,44,0.1)]">
+      <button type="button" onClick={onOpen} disabled={disabled || !canOpen} className="block w-full text-left focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:cursor-not-allowed disabled:opacity-60">
+        <ShelfCover book={book} />
+        <div className="pt-3">
+          <h3 className="truncate font-serif text-lg font-medium text-[#18272c]" title={book.title}>{book.title}</h3>
+          <p className="mt-1 truncate text-xs text-[#687571]">{book.authors.length > 0 ? book.authors.join(' · ') : '作者信息未提供'}</p>
+          {book.status === 'error' && <span className="mt-3 inline-block border-b border-[#a54b45] pb-1 text-xs text-[#a54b45]">解析失败</span>}
+          {book.status === 'missing' && <span className="mt-3 inline-block border-b border-[#c5a76b] pb-1 text-xs text-[#8b7137]">文件缺失</span>}
+        </div>
+      </button>
+      <div className="mt-4 flex min-h-6 items-center justify-between gap-2 text-xs">
+        {canRelocate ? <button type="button" onClick={onRelocate} disabled={disabled} className="border-b border-[#c5a76b] text-[#8b7137] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">重新选择</button> : <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[#687571]">{book.format}</span>}
+        <button type="button" onClick={onDelete} disabled={disabled} className="border-b border-transparent text-[#687571] transition hover:border-[#a54b45] hover:text-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">移除</button>
+      </div>
+    </article>
+  );
+}
+
+function ShelfCover({ book }: { book: BookSummary }) {
+  const [coverFailed, setCoverFailed] = useState(false);
+  return (
+    <div className="relative aspect-[3/4] overflow-hidden bg-[#4d6188] p-3 text-[#f8faf5]">
+      <span className="relative font-mono text-[0.62rem] tracking-[0.1em]">{book.format.toUpperCase()}</span>
+      {book.cover_cache_path && !coverFailed ? (
+        <img src={convertFileSrc(book.cover_cache_path)} alt="" onError={() => setCoverFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <span className="relative mt-auto block max-w-[8rem] font-serif text-xl leading-tight">{book.title}</span>
+      )}
+      <span className="absolute bottom-0 right-0 top-0 w-1 bg-white/30" aria-hidden="true" />
     </div>
+  );
+}
+
+function ShelfSkeleton() {
+  return (
+    <div className="grid gap-4 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" aria-label="正在读取书架">
+      {Array.from({ length: 6 }, (_, index) => <div key={index} className="space-y-3 border-t-[3px] border-[#d7e2de] bg-[#f9fbf7] p-3"><div className="aspect-[3/4] bg-[#d7e2de]" /><div className="h-5 w-4/5 bg-[#d7e2de]" /><div className="h-3 w-1/2 bg-[#d7e2de]" /></div>)}
+    </div>
+  );
+}
+
+function EmptyShelf({ onImport }: { onImport: () => void }) {
+  return (
+    <div className="mt-6 border-l-[3px] border-[#c5a76b] bg-[#f9fbf7] px-6 py-8">
+      <p className="font-serif text-2xl text-[#18272c]">书架还没有书。</p>
+      <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#687571]">从本地选择 EPUB，书籍会留在这里。阅读记录、系列关系和标签都会围绕这份书架展开。</p>
+      <button type="button" onClick={onImport} className="mt-5 border-b border-[#2e6e67] py-1 text-sm text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">添加第一本 EPUB <span aria-hidden="true">→</span></button>
+    </div>
+  );
+}
+
+function PlaceholderPage({ section }: { section: 'series' | 'search' | 'notes' }) {
+  const meta = SECTION_META[section];
+  return (
+    <section className="mx-auto max-w-3xl px-2 pb-20 pt-20 lg:pt-28" aria-labelledby={`${section}-placeholder-title`}>
+      <p className="mb-3 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[#2e6e67]">{meta.eyebrow}</p>
+      <h2 id={`${section}-placeholder-title`} className="font-serif text-4xl font-medium tracking-[-0.05em] text-[#18272c] sm:text-5xl">{meta.title}</h2>
+      <p className="mt-5 max-w-xl font-serif text-lg leading-relaxed text-[#687571]">{meta.subtitle}</p>
+      <div className="mt-12 border-t border-[#d0d9d4] pt-5 text-sm leading-relaxed text-[#687571]">
+        <p>F1 先确定入口、页面边界和空状态，不用假数据填充尚未接入的能力。</p>
+        <span className="mt-4 inline-block border border-[#d0d9d4] px-3 py-2 font-mono text-[0.65rem] tracking-[0.1em] text-[#5c7397]">NEXT · F2 FUNCTIONAL CONSUMPTION</span>
+      </div>
+    </section>
+  );
+}
+
+function ErrorNotice({
+  title,
+  message,
+  onDismiss,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  onDismiss: () => void;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="mt-6 flex items-start justify-between gap-4 border-l-[3px] border-[#a54b45] bg-[#fff8f6] px-5 py-4" role="alert">
+      <div>
+        <p className="text-sm font-medium text-[#7c3834]">{title}</p>
+        <p className="mt-1 break-words text-xs leading-relaxed text-[#7c3834]">{message}</p>
+        {onRetry && <button type="button" onClick={onRetry} className="mt-3 border-b border-[#a54b45] text-xs text-[#7c3834] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">重试</button>}
+      </div>
+      <button type="button" onClick={onDismiss} className="shrink-0 px-1 text-xl leading-none text-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]" aria-label="关闭提示">×</button>
+    </div>
+  );
+}
+
+function SettingsPanel({
+  settings,
+  error,
+  isSaving,
+  onClose,
+  onChange,
+  onSave,
+}: {
+  settings: ReadingSettings | null;
+  error: string | null;
+  isSaving: boolean;
+  onClose: () => void;
+  onChange: (settings: ReadingSettings) => void;
+  onSave: () => void;
+}) {
+  return (
+    <aside className="absolute right-4 top-24 z-40 w-[min(22rem,calc(100vw-2rem))] border border-[#d0d9d4] bg-[#f9fbf7] p-5 shadow-[0_20px_44px_rgba(24,39,44,0.14)]" aria-label="全局阅读设置">
+      <div className="mb-4 flex items-start justify-between gap-4 border-b border-[#d0d9d4] pb-4">
+        <div>
+          <p className="mb-1 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[#2e6e67]">Preferences</p>
+          <h2 className="font-serif text-2xl font-medium">全局阅读设置</h2>
+          <p className="mt-1 text-xs leading-relaxed text-[#687571]">新打开书籍默认使用这些设置；单书覆盖保持不变。</p>
+        </div>
+        <button type="button" onClick={onClose} className="text-2xl leading-none text-[#687571] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]" aria-label="关闭设置">×</button>
+      </div>
+      {settings ? (
+        <div className="space-y-3 text-sm">
+          <ShelfSelect label="主题" value={settings.theme} options={[['light', '浅色'], ['sepia', '暖色'], ['dark', '深色']]} onChange={(value) => onChange({ ...settings, theme: value as ReadingSettings['theme'] })} />
+          <ShelfSelect label="字体" value={settings.font_family} options={[['publisher', '出版方'], ['serif', '衬线'], ['sans', '无衬线'], ['system', '系统']]} onChange={(value) => onChange({ ...settings, font_family: value as ReadingSettings['font_family'] })} />
+          <ShelfNumber label="字号" value={settings.font_size_px} min={12} max={32} step={1} unit="px" onChange={(value) => onChange({ ...settings, font_size_px: value })} />
+          <ShelfNumber label="行距" value={settings.line_height_multiplier} min={1} max={3} step={0.1} onChange={(value) => onChange({ ...settings, line_height_multiplier: value })} />
+          <ShelfNumber label="段落间距" value={settings.paragraph_spacing_multiplier} min={0} max={2} step={0.1} onChange={(value) => onChange({ ...settings, paragraph_spacing_multiplier: value })} />
+          <ShelfNumber label="首行缩进" value={settings.text_indent_em} min={0} max={4} step={0.5} unit="em" onChange={(value) => onChange({ ...settings, text_indent_em: value })} />
+          <ShelfNumber label="上边距" value={settings.margin_top_px} min={0} max={100} step={1} unit="px" onChange={(value) => onChange({ ...settings, margin_top_px: value })} />
+          <ShelfNumber label="下边距" value={settings.margin_bottom_px} min={0} max={100} step={1} unit="px" onChange={(value) => onChange({ ...settings, margin_bottom_px: value })} />
+          <ShelfNumber label="左边距" value={settings.margin_left_percent} min={0} max={20} step={1} unit="%" onChange={(value) => onChange({ ...settings, margin_left_percent: value })} />
+          <ShelfNumber label="右边距" value={settings.margin_right_percent} min={0} max={20} step={1} unit="%" onChange={(value) => onChange({ ...settings, margin_right_percent: value })} />
+          <ShelfNumber label="最大列宽" value={settings.max_column_width_px} min={300} max={1200} step={10} unit="px" onChange={(value) => onChange({ ...settings, max_column_width_px: value })} />
+          <ShelfSelect label="排版" value={settings.flow} options={[['paginated', '分页'], ['scrolled', '滚动']]} onChange={(value) => onChange({ ...settings, flow: value as ReadingSettings['flow'] })} />
+          <ShelfSelect label="跨页" value={settings.spread} options={[['auto', '自动'], ['none', '单页'], ['always', '双页']]} onChange={(value) => onChange({ ...settings, spread: value as ReadingSettings['spread'] })} />
+          <div className="flex justify-end pt-2"><button type="button" disabled={isSaving} onClick={onSave} className="bg-[#18272c] px-3 py-2 text-xs text-[#f9fbf7] transition hover:bg-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">{isSaving ? '保存中…' : '保存设置'}</button></div>
+        </div>
+      ) : !error ? (
+        <p className="text-sm text-[#687571]">正在读取设置…</p>
+      ) : null}
+      {error && <p className="mt-3 text-xs leading-relaxed text-[#a54b45]" role="alert">{error}</p>}
+    </aside>
   );
 }
 
@@ -214,7 +460,7 @@ function ShelfSelect({ label, value, options, onChange }: {
   return (
     <label className="flex items-center justify-between gap-3">
       <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded bg-gray-700 px-2 py-1">
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="border border-[#d0d9d4] bg-[#edf1ee] px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
         {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
       </select>
     </label>
@@ -233,111 +479,8 @@ function ShelfNumber({ label, value, min, max, step, unit = '', onChange }: {
   return (
     <label className="grid grid-cols-[6rem_minmax(0,1fr)_2.5rem] items-center gap-2">
       <span>{label}</span>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(event) => {
-          const parsed = Number(event.target.value);
-          if (Number.isFinite(parsed)) onChange(Math.min(max, Math.max(min, parsed)));
-        }}
-        className="min-w-0 rounded bg-gray-700 px-2 py-1 text-right"
-      />
-      <span className="text-gray-400">{unit}</span>
+      <input type="number" value={value} min={min} max={max} step={step} onChange={(event) => { const parsed = Number(event.target.value); if (Number.isFinite(parsed)) onChange(Math.min(max, Math.max(min, parsed))); }} className="min-w-0 border border-[#d0d9d4] bg-[#edf1ee] px-2 py-1 text-right focus:outline-none focus:ring-2 focus:ring-[#c5a76b]" />
+      <span className="text-[#687571]">{unit}</span>
     </label>
-  );
-}
-
-function BookCard({
-  book,
-  onOpen,
-  onRelocate,
-  onDelete,
-  disabled,
-}: {
-  book: BookSummary;
-  onOpen: () => void;
-  onRelocate: () => void;
-  onDelete: () => void;
-  disabled: boolean;
-}) {
-  const canRelocate = book.status === 'missing';
-
-  return (
-    <div className="relative group">
-    <button
-      onClick={onOpen}
-      disabled={disabled || book.status === 'error'}
-      className="flex flex-col items-center p-3 rounded-xl bg-gray-800
-                 hover:bg-gray-700 disabled:opacity-50 transition text-left w-full
-                 border border-gray-700 hover:border-gray-600"
-    >
-      {/* Cover or placeholder */}
-      <div className="w-full aspect-[3/4] bg-gray-700 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
-        {book.cover_cache_path ? (
-          <img
-            src={convertFileSrc(book.cover_cache_path)}
-            alt={book.title}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <span className="text-4xl text-gray-500 select-none">📖</span>
-        )}
-      </div>
-
-      <p className="text-sm font-medium text-gray-200 line-clamp-2 w-full">
-        {book.title}
-      </p>
-
-      {book.authors.length > 0 && (
-        <p className="text-xs text-gray-500 mt-1 w-full truncate">
-          {book.authors.join(', ')}
-        </p>
-      )}
-
-      {book.status === 'error' && (
-        <span className="mt-2 text-xs px-2 py-0.5 bg-red-900/60 text-red-300 rounded">
-          解析失败
-        </span>
-      )}
-      {book.status === 'missing' && (
-        <span className="mt-2 text-xs px-2 py-0.5 bg-yellow-900/60 text-yellow-300 rounded">
-          文件缺失
-        </span>
-      )}
-    </button>
-
-      {canRelocate && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRelocate();
-          }}
-          disabled={disabled}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-yellow-700/90 px-3 py-1 text-xs text-yellow-50 hover:bg-yellow-600 disabled:opacity-50"
-        >
-          重新选择
-        </button>
-      )}
-
-      {/* Delete button — visible on hover */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        disabled={disabled}
-        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center
-                   rounded-full bg-red-800/80 text-red-300 text-xs
-                   opacity-0 group-hover:opacity-100 transition
-                   hover:bg-red-700 disabled:opacity-0"
-        title="删除"
-      >
-        ×
-      </button>
-    </div>
   );
 }
