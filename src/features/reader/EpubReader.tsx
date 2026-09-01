@@ -47,10 +47,73 @@ type ReaderPanel = 'toc' | 'search' | 'notes' | 'settings';
 type PageTurnDirection = 'previous' | 'next';
 type PageTurnEffectPhase = 'playing' | 'dragging' | 'settling' | 'canceling';
 interface PageTurnEffect {
+  contentDriven: boolean;
   direction: PageTurnDirection;
   id: number;
   phase: PageTurnEffectPhase;
   progress: number;
+}
+
+interface PageTurnSurface {
+  container: HTMLElement;
+  direction: PageTurnDirection;
+  originScrollLeft: number;
+  pageDistance: number;
+  targetScrollLeft: number;
+  directionSign: number;
+}
+
+interface RenditionPageTurnLayout {
+  manager?: {
+    layout?: { delta?: number };
+    settings?: { axis?: string };
+  };
+}
+
+function createPageTurnSurface(
+  rendition: unknown,
+  direction: PageTurnDirection,
+): PageTurnSurface | null {
+  const viewport = document.getElementById('epub-reader-viewport');
+  const container = viewport?.querySelector<HTMLElement>('.epub-container');
+  if (!container || container.scrollWidth <= container.clientWidth + 1) return null;
+
+  const layoutHost = rendition as RenditionPageTurnLayout | null;
+  if (layoutHost?.manager?.settings?.axis === 'vertical') return null;
+
+  // EPUB.js paginated layout exposes the exact distance used by next()/prev().
+  // Fall back to the container width for older or private manager shapes.
+  const configuredDistance = layoutHost?.manager?.layout?.delta;
+  const pageDistance = typeof configuredDistance === 'number'
+    && Number.isFinite(configuredDistance)
+    && configuredDistance > 0
+    ? configuredDistance
+    : container.clientWidth;
+  const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+  const originScrollLeft = container.scrollLeft;
+  const isRtl = getComputedStyle(container).direction === 'rtl';
+
+  // Chromium has multiple RTL scrollLeft models. Keep the content-driven path
+  // deterministic for the common LTR EPUB case and let the edge fallback
+  // handle RTL books until a model-independent scroll adapter is needed.
+  if (isRtl) return null;
+
+  const directionSign = direction === 'next' ? 1 : -1;
+  const targetScrollLeft = originScrollLeft + directionSign * pageDistance;
+  if (targetScrollLeft < 0 || targetScrollLeft > maxScrollLeft) return null;
+
+  return {
+    container,
+    direction,
+    originScrollLeft,
+    pageDistance,
+    targetScrollLeft,
+    directionSign,
+  };
+}
+
+function easeOutCubic(progress: number): number {
+  return 1 - ((1 - progress) ** 3);
 }
 
 export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
@@ -110,6 +173,8 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const pageTurnEffectTimerRef = useRef<number | null>(null);
   const pageTurnEffectRef = useRef<PageTurnEffect | null>(null);
   const pageTurnEffectElementRef = useRef<HTMLDivElement | null>(null);
+  const pageTurnSurfaceRef = useRef<PageTurnSurface | null>(null);
+  const pageTurnSurfaceFrameRef = useRef<number | null>(null);
   const [pageTurnEffect, setPageTurnEffect] = useState<PageTurnEffect | null>(null);
 
   const togglePanel = (panel: ReaderPanel) => {
@@ -266,6 +331,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     }
     pageTurnEffectIdRef.current += 1;
     const effect: PageTurnEffect = {
+      contentDriven: false,
       direction,
       id: pageTurnEffectIdRef.current,
       phase: 'playing',
@@ -282,8 +348,90 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     }, PAGE_TURN_EFFECT_MS);
   }, []);
 
-  const updatePageTurnGesture = useCallback((direction: PageTurnDirection, progress: number) => {
+  const stopPageTurnSurfaceAnimation = useCallback(() => {
+    if (pageTurnSurfaceFrameRef.current !== null) {
+      window.cancelAnimationFrame(pageTurnSurfaceFrameRef.current);
+      pageTurnSurfaceFrameRef.current = null;
+    }
+  }, []);
+
+  const restorePageTurnSurfaceImmediately = useCallback(() => {
+    stopPageTurnSurfaceAnimation();
+    const surface = pageTurnSurfaceRef.current;
+    if (surface?.container.isConnected) {
+      surface.container.scrollLeft = surface.originScrollLeft;
+    }
+    pageTurnSurfaceRef.current = null;
+  }, [stopPageTurnSurfaceAnimation]);
+
+  const animatePageTurnSurface = useCallback((
+    surface: PageTurnSurface,
+    targetScrollLeft: number,
+    durationMs: number,
+    onComplete: () => void,
+  ) => {
+    stopPageTurnSurfaceAnimation();
+    if (!surface.container.isConnected) {
+      onComplete();
+      return;
+    }
+    const startScrollLeft = surface.container.scrollLeft;
+    const distance = targetScrollLeft - startScrollLeft;
+    if (Math.abs(distance) < 0.5) {
+      surface.container.scrollLeft = targetScrollLeft;
+      onComplete();
+      return;
+    }
+    const startedAt = performance.now();
+    const frame = (now: number) => {
+      if (!surface.container.isConnected) {
+        pageTurnSurfaceFrameRef.current = null;
+        onComplete();
+        return;
+      }
+      const progress = Math.min(1, Math.max(0, (now - startedAt) / durationMs));
+      surface.container.scrollLeft = startScrollLeft + distance * easeOutCubic(progress);
+      if (progress < 1) {
+        pageTurnSurfaceFrameRef.current = window.requestAnimationFrame(frame);
+      } else {
+        pageTurnSurfaceFrameRef.current = null;
+        onComplete();
+      }
+    };
+    pageTurnSurfaceFrameRef.current = window.requestAnimationFrame(frame);
+  }, [stopPageTurnSurfaceAnimation]);
+
+  const updatePageTurnSurface = useCallback((
+    direction: PageTurnDirection,
+    distancePx: number,
+  ): boolean => {
+    const current = pageTurnSurfaceRef.current;
+    if (!current || current.direction !== direction) {
+      restorePageTurnSurfaceImmediately();
+      const next = createPageTurnSurface(rendition, direction);
+      if (!next) return false;
+      pageTurnSurfaceRef.current = next;
+    }
+    const surface = pageTurnSurfaceRef.current;
+    if (!surface?.container.isConnected) {
+      pageTurnSurfaceRef.current = null;
+      return false;
+    }
+    const boundedDistance = Math.min(
+      surface.pageDistance,
+      Math.max(0, Number.isFinite(distancePx) ? distancePx : 0),
+    );
+    surface.container.scrollLeft = surface.originScrollLeft + surface.directionSign * boundedDistance;
+    return true;
+  }, [rendition, restorePageTurnSurfaceImmediately]);
+
+  const updatePageTurnGesture = useCallback((
+    direction: PageTurnDirection,
+    progress: number,
+    distancePx: number,
+  ) => {
     const boundedProgress = Math.max(0, Math.min(1, progress));
+    const contentDriven = updatePageTurnSurface(direction, distancePx);
     const current = pageTurnEffectRef.current;
     if (!current || current.phase !== 'dragging' || current.direction !== direction) {
       if (pageTurnEffectTimerRef.current !== null) {
@@ -292,6 +440,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       }
       pageTurnEffectIdRef.current += 1;
       const effect: PageTurnEffect = {
+        contentDriven,
         direction,
         id: pageTurnEffectIdRef.current,
         phase: 'dragging',
@@ -302,11 +451,12 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       return;
     }
     current.progress = boundedProgress;
+    current.contentDriven = contentDriven;
     pageTurnEffectElementRef.current?.style.setProperty(
-      '--reader-page-turn-drag-offset',
-      `${(direction === 'next' ? -1 : 1) * boundedProgress * 100}%`,
+      '--reader-page-turn-edge-position',
+      `${(direction === 'next' ? 1 - boundedProgress : boundedProgress) * 100}%`,
     );
-  }, []);
+  }, [updatePageTurnSurface]);
 
   const cancelPageTurnGesture = useCallback(() => {
     const current = pageTurnEffectRef.current;
@@ -317,6 +467,12 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     const effect: PageTurnEffect = { ...current, phase: 'canceling' };
     pageTurnEffectRef.current = effect;
     setPageTurnEffect(effect);
+    const surface = pageTurnSurfaceRef.current;
+    if (surface) {
+      animatePageTurnSurface(surface, surface.originScrollLeft, PAGE_TURN_GESTURE_CANCEL_MS, () => {
+        if (pageTurnSurfaceRef.current === surface) pageTurnSurfaceRef.current = null;
+      });
+    }
     const effectId = effect.id;
     pageTurnEffectTimerRef.current = window.setTimeout(() => {
       if (pageTurnEffectRef.current?.id !== effectId) return;
@@ -324,9 +480,13 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       pageTurnEffectRef.current = null;
       setPageTurnEffect(null);
     }, PAGE_TURN_GESTURE_CANCEL_MS);
-  }, []);
+  }, [animatePageTurnSurface]);
 
-  const commitPageTurnGesture = useCallback((direction: PageTurnDirection, progress: number) => {
+  const commitPageTurnGesture = useCallback((
+    direction: PageTurnDirection,
+    progress: number,
+    _distancePx: number,
+  ) => {
     if (pageTurnEffectTimerRef.current !== null) {
       window.clearTimeout(pageTurnEffectTimerRef.current);
       pageTurnEffectTimerRef.current = null;
@@ -338,6 +498,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       && current.direction === direction
       ? { ...current, phase: 'settling', progress: boundedProgress }
       : {
+        contentDriven: false,
         direction,
         id: ++pageTurnEffectIdRef.current,
         phase: 'settling',
@@ -346,10 +507,22 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     pageTurnEffectRef.current = effect;
     setPageTurnEffect(effect);
 
-    // Commit the page immediately. The edge layer finishes its sweep in
-    // parallel, so the reader never waits for the visual effect to end.
-    if (direction === 'previous') prevPage();
-    else nextPage();
+    const surface = pageTurnSurfaceRef.current;
+    if (surface?.direction === direction && surface.container.isConnected) {
+      // The EPUB.js surface has already moved with the finger. Finish that
+      // same motion to the next page instead of replacing it with a separate
+      // overlay animation. The new location becomes visible immediately and
+      // the remaining distance is only a non-blocking settle.
+      animatePageTurnSurface(surface, surface.targetScrollLeft, PAGE_TURN_GESTURE_RELEASE_MS, () => {
+        if (pageTurnSurfaceRef.current === surface) pageTurnSurfaceRef.current = null;
+      });
+    } else {
+      // Chapter edges, RTL books, and non-scrollable views use the existing
+      // EPUB.js page operation with the lightweight edge fallback.
+      pageTurnSurfaceRef.current = null;
+      if (direction === 'previous') prevPage();
+      else nextPage();
+    }
 
     const effectId = effect.id;
     pageTurnEffectTimerRef.current = window.setTimeout(() => {
@@ -358,25 +531,28 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       pageTurnEffectRef.current = null;
       setPageTurnEffect(null);
     }, PAGE_TURN_GESTURE_RELEASE_MS);
-  }, [nextPage, prevPage]);
+  }, [animatePageTurnSurface, nextPage, prevPage]);
 
   const handlePreviousPage = useCallback(() => {
+    restorePageTurnSurfaceImmediately();
     prevPage();
     showPageTurnEffect('previous');
-  }, [prevPage, showPageTurnEffect]);
+  }, [prevPage, restorePageTurnSurfaceImmediately, showPageTurnEffect]);
 
   const handleNextPage = useCallback(() => {
+    restorePageTurnSurfaceImmediately();
     nextPage();
     showPageTurnEffect('next');
-  }, [nextPage, showPageTurnEffect]);
+  }, [nextPage, restorePageTurnSurfaceImmediately, showPageTurnEffect]);
 
   useEffect(() => () => {
     if (pageTurnEffectTimerRef.current !== null) {
       window.clearTimeout(pageTurnEffectTimerRef.current);
       pageTurnEffectTimerRef.current = null;
     }
+    restorePageTurnSurfaceImmediately();
     pageTurnEffectRef.current = null;
-  }, []);
+  }, [restorePageTurnSurfaceImmediately]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -689,13 +865,14 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
               ? 'reader-page-turn-effect-dragging'
               : pageTurnEffect.phase === 'settling'
                 ? 'reader-page-turn-effect-settling'
-                : pageTurnEffect.phase === 'canceling'
-                  ? 'reader-page-turn-effect-canceling'
-                  : 'reader-page-turn-effect-playing'}`}
+                  : pageTurnEffect.phase === 'canceling'
+                    ? 'reader-page-turn-effect-canceling'
+                    : 'reader-page-turn-effect-playing'} ${pageTurnEffect.contentDriven
+                      ? 'reader-page-turn-effect-content-driven'
+                      : ''}`}
             ref={pageTurnEffectElementRef}
             style={{
-              backgroundColor: readingBackground(settingsResult?.effective ?? null),
-              '--reader-page-turn-drag-offset': `${(pageTurnEffect.direction === 'next' ? -1 : 1) * pageTurnEffect.progress * 100}%`,
+              '--reader-page-turn-edge-position': `${(pageTurnEffect.direction === 'next' ? 1 - pageTurnEffect.progress : pageTurnEffect.progress) * 100}%`,
             } as CSSProperties}
             aria-hidden="true"
           />

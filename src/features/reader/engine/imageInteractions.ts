@@ -18,9 +18,9 @@ interface ImageInteractionHandlers {
   onError: (message: string) => void;
   onPreviousPage: () => void;
   onNextPage: () => void;
-  onPageTurnGestureMove: (direction: 'previous' | 'next', progress: number) => void;
+  onPageTurnGestureMove: (direction: 'previous' | 'next', progress: number, distancePx: number) => void;
   onPageTurnGestureCancel: () => void;
-  onPageTurnGestureCommit: (direction: 'previous' | 'next', progress: number) => void;
+  onPageTurnGestureCommit: (direction: 'previous' | 'next', progress: number, distancePx: number) => void;
   onToggleNavigation: () => void;
   isPaginated: () => boolean;
 }
@@ -41,7 +41,7 @@ interface RenditionViews {
 const LONG_PRESS_MS = 550;
 const MOVE_TOLERANCE_PX = 12;
 const PAGE_TURN_EDGE_RATIO = 0.25;
-const PAGE_TURN_LOCK_MS = 250;
+const PAGE_TURN_LOCK_MS = 360;
 const SWIPE_DRAG_START_PX = 8;
 const SWIPE_MIN_DISTANCE_PX = 48;
 const SWIPE_MAX_DURATION_MS = 700;
@@ -63,14 +63,14 @@ export function installImageInteractions(
     if (direction === 'previous') handlers.onPreviousPage();
     else handlers.onNextPage();
   };
-  const commitPageTurnGesture = (direction: 'previous' | 'next', progress: number) => {
+  const commitPageTurnGesture = (direction: 'previous' | 'next', progress: number, distancePx: number) => {
     const now = Date.now();
     if (now < pageTurnLockedUntil || !handlers.isPaginated()) {
       handlers.onPageTurnGestureCancel();
       return;
     }
     pageTurnLockedUntil = now + PAGE_TURN_LOCK_MS;
-    handlers.onPageTurnGestureCommit(direction, progress);
+    handlers.onPageTurnGestureCommit(direction, progress, distancePx);
   };
   const attach = (content: Content, sectionHref?: string) => {
     if (cleanups.has(content.document)) return;
@@ -165,7 +165,7 @@ function attachDocument(
   bookId: string,
   handlers: ImageInteractionHandlers,
   turnPage: (direction: 'previous' | 'next') => void,
-  commitPageTurnGesture: (direction: 'previous' | 'next', progress: number) => void,
+  commitPageTurnGesture: (direction: 'previous' | 'next', progress: number, distancePx: number) => void,
 ): () => void {
   const { document } = content;
   let longPressTimer: number | null = null;
@@ -177,6 +177,8 @@ function attachDocument(
     target: EventTarget | null;
     isImage: boolean;
     cancelled: boolean;
+    pointerId: number;
+    captureTarget: Element | null;
   } | null = null;
   let suppressNextClick = false;
 
@@ -279,13 +281,27 @@ function attachDocument(
   const pointerDown = (event: PointerEvent) => {
     if (event.pointerType === 'mouse') return;
     const image = imageElementFromEvent(event);
+    const point = pointInReader(event);
+    const possibleCaptureTarget = event.target as Element | null;
+    const captureTarget = possibleCaptureTarget
+      && typeof possibleCaptureTarget.setPointerCapture === 'function'
+      ? possibleCaptureTarget
+      : null;
+    try {
+      captureTarget?.setPointerCapture(event.pointerId);
+    } catch {
+      // Older WebView builds may reject capture for iframe document targets.
+      // The outer-coordinate calculation below remains the fallback.
+    }
     swipeStart = {
-      x: event.clientX,
-      y: event.clientY,
+      x: point.x,
+      y: point.y,
       startedAt: Date.now(),
       target: event.target,
       isImage: Boolean(image),
       cancelled: false,
+      pointerId: event.pointerId,
+      captureTarget,
     };
     if (!image) return;
     const target = resolveImageTarget(image, sectionHref, epubRootUrl, bookId);
@@ -312,6 +328,10 @@ function attachDocument(
 
     const start = swipeStart;
     if (!start || event.pointerType === 'mouse' || start.isImage || start.cancelled) return;
+    if (!handlers.isPaginated()) {
+      start.cancelled = true;
+      return;
+    }
     if (
       Date.now() - start.startedAt > SWIPE_MAX_DURATION_MS
       || hasActiveSelection(document)
@@ -322,8 +342,9 @@ function attachDocument(
       return;
     }
 
-    const deltaX = event.clientX - start.x;
-    const deltaY = event.clientY - start.y;
+    const point = pointInReader(event);
+    const deltaX = point.x - start.x;
+    const deltaY = point.y - start.y;
     if (Math.abs(deltaX) < SWIPE_DRAG_START_PX) return;
     if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_VERTICAL_TOLERANCE) {
       start.cancelled = true;
@@ -335,12 +356,19 @@ function attachDocument(
     const viewportWidth = readerViewportWidth(content);
     const progress = Math.min(1, Math.abs(deltaX) / viewportWidth);
     event.preventDefault();
-    handlers.onPageTurnGestureMove(direction, progress);
+    handlers.onPageTurnGestureMove(direction, progress, Math.abs(deltaX));
   };
   const pointerUp = (event: PointerEvent) => {
     const start = swipeStart;
     swipeStart = null;
     clearLongPress();
+    try {
+      if (start?.captureTarget?.hasPointerCapture(start.pointerId)) {
+        start.captureTarget.releasePointerCapture(start.pointerId);
+      }
+    } catch {
+      // Pointer capture cleanup is best effort on older WebViews.
+    }
     if (!start || event.pointerType === 'mouse' || start.isImage) return;
     const cancelGesture = () => {
       if (!start.cancelled) handlers.onPageTurnGestureCancel();
@@ -354,8 +382,9 @@ function attachDocument(
       return;
     }
 
-    const deltaX = event.clientX - start.x;
-    const deltaY = event.clientY - start.y;
+    const point = pointInReader(event);
+    const deltaX = point.x - start.x;
+    const deltaY = point.y - start.y;
     if (
       Math.abs(deltaX) < SWIPE_MIN_DISTANCE_PX
       || Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_VERTICAL_TOLERANCE
@@ -369,12 +398,20 @@ function attachDocument(
     event.preventDefault();
     const direction = deltaX < 0 ? 'next' : 'previous';
     const progress = Math.min(1, Math.abs(deltaX) / readerViewportWidth(content));
-    commitPageTurnGesture(direction, progress);
+    commitPageTurnGesture(direction, progress, Math.abs(deltaX));
   };
   const pointerCancel = () => {
-    if (swipeStart) handlers.onPageTurnGestureCancel();
+    const start = swipeStart;
+    if (start) handlers.onPageTurnGestureCancel();
     swipeStart = null;
     clearLongPress();
+    try {
+      if (start?.captureTarget?.hasPointerCapture(start.pointerId)) {
+        start.captureTarget.releasePointerCapture(start.pointerId);
+      }
+    } catch {
+      // Pointer capture cleanup is best effort on older WebViews.
+    }
   };
 
   document.addEventListener('click', click, true);
