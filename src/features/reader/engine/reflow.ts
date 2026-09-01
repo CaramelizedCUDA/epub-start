@@ -5,7 +5,24 @@ import type { ReadingSettings } from '../../../types/models';
 const REFLOW_EVENT_TIMEOUT_MS = 1_200;
 const AUTO_SPREAD_MIN_VIEWPORT_PX = 1_000;
 const PAGINATED_GAP_PX = 32;
+const READER_MIN_SIDE_GUTTER_PX = 24;
 const renditionQueues = new WeakMap<Rendition, Promise<void>>();
+interface ReaderBodyLayout {
+  leftPercent: number;
+  rightPercent: number;
+}
+
+const readerBodyLayouts = new WeakMap<Rendition, ReaderBodyLayout>();
+const readerBodyLayoutHooks = new WeakSet<Rendition>();
+const readerBodyLayoutEventHooks = new WeakSet<Rendition>();
+
+interface RenditionContentHookHost {
+  hooks: {
+    content: {
+      register: (callback: (content: Content) => void) => void;
+    };
+  };
+}
 
 export interface PreserveAndReflowOptions {
   restoreTheme: boolean;
@@ -324,6 +341,32 @@ export function injectReadingTheme(
     sans: 'Arial, Helvetica, sans-serif',
     system: 'system-ui, sans-serif',
   }[settings.font_family];
+  // EPUB.js makes the paginated body wider than one page. Resolve the stored
+  // percentages against the actual column width instead of the full strip,
+  // then add a fixed floor so legacy 0% settings still have a visible gutter.
+  const layout: ReaderBodyLayout = {
+    leftPercent: settings.margin_left_percent,
+    rightPercent: settings.margin_right_percent,
+  };
+  readerBodyLayouts.set(rendition, layout);
+  if (!readerBodyLayoutHooks.has(rendition)) {
+    const hookHost = rendition as unknown as RenditionContentHookHost;
+    hookHost.hooks.content.register((content: Content) => {
+      const currentLayout = readerBodyLayouts.get(rendition);
+      if (currentLayout) applyReaderBodyLayoutToContent(content, currentLayout);
+    });
+    readerBodyLayoutHooks.add(rendition);
+  }
+  if (!readerBodyLayoutEventHooks.has(rendition)) {
+    const applyCurrentBodyLayout = () => {
+      const currentLayout = readerBodyLayouts.get(rendition);
+      if (currentLayout) applyReaderBodyLayout(rendition, currentLayout);
+    };
+    rendition.on('rendered', applyCurrentBodyLayout);
+    rendition.on('relocated', applyCurrentBodyLayout);
+    rendition.on('resized', applyCurrentBodyLayout);
+    readerBodyLayoutEventHooks.add(rendition);
+  }
 
   rendition.themes.register('reader-settings', {
     html: {
@@ -331,6 +374,8 @@ export function injectReadingTheme(
       color: `${palette.color} !important`,
       height: '100% !important',
       margin: '0 !important',
+      'box-sizing': 'border-box !important',
+      '-webkit-text-size-adjust': '100% !important',
     },
     body: {
       'background-color': `${palette.background} !important`,
@@ -343,8 +388,16 @@ export function injectReadingTheme(
       margin: '0 !important',
       'padding-top': `${settings.margin_top_px}px !important`,
       'padding-bottom': `${settings.margin_bottom_px}px !important`,
-      'padding-left': `${settings.margin_left_percent}% !important`,
-      'padding-right': `${settings.margin_right_percent}% !important`,
+      // Keep the multicolumn body itself at the full page width. Applying
+      // side padding to the body shrinks every fragmentainer and makes the
+      // next column leak into the current viewport. The pixel gutters are
+      // applied to each direct body child below instead.
+      'padding-left': '0 !important',
+      'padding-right': '0 !important',
+      '-webkit-text-size-adjust': '100% !important',
+      'overflow-wrap': 'break-word !important',
+      'word-wrap': 'break-word !important',
+      'touch-action': 'pan-y !important',
     },
     p: {
       'margin-bottom': `${settings.paragraph_spacing_multiplier}em !important`,
@@ -353,7 +406,45 @@ export function injectReadingTheme(
     '*': { color: `${palette.color} !important` },
   });
   rendition.themes.select('reader-settings');
+  applyReaderBodyLayout(rendition, layout);
   centerReaderContainer();
+}
+
+function applyReaderBodyLayout(
+  rendition: Rendition,
+  layout: ReaderBodyLayout,
+): void {
+  for (const content of rendition.getContents()) {
+    applyReaderBodyLayoutToContent(content, layout);
+  }
+}
+
+function applyReaderBodyLayoutToContent(
+  content: Content,
+  layout: ReaderBodyLayout,
+): void {
+  const body = content.document.body;
+  if (!body) return;
+  const columnWidth = readReaderColumnWidth(content, body);
+  const leftGutter = `${READER_MIN_SIDE_GUTTER_PX + columnWidth * layout.leftPercent / 100}px`;
+  const rightGutter = `${READER_MIN_SIDE_GUTTER_PX + columnWidth * layout.rightPercent / 100}px`;
+  body.style.setProperty('padding-left', '0px', 'important');
+  body.style.setProperty('padding-right', '0px', 'important');
+  for (const child of Array.from(body.children)) {
+    const element = child as HTMLElement;
+    element.style.setProperty('box-sizing', 'border-box', 'important');
+    element.style.setProperty('padding-left', leftGutter, 'important');
+    element.style.setProperty('padding-right', rightGutter, 'important');
+  }
+  body.style.setProperty('touch-action', 'pan-y', 'important');
+}
+
+function readReaderColumnWidth(content: Content, body: HTMLElement): number {
+  const computedColumnWidth = Number.parseFloat(
+    content.window.getComputedStyle(body).getPropertyValue('column-width'),
+  );
+  if (Number.isFinite(computedColumnWidth) && computedColumnWidth > 0) return computedColumnWidth;
+  return Math.max(1, body.clientWidth);
 }
 
 function centerReaderContainer(): void {

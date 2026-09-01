@@ -18,6 +18,7 @@ interface ImageInteractionHandlers {
   onError: (message: string) => void;
   onPreviousPage: () => void;
   onNextPage: () => void;
+  onToggleNavigation: () => void;
   isPaginated: () => boolean;
 }
 
@@ -38,6 +39,9 @@ const LONG_PRESS_MS = 550;
 const MOVE_TOLERANCE_PX = 12;
 const PAGE_TURN_EDGE_RATIO = 0.25;
 const PAGE_TURN_LOCK_MS = 250;
+const SWIPE_MIN_DISTANCE_PX = 48;
+const SWIPE_MAX_DURATION_MS = 700;
+const SWIPE_VERTICAL_TOLERANCE = 1.25;
 
 export function installImageInteractions(
   rendition: Rendition,
@@ -98,7 +102,7 @@ export function installImageInteractions(
   const viewportClick = (event: MouseEvent) => {
     // When the paginated rendition is narrower than the host viewport, clicks
     // land on the host's side gutters rather than inside an iframe document.
-    // Handle only those gutter clicks here; iframe clicks remain authoritative.
+    // Handle those gutter clicks here; iframe clicks remain authoritative.
     if (event.target !== viewport || !handlers.isPaginated() || hasActiveSelection(window.document)) return;
     const rect = viewport?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
@@ -109,6 +113,8 @@ export function installImageInteractions(
     } else if (ratio >= 1 - PAGE_TURN_EDGE_RATIO) {
       event.preventDefault();
       turnPage('next');
+    } else {
+      handlers.onToggleNavigation();
     }
   };
   viewport?.addEventListener('click', viewportClick);
@@ -142,6 +148,13 @@ function attachDocument(
   const { document } = content;
   let longPressTimer: number | null = null;
   let pressStart: { x: number; y: number; target: ReaderImageTarget } | null = null;
+  let swipeStart: {
+    x: number;
+    y: number;
+    startedAt: number;
+    target: EventTarget | null;
+    isImage: boolean;
+  } | null = null;
   let suppressNextClick = false;
 
   for (const image of Array.from(document.images)) {
@@ -181,14 +194,16 @@ function attachDocument(
     '\u65e0\u6cd5\u8bfb\u53d6\u8fd9\u5f20\u56fe\u7247\u7684\u663e\u793a\u5730\u5740\u3002',
   );
   const click = (event: MouseEvent) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const image = imageElementFromEvent(event);
     if (image) {
       event.preventDefault();
       event.stopPropagation();
-      if (suppressNextClick) {
-        suppressNextClick = false;
-        return;
-      }
       const target = resolveImageTarget(image, sectionHref, epubRootUrl, bookId);
       if (!target) {
         reportUnresolvedImage();
@@ -198,7 +213,7 @@ function attachDocument(
       return;
     }
 
-    if (!handlers.isPaginated() || hasActiveSelection(document) || isInteractiveElement(event.target)) return;
+    if (hasActiveSelection(document) || isInteractiveElement(event.target)) return;
     // 已渲染的高亮标记优先于边缘翻页：点击高亮区域只打开批注菜单，不翻页。
     if (isPointOnHighlightMark(document, event.clientX, event.clientY)) {
       event.preventDefault();
@@ -207,6 +222,10 @@ function attachDocument(
     }
     const viewport = window.document.getElementById('epub-reader-viewport');
     const viewportRect = viewport?.getBoundingClientRect();
+    if (!handlers.isPaginated()) {
+      handlers.onToggleNavigation();
+      return;
+    }
     if (!viewportRect || viewportRect.width <= 0) return;
     const relativeX = pointInReader(event).x - viewportRect.left;
     if (relativeX < 0 || relativeX > viewportRect.width) return;
@@ -218,6 +237,8 @@ function attachDocument(
       event.preventDefault();
       event.stopPropagation();
       turnPage('next');
+    } else {
+      handlers.onToggleNavigation();
     }
   };
   const contextMenu = (event: MouseEvent) => {
@@ -235,6 +256,13 @@ function attachDocument(
   const pointerDown = (event: PointerEvent) => {
     if (event.pointerType === 'mouse') return;
     const image = imageElementFromEvent(event);
+    swipeStart = {
+      x: event.clientX,
+      y: event.clientY,
+      startedAt: Date.now(),
+      target: event.target,
+      isImage: Boolean(image),
+    };
     if (!image) return;
     const target = resolveImageTarget(image, sectionHref, epubRootUrl, bookId);
     if (!target) {
@@ -259,13 +287,37 @@ function attachDocument(
       clearLongPress();
     }
   };
+  const pointerUp = (event: PointerEvent) => {
+    const start = swipeStart;
+    swipeStart = null;
+    clearLongPress();
+    if (!start || event.pointerType === 'mouse' || start.isImage) return;
+    if (Date.now() - start.startedAt > SWIPE_MAX_DURATION_MS) return;
+    if (hasActiveSelection(document) || isInteractiveElement(start.target)) return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (
+      Math.abs(deltaX) < SWIPE_MIN_DISTANCE_PX
+      || Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_VERTICAL_TOLERANCE
+      || !handlers.isPaginated()
+    ) return;
+
+    suppressNextClick = true;
+    event.preventDefault();
+    turnPage(deltaX < 0 ? 'next' : 'previous');
+  };
+  const pointerCancel = () => {
+    swipeStart = null;
+    clearLongPress();
+  };
 
   document.addEventListener('click', click, true);
   document.addEventListener('contextmenu', contextMenu, true);
   document.addEventListener('pointerdown', pointerDown, true);
   document.addEventListener('pointermove', pointerMove, true);
-  document.addEventListener('pointerup', clearLongPress, true);
-  document.addEventListener('pointercancel', clearLongPress, true);
+  document.addEventListener('pointerup', pointerUp, true);
+  document.addEventListener('pointercancel', pointerCancel, true);
 
   return () => {
     clearLongPress();
@@ -273,8 +325,8 @@ function attachDocument(
     document.removeEventListener('contextmenu', contextMenu, true);
     document.removeEventListener('pointerdown', pointerDown, true);
     document.removeEventListener('pointermove', pointerMove, true);
-    document.removeEventListener('pointerup', clearLongPress, true);
-    document.removeEventListener('pointercancel', clearLongPress, true);
+    document.removeEventListener('pointerup', pointerUp, true);
+    document.removeEventListener('pointercancel', pointerCancel, true);
   };
 }
 

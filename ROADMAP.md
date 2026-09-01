@@ -165,6 +165,8 @@ F1 的隔离设计探索可以提前进行，但生产实现必须等 B3 技术�
 
 2026-09-01 F1 第四轮按 `design-exploration/phase-4-cards/` 参考完成生产重排：三张洞察卡仍保留，继续阅读成为轮盘下方的小挂件，阅读时长总量与周期起止日期收进轮盘中心；触控设备固定为左轮盘/右继续阅读/下方推荐；底部导航为藏书、足迹、设置，系列/搜索/批注进入全部藏书工具行；周期筛选和推荐开关由设置页管理，推荐卡支持收起/展开；移动端“全部藏书”改为紧凑三列网格，缩小卡片内边距、封面留白及标题/作者/操作文字，桌面端网格保持不变；针对 Android 9 Chrome 79 不支持 `aspect-ratio` 与 `inset` 简写，封面比例改用伪元素占位并将绝对定位改为显式四向定位，保证封面完整渲染。所有书架页移除大标题区；桌面各分区顶部保留紧凑全屏入口，Android/触控 WebView 隐藏；仅藏书页顶部显示小“+”导入入口；设置导航改为单色线性滑杆图标；原生桌面标题栏固定浅色以融入书架底色。未改 Reader、Rust、SQLite 或 IPC；桌面已验证藏书/足迹/设置入口形态、轮盘日期范围和浅色标题栏，黑鲨当前 arm64 debug APK 已复核藏书/设置移动入口边界、全部藏书三列网格及封面完整渲染。证据见 `target/f1-runtime/phase4-desktop-titlebar-light-window-clean.png`、`phase4-desktop-settings-top-fullscreen.png`、`phase4-desktop-footprint-top-fullscreen-final.png`、`phase4-desktop-settings-icon-final.png`、`phase4-blackshark-final-entry-boundary.png`、`phase4-blackshark-settings-final.png`、`phase4-blackshark-three-column-shelf-cover-fixed.png`。Android 本轮推荐控件逐项操作、Reader 计时回填、荣耀因无线配对码失效未复测及 F2/F3 矩阵仍未覆盖。
 
+2026-09-01 F2 Reader 首轮运行态修复完成本轮范围（不代表 F2/F3 整体完成）：重建底部浮动阅读导航，按 Android 系统上下安全区留出空间，支持单击正文中央隐藏/恢复控件；将目录、搜索、批注、阅读设置收进单一浮层面板；分页正文按实际 EPUB.js 列宽为每个直接内容区补齐最小左右留白，避免 body 多栏宽度被压缩后把下一页带入当前页；补齐触控设备左右滑动翻页，并加入带方向箭头的手机主屏式横向过渡，约 700ms 后自动清理。已测（辅助逻辑/构建）：前端 build、Android debug arm64 build、`git diff --check`；已测（Android 环境）：荣耀 PPG-AN00 / Android 15 真实 WebView 安装启动、正文加载、约 34.8px 左右正文留白、可见行无侧向串页、下一页按钮与左右滑动均能切换页码，前后方向过渡类名/动画实际运行并在约 700ms 后清除，单击隐藏/再次单击恢复导航。未测：黑鲨本轮 Reader 最终回归、Android 9 Reader、桌面 Tauri Reader、滚动模式滑动、图片长按、目录/搜索/批注/设置完整交互矩阵、所有 EPUB 样本、横屏/软键盘/深色模式、正式签名及更广 OEM 矩阵；因此仍保留 F2/F3 后续验收范围。未新增 Rust、SQLite 或 IPC。
+
 - 删除/替换 legacy shell 的布局假设，先建立清晰的应用壳层、导航、空状态、加载状态和错误状态；
 - 只消费已冻结的 IPC，不在 React 中解析 ZIP/XML/SQLite 或推断来源有效性；
 - 先完成信息架构和可用性，再进入颜色、字体、动效和视觉细节；

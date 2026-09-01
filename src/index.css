@@ -7,6 +7,123 @@
     @apply rounded bg-gray-700 px-3 py-1 text-sm text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400;
   }
 
+  .reader-nav-button {
+    @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm text-gray-200 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-300;
+  }
+
+  .reader-nav-primary {
+    @apply bg-white/10 font-medium text-white;
+  }
+
+  .reader-nav-page {
+    @apply w-9 px-0 text-xl leading-none;
+  }
+
+  .reader-nav-active {
+    @apply bg-teal-700/70 text-white;
+  }
+
+  .reader-page-turn-effect {
+    @apply pointer-events-none absolute inset-0 z-10 overflow-hidden;
+    animation: reader-page-turn-fade 700ms ease-out both;
+  }
+
+  .reader-page-turn-effect::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    background-color: inherit;
+    box-shadow: 0 0 2rem rgba(23, 33, 43, 0.3);
+    will-change: transform;
+  }
+
+  .reader-page-turn-effect-next::before {
+    left: 100%;
+    box-shadow: -1.5rem 0 2rem rgba(23, 33, 43, 0.28);
+    animation: reader-page-turn-screen-next 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  .reader-page-turn-effect-previous::before {
+    right: 100%;
+    box-shadow: 1.5rem 0 2rem rgba(23, 33, 43, 0.28);
+    animation: reader-page-turn-screen-previous 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  .reader-page-turn-effect::after {
+    position: absolute;
+    top: 50%;
+    display: flex;
+    width: 3rem;
+    height: 4.5rem;
+    margin-top: -2.25rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    border-radius: 9999px;
+    background: rgba(23, 33, 43, 0.5);
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 2.25rem;
+    font-weight: 300;
+    line-height: 1;
+    text-shadow: 0 0 0.7rem rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 1.25rem rgba(23, 33, 43, 0.18);
+    opacity: 0;
+  }
+
+  .reader-page-turn-effect-next::after {
+    content: '›';
+    right: 1rem;
+    animation: reader-page-turn-indicator-next 700ms ease-out both;
+  }
+
+  .reader-page-turn-effect-previous::after {
+    content: '‹';
+    left: 1rem;
+    animation: reader-page-turn-indicator-previous 700ms ease-out both;
+  }
+
+  @keyframes reader-page-turn-fade {
+    0% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes reader-page-turn-screen-next {
+    0% { transform: translateX(0); }
+    48% { transform: translateX(-100%); }
+    100% { transform: translateX(-200%); }
+  }
+
+  @keyframes reader-page-turn-screen-previous {
+    0% { transform: translateX(0); }
+    48% { transform: translateX(100%); }
+    100% { transform: translateX(200%); }
+  }
+
+  @keyframes reader-page-turn-indicator-next {
+    0% { transform: translateX(0); opacity: 0; }
+    14% { transform: translateX(0); opacity: 0.96; }
+    70% { transform: translateX(-0.35rem); opacity: 0.5; }
+    100% { transform: translateX(-0.75rem); opacity: 0; }
+  }
+
+  @keyframes reader-page-turn-indicator-previous {
+    0% { transform: translateX(0); opacity: 0; }
+    14% { transform: translateX(0); opacity: 0.96; }
+    70% { transform: translateX(0.35rem); opacity: 0.5; }
+    100% { transform: translateX(0.75rem); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reader-page-turn-effect,
+    .reader-page-turn-effect::before,
+    .reader-page-turn-effect::after {
+      animation-duration: 160ms;
+    }
+  }
+
   /* Chrome 79, used by some Android 9 WebViews, does not implement
      aspect-ratio. The pseudo-element creates a 3:4 box without putting
      padding into the absolute-positioned cover content's containing block. */
@@ -20,6 +137,17 @@
 /* Some Android WebViews expose a physical-width CSS viewport. Touch devices
    still need the one-handed bottom navigation even when `md` matches. */
 @media (hover: none) and (pointer: coarse) {
+  .reader-shell {
+    padding-top: 1.5rem;
+    padding-top: max(1.5rem, env(safe-area-inset-top));
+    padding-bottom: 1.25rem;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+  }
+
+  .reader-navigation {
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
   .desktop-fullscreen-control,
   .desktop-fullscreen-error {
     display: none !important;
