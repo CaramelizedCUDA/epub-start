@@ -17,6 +17,8 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 
 interface ReadingInsightsProps {
   onOpenBook: (book: BookSummary) => void;
+  period: ReadingOverviewPeriod;
+  recommendationsEnabled: boolean;
 }
 
 const PERIODS: Array<{ value: ReadingOverviewPeriod; label: string }> = [
@@ -26,8 +28,8 @@ const PERIODS: Array<{ value: ReadingOverviewPeriod; label: string }> = [
   { value: 'quarter', label: '季度' },
 ];
 
-export function LibraryInsights({ onOpenBook }: ReadingInsightsProps) {
-  const [period, setPeriod] = useState<ReadingOverviewPeriod>('week');
+export function LibraryInsights({ onOpenBook, period, recommendationsEnabled }: ReadingInsightsProps) {
+  const [recommendationsCollapsed, setRecommendationsCollapsed] = useState(false);
   const overview = useReadingInsightsStore((state) => state.overview);
   const overviewLoading = useReadingInsightsStore((state) => state.overviewLoading);
   const overviewError = useReadingInsightsStore((state) => state.overviewError);
@@ -39,33 +41,37 @@ export function LibraryInsights({ onOpenBook }: ReadingInsightsProps) {
     void loadOverview(period);
   }, [loadOverview, period]);
 
+  useEffect(() => {
+    if (!recommendationsEnabled) setRecommendationsCollapsed(false);
+  }, [recommendationsEnabled]);
+
   return (
-    <div className="grid gap-10 xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,0.9fr)]">
+    <div className="library-insights-grid grid gap-8 xl:grid-cols-[minmax(0,1.65fr)_minmax(20rem,0.9fr)]">
       <div className="min-w-0">
         <DurationPanel
           period={period}
           overview={currentOverview}
           isLoading={overviewLoading}
           error={overviewError}
-          onPeriodChange={setPeriod}
           onRetry={() => {
             clearOverviewError();
             void loadOverview(period);
           }}
-        />
-        <ContinueReadingPanel
-          item={currentOverview?.continue_reading ?? null}
-          isLoading={overviewLoading && currentOverview === null}
-          error={overviewError}
+          continueItem={currentOverview?.continue_reading ?? null}
+          isContinueLoading={overviewLoading && currentOverview === null}
           onOpenBook={onOpenBook}
         />
       </div>
-      <RecommendationPanel
-        recommendations={currentOverview?.recommendations ?? []}
-        isLoading={overviewLoading && currentOverview === null}
-        error={overviewError}
-        onOpenBook={onOpenBook}
-      />
+      {recommendationsEnabled && (
+        <RecommendationPanel
+          recommendations={currentOverview?.recommendations ?? []}
+          isLoading={overviewLoading && currentOverview === null}
+          error={overviewError}
+          onOpenBook={onOpenBook}
+          collapsed={recommendationsCollapsed}
+          onToggle={() => setRecommendationsCollapsed((value) => !value)}
+        />
+      )}
     </div>
   );
 }
@@ -75,15 +81,19 @@ function DurationPanel({
   overview,
   isLoading,
   error,
-  onPeriodChange,
   onRetry,
+  continueItem,
+  isContinueLoading,
+  onOpenBook,
 }: {
   period: ReadingOverviewPeriod;
   overview: LibraryReadingOverview | null;
   isLoading: boolean;
   error: string | null;
-  onPeriodChange: (period: ReadingOverviewPeriod) => void;
   onRetry: () => void;
+  continueItem: ContinueReadingItem | null;
+  isContinueLoading: boolean;
+  onOpenBook: (book: BookSummary) => void;
 }) {
   const duration = overview?.duration ?? null;
   const periodLabel = PERIODS.find((item) => item.value === period)?.label ?? '周';
@@ -95,35 +105,15 @@ function DurationPanel({
           <p className="mb-1 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#2e6e67]">阅读时长</p>
           <h2 id="reading-duration-title" className="font-serif text-3xl font-medium tracking-[-0.04em] text-[#18272c]">{periodLabel}的阅读</h2>
         </div>
-        <div className="flex items-center gap-1" role="tablist" aria-label="阅读时长周期">
-          {PERIODS.map((item) => {
-            const selected = item.value === period;
-            return (
-              <button
-                key={item.value}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => onPeriodChange(item.value)}
-                className={`min-w-9 border-b px-2 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-[#c5a76b] ${selected ? 'border-[#2e6e67] text-[#18272c]' : 'border-transparent text-[#687571] hover:border-[#2e6e67] hover:text-[#18272c]'}`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
+        <span className="pt-2 text-xs text-[#687571]">周期可在设置中调整</span>
       </div>
 
       {error && !duration ? (
         <InlineError message={error} onRetry={onRetry} />
       ) : duration ? (
-        <div className={`grid items-center gap-6 border-b border-[#d0d9d4] py-7 sm:grid-cols-[minmax(0,0.9fr)_minmax(13rem,1fr)] ${isLoading ? 'opacity-60' : ''}`}>
-          <div className="pl-1">
-            <p className="font-mono text-5xl font-medium tracking-[-0.08em] text-[#18272c] sm:text-6xl">{formatDuration(duration.total_reading_ms)}</p>
-            <p className="mt-3 text-xs text-[#687571]">{formatDateRange(duration)}</p>
-            <p className="mt-5 max-w-[15rem] font-serif text-lg leading-relaxed text-[#687571]">时间只描述经过，不把阅读变成目标。</p>
-          </div>
+        <div className={`library-duration-layout grid grid-cols-2 items-center gap-x-4 gap-y-3 border-b border-[#d0d9d4] py-5 sm:grid-cols-[minmax(0,0.9fr)_minmax(13rem,1fr)] sm:gap-6 sm:py-7 ${isLoading ? 'opacity-60' : ''}`}>
           <DurationWheel duration={duration} />
+          <ContinueReadingWidget item={continueItem} isLoading={isContinueLoading} error={error} onOpenBook={onOpenBook} />
         </div>
       ) : (
         <DurationSkeleton />
@@ -138,12 +128,13 @@ function DurationWheel({ duration }: { duration: ReadingDurationSummary }) {
   }), [duration]);
 
   return (
-    <div className="flex min-h-[14rem] items-center justify-center" role="img" aria-label={`阅读时长 ${formatDuration(duration.total_reading_ms)}`}>
-      <div className="relative grid h-52 w-52 place-items-center rounded-full p-[0.85rem]" style={style}>
+    <div className="library-duration-wheel flex min-h-[8rem] items-center justify-center" role="img" aria-label={`阅读时长 ${formatDuration(duration.total_reading_ms)}，${formatDurationRange(duration.range_start_local_date, duration.range_end_local_date)}`}>
+      <div className="library-duration-wheel-circle relative grid h-28 w-28 place-items-center rounded-full p-2 sm:h-52 sm:w-52 sm:p-[0.85rem]" style={style}>
         <div className="grid h-full w-full place-items-center rounded-full border border-[#c5a76b] bg-[#f9fbf7] text-center">
           <div>
             <strong className="block font-mono text-xl font-medium tracking-[-0.05em] text-[#18272c]">{formatDuration(duration.total_reading_ms)}</strong>
             <span className="mt-1 block font-mono text-[0.62rem] uppercase tracking-[0.15em] text-[#687571]">{durationPeriodLabel(duration.period)}</span>
+            <span className="mt-1 block max-w-[7.5rem] font-mono text-[0.52rem] leading-tight tracking-[-0.01em] text-[#687571]">{formatDurationRange(duration.range_start_local_date, duration.range_end_local_date)}</span>
           </div>
         </div>
       </div>
@@ -151,7 +142,7 @@ function DurationWheel({ duration }: { duration: ReadingDurationSummary }) {
   );
 }
 
-function ContinueReadingPanel({
+function ContinueReadingWidget({
   item,
   isLoading,
   error,
@@ -163,43 +154,43 @@ function ContinueReadingPanel({
   onOpenBook: (book: BookSummary) => void;
 }) {
   return (
-    <section className="border-b border-[#d0d9d4] py-6" aria-labelledby="continue-reading-title">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section className="library-continue-widget min-w-0 border-l-[3px] border-[#2e6e67] bg-[#f9fbf7] p-3 sm:p-4" aria-labelledby="continue-reading-title">
+      <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="mb-1 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#2e6e67]">下一步</p>
-          <h2 id="continue-reading-title" className="font-serif text-3xl font-medium tracking-[-0.04em] text-[#18272c]">继续阅读</h2>
+          <p className="mb-1 font-mono text-[0.6rem] uppercase tracking-[0.16em] text-[#2e6e67]">下一步</p>
+          <h2 id="continue-reading-title" className="font-serif text-xl font-medium tracking-[-0.04em] text-[#18272c] sm:text-2xl">继续阅读</h2>
         </div>
         {item && (
-          <button type="button" onClick={() => onOpenBook(item.book)} className="border-b border-[#2e6e67] px-0 py-2 text-sm text-[#2e6e67] transition hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
-            继续阅读 <span aria-hidden="true">→</span>
+          <button type="button" onClick={() => onOpenBook(item.book)} className="shrink-0 border-b border-[#2e6e67] px-0 py-1 text-xs text-[#2e6e67] transition hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
+            打开 <span aria-hidden="true">→</span>
           </button>
         )}
       </div>
 
       {isLoading ? (
-        <BookDetailSkeleton />
+        <ContinueReadingSkeleton />
       ) : error && !item ? (
         <InlineError message={error} />
       ) : item ? (
-        <div className="mt-5 grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-5 sm:grid-cols-[8rem_minmax(0,1fr)]">
-          <BookCover book={item.book} size="large" />
+        <button type="button" onClick={() => onOpenBook(item.book)} className="mt-3 grid w-full min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-center gap-3 text-left focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
+          <BookCover book={item.book} size="tiny" />
           <div className="min-w-0">
-            <p className="mb-1 text-xs text-[#2e6e67]">{item.book.format.toUpperCase()} · 上次阅读 {formatLastRead(item.last_read_at)}</p>
-            <h3 className="truncate font-serif text-2xl font-medium tracking-[-0.03em] text-[#18272c]">{item.book.title}</h3>
-            <p className="mt-1 truncate text-sm text-[#687571]">{formatAuthors(item.book)}</p>
-            <div className="mt-6 h-[3px] bg-[#d7e2de]" aria-label={`阅读进度 ${formatProgress(item.book, item.progress?.progression)}`}>
+            <p className="mb-1 truncate text-[0.62rem] text-[#2e6e67]">{item.book.format.toUpperCase()} · {formatLastRead(item.last_read_at)}</p>
+            <h3 className="truncate font-serif text-base font-medium leading-tight tracking-[-0.02em] text-[#18272c]">{item.book.title}</h3>
+            <p className="mt-1 truncate text-[0.68rem] text-[#687571]">{formatAuthors(item.book)}</p>
+            <div className="mt-3 h-[3px] bg-[#d7e2de]" aria-label={`阅读进度 ${formatProgress(item.book, item.progress?.progression)}`}>
               <span className="block h-full bg-[#2e6e67]" style={{ width: `${progressPercent(item.progress?.progression)}%` }} />
             </div>
-            <div className="mt-2 flex justify-between gap-4 font-mono text-[0.68rem] text-[#687571]">
-              <span>{item.progress?.location_cfi ? '从上次位置开始' : '从第一页开始'}</span>
+            <div className="mt-1 flex justify-between gap-2 font-mono text-[0.58rem] text-[#687571]">
+              <span className="truncate">{item.progress?.location_cfi ? '上次位置' : '第一页'}</span>
               <strong className="font-medium text-[#18272c]">{formatProgress(item.book, item.progress?.progression)}</strong>
             </div>
           </div>
-        </div>
+        </button>
       ) : (
-        <div className="mt-5 border-l-[3px] border-[#c5a76b] bg-[#f9fbf7] px-5 py-5">
-          <p className="font-serif text-xl text-[#18272c]">还没有正在继续的书</p>
-          <p className="mt-1 text-sm text-[#687571]">从藏书中打开一本书，下一次就能从上次位置回来。</p>
+        <div className="mt-3 border-t border-[#d0d9d4] pt-3">
+          <p className="font-serif text-base text-[#18272c]">还没有正在继续的书</p>
+          <p className="mt-1 text-xs leading-relaxed text-[#687571]">从藏书中打开一本书，下一次就能从上次位置回来。</p>
         </div>
       )}
     </section>
@@ -211,44 +202,61 @@ function RecommendationPanel({
   isLoading,
   error,
   onOpenBook,
+  collapsed,
+  onToggle,
 }: {
   recommendations: ReadingRecommendation[];
   isLoading: boolean;
   error: string | null;
   onOpenBook: (book: BookSummary) => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <aside className="border-l border-[#d0d9d4] pl-0 xl:pl-8" aria-labelledby="recommendations-title">
+    <aside className="library-recommendation-panel border-l border-[#d0d9d4] pl-0 xl:pl-8" aria-labelledby="recommendations-title">
       <div className="border-t-[3px] border-[#c5a76b] pt-5">
         <div className="flex items-start justify-between gap-4 border-b border-[#d0d9d4] pb-4">
           <div>
             <p className="mb-1 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#c5a76b]">从你的书架里</p>
             <h2 id="recommendations-title" className="font-serif text-3xl font-medium tracking-[-0.04em] text-[#18272c]">推荐阅读</h2>
           </div>
-          <span className="font-mono text-2xl text-[#c5a76b]">{String(recommendations.length).padStart(2, '0')}</span>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-2xl text-[#c5a76b]">{String(recommendations.length).padStart(2, '0')}</span>
+            <button type="button" onClick={onToggle} aria-expanded={!collapsed} aria-controls="recommendations-body" className="border-b border-transparent px-1 py-1 text-xs text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
+              {collapsed ? '展开' : '收起'} <span aria-hidden="true">{collapsed ? '↓' : '↑'}</span>
+            </button>
+          </div>
         </div>
-        <p className="py-4 font-serif text-base leading-relaxed text-[#687571]">只根据书架关系和阅读状态，给你几个不剧透的方向。</p>
+        <div id="recommendations-body">
+          {collapsed ? (
+            <p className="border-b border-[#d0d9d4] py-4 text-sm leading-relaxed text-[#687571]">推荐阅读已折叠，设置仍保持开启。</p>
+          ) : (
+            <>
+              <p className="py-4 font-serif text-base leading-relaxed text-[#687571]">只根据书架关系和阅读状态，给你几个不剧透的方向。</p>
 
-        {isLoading ? (
-          <RecommendationSkeleton />
-        ) : error && recommendations.length === 0 ? (
-          <InlineError message={error} />
-        ) : recommendations.length > 0 ? (
-          <div>
-            {recommendations.map((recommendation) => (
-              <RecommendationItem key={recommendation.book.id} recommendation={recommendation} onOpenBook={onOpenBook} />
-            ))}
-          </div>
-        ) : (
-          <div className="border-t border-[#d0d9d4] px-1 py-5">
-            <p className="font-serif text-xl text-[#18272c]">书架暂时没有推荐</p>
-            <p className="mt-1 text-sm text-[#687571]">多读几本或完成一次导入后，这里会出现基于书架关系的候选。</p>
-          </div>
-        )}
+              {isLoading ? (
+                <RecommendationSkeleton />
+              ) : error && recommendations.length === 0 ? (
+                <InlineError message={error} />
+              ) : recommendations.length > 0 ? (
+                <div>
+                  {recommendations.map((recommendation) => (
+                    <RecommendationItem key={recommendation.book.id} recommendation={recommendation} onOpenBook={onOpenBook} />
+                  ))}
+                </div>
+              ) : (
+                <div className="border-t border-[#d0d9d4] px-1 py-5">
+                  <p className="font-serif text-xl text-[#18272c]">书架暂时没有推荐</p>
+                  <p className="mt-1 text-sm text-[#687571]">多读几本或完成一次导入后，这里会出现基于书架关系的候选。</p>
+                </div>
+              )}
 
-        <div className="mt-5 flex gap-3 border-t border-dashed border-[#d0d9d4] pt-4 text-xs leading-relaxed text-[#687571]">
-          <span className="grid h-5 w-5 shrink-0 place-items-center border border-[#c5a76b] font-mono text-[#c5a76b]">i</span>
-          <p>理由来自系列、进度和书架状态。正文摘录推荐将在 Reader 完成后另行评审。</p>
+              <div className="mt-5 flex gap-3 border-t border-dashed border-[#d0d9d4] pt-4 text-xs leading-relaxed text-[#687571]">
+                <span className="grid h-5 w-5 shrink-0 place-items-center border border-[#c5a76b] font-mono text-[#c5a76b]">i</span>
+                <p>理由来自系列、进度和书架状态。正文摘录推荐将在 Reader 完成后另行评审。</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </aside>
@@ -389,9 +397,9 @@ function EmptyFootprint() {
   );
 }
 
-function BookCover({ book, size }: { book: BookSummary; size: 'large' | 'small' }) {
+function BookCover({ book, size }: { book: BookSummary; size: 'large' | 'small' | 'tiny' }) {
   const [coverFailed, setCoverFailed] = useState(false);
-  const dimensions = size === 'large' ? 'h-44 w-[5.5rem] sm:w-32' : 'h-24 w-[4.5rem]';
+  const dimensions = size === 'large' ? 'h-44 w-[5.5rem] sm:w-32' : size === 'tiny' ? 'h-16 w-12' : 'h-24 w-[4.5rem]';
   const title = book.title.length > 20 ? `${book.title.slice(0, 20)}…` : book.title;
   return (
     <div className={`relative flex shrink-0 flex-col justify-between overflow-hidden bg-[#4d6188] p-3 text-[#f8faf5] shadow-[0_14px_28px_rgba(24,39,44,0.12)] ${dimensions}`}>
@@ -417,11 +425,11 @@ function InlineError({ message, onRetry }: { message: string; onRetry?: () => vo
 }
 
 function DurationSkeleton() {
-  return <div className="grid min-h-[18rem] items-center gap-6 border-b border-[#d0d9d4] py-7 sm:grid-cols-2"><div className="space-y-4"><span className="block h-14 w-40 bg-[#d7e2de]" /><span className="block h-3 w-48 bg-[#d7e2de]" /><span className="block h-12 w-56 bg-[#d7e2de]" /></div><div className="mx-auto h-52 w-52 rounded-full border-[0.85rem] border-[#d7e2de]" /></div>;
+  return <div className="library-duration-layout grid min-h-[12rem] grid-cols-2 items-center gap-x-4 gap-y-3 border-b border-[#d0d9d4] py-5 sm:grid-cols-[minmax(0,0.9fr)_minmax(13rem,1fr)] sm:gap-6 sm:py-7"><div className="library-duration-wheel mx-auto h-28 w-28 rounded-full border-2 border-[#d7e2de] sm:h-52 sm:w-52 sm:border-[0.85rem]" /><ContinueReadingSkeleton /></div>;
 }
 
-function BookDetailSkeleton() {
-  return <div className="mt-5 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-5"><span className="h-44 w-full bg-[#d7e2de]" /><div className="space-y-4 pt-2"><span className="block h-3 w-36 bg-[#d7e2de]" /><span className="block h-8 w-3/4 bg-[#d7e2de]" /><span className="block h-3 w-1/2 bg-[#d7e2de]" /><span className="mt-8 block h-1 w-full bg-[#d7e2de]" /></div></div>;
+function ContinueReadingSkeleton() {
+  return <div className="library-continue-widget min-w-0 bg-[#f9fbf7] p-3 sm:p-4"><div className="h-4 w-16 bg-[#d7e2de]" /><div className="mt-3 grid grid-cols-[3rem_minmax(0,1fr)] gap-3"><span className="h-16 w-12 bg-[#d7e2de]" /><div className="space-y-3 pt-1"><span className="block h-3 w-4/5 bg-[#d7e2de]" /><span className="block h-3 w-3/5 bg-[#d7e2de]" /><span className="block h-1 w-full bg-[#d7e2de]" /></div></div></div>;
 }
 
 function RecommendationSkeleton() {
@@ -457,22 +465,23 @@ function formatDuration(milliseconds: number): string {
   return `${hours}h ${String(remainingMinutes).padStart(2, '0')}m`;
 }
 
-function formatDateRange(duration: ReadingDurationSummary): string {
-  return `${shortDate(duration.range_start_local_date)} — ${shortDate(duration.range_end_local_date)} · ${bucketLabel(duration)}`;
-}
-
 function durationPeriodLabel(period: ReadingOverviewPeriod): string {
   return PERIODS.find((item) => item.value === period)?.label ?? period;
 }
 
-function bucketLabel(duration: ReadingDurationSummary): string {
-  const count = duration.buckets.filter((bucket) => bucket.reading_ms > 0).length;
-  return `${count} 次有记录的阅读`;
+function formatDurationRange(startLocalDate: string, endLocalDate: string): string {
+  const sameYear = startLocalDate.slice(0, 4) === endLocalDate.slice(0, 4);
+  const start = formatLocalDate(startLocalDate, !sameYear);
+  const end = formatLocalDate(endLocalDate, !sameYear);
+  if (startLocalDate === endLocalDate) return start;
+  return `${start} — ${end}`;
 }
 
-function shortDate(date: string): string {
-  const [, month, day] = date.split('-');
-  return `${month}.${day}`;
+function formatLocalDate(localDate: string, includeYear: boolean): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(localDate);
+  if (!match) return localDate;
+  const [, year, month, day] = match;
+  return includeYear ? `${year}.${month}.${day}` : `${month}.${day}`;
 }
 
 function formatLastRead(timestamp: number): string {

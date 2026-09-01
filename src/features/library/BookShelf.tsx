@@ -3,12 +3,12 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useLibraryStore } from '../../stores/libraryStore';
 import { getGlobalReadingSettings, saveGlobalReadingSettings } from '../../lib/tauri';
-import type { BookSummary, ReadingSettings } from '../../types/models';
+import type { BookSummary, ReadingOverviewPeriod, ReadingSettings } from '../../types/models';
 import { B2CloseoutPanel } from '../closeout/B2CloseoutPanel';
 import { B3PrivateDataPanel } from '../closeout/B3PrivateDataPanel';
 import { FootprintPage, LibraryInsights } from './ReadingInsights';
 
-export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'footprint';
+export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'footprint' | 'settings';
 
 interface BookShelfProps {
   activeSection: LibrarySection;
@@ -20,11 +20,19 @@ interface BookShelfProps {
 
 const NAV_ITEMS: Array<{ section: LibrarySection; label: string; glyph: string }> = [
   { section: 'library', label: '藏书', glyph: '⌂' },
-  { section: 'series', label: '系列', glyph: 'Ⅱ' },
-  { section: 'search', label: '搜索', glyph: '⌕' },
-  { section: 'notes', label: '批注', glyph: '✎' },
   { section: 'footprint', label: '足迹', glyph: '▦' },
+  { section: 'settings', label: '设置', glyph: 'settings' },
 ];
+
+const READING_PERIOD_OPTIONS: Array<[string, string]> = [
+  ['day', '日'],
+  ['week', '周'],
+  ['month', '月'],
+  ['quarter', '季度'],
+];
+const READING_PERIOD_VALUES: ReadingOverviewPeriod[] = ['day', 'week', 'month', 'quarter'];
+const READING_PERIOD_STORAGE_KEY = 'epubstart.library.reading-period';
+const RECOMMENDATIONS_STORAGE_KEY = 'epubstart.library.recommendations-enabled';
 
 const SECTION_META: Record<LibrarySection, { eyebrow: string; title: string; subtitle: string }> = {
   library: {
@@ -52,7 +60,42 @@ const SECTION_META: Record<LibrarySection, { eyebrow: string; title: string; sub
     title: '这一年留下的痕迹。',
     subtitle: '不评价读了多少，只把走过的日子留在这里。',
   },
+  settings: {
+    eyebrow: 'SHELF PREFERENCES',
+    title: '把书架调成你的样子。',
+    subtitle: '阅读时长的观察方式和推荐阅读，都可以在这里安静地调整。',
+  },
 };
+
+function readReadingPeriodPreference(): ReadingOverviewPeriod {
+  const stored = readLocalPreference(READING_PERIOD_STORAGE_KEY);
+  return stored && READING_PERIOD_VALUES.includes(stored as ReadingOverviewPeriod)
+    ? stored as ReadingOverviewPeriod
+    : 'week';
+}
+
+function readRecommendationsPreference(): boolean {
+  const stored = readLocalPreference(RECOMMENDATIONS_STORAGE_KEY);
+  return stored === null ? true : stored === 'true';
+}
+
+function readLocalPreference(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalPreference(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // A restricted WebView may disable storage; the setting remains usable in-memory.
+  }
+}
 
 export function BookShelf({
   activeSection,
@@ -71,15 +114,35 @@ export function BookShelf({
     removeBook,
     clearError,
   } = useLibraryStore();
-  const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<ReadingSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [readingPeriod, setReadingPeriod] = useState<ReadingOverviewPeriod>(readReadingPeriodPreference);
+  const [recommendationsEnabled, setRecommendationsEnabled] = useState(readRecommendationsPreference);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadBooks();
   }, [loadBooks]);
+
+  useEffect(() => {
+    if (activeSection !== 'settings' || settings) return;
+    let disposed = false;
+    setSettingsError(null);
+    void getGlobalReadingSettings()
+      .then((value) => { if (!disposed) setSettings(value); })
+      .catch((err: unknown) => { if (!disposed) setSettingsError(err instanceof Error ? err.message : String(err)); });
+    return () => { disposed = true; };
+  }, [activeSection, settings]);
+
+  useEffect(() => {
+    writeLocalPreference(READING_PERIOD_STORAGE_KEY, readingPeriod);
+  }, [readingPeriod]);
+
+  useEffect(() => {
+    writeLocalPreference(RECOMMENDATIONS_STORAGE_KEY, String(recommendationsEnabled));
+  }, [recommendationsEnabled]);
 
   useEffect(() => {
     let disposed = false;
@@ -94,35 +157,23 @@ export function BookShelf({
         .catch(() => undefined);
     }).then((cleanup) => { unlisten = cleanup; }).catch(() => undefined);
     return () => { disposed = true; unlisten?.(); };
-  }, []);
+  }, [activeSection]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      event.preventDefault();
       const appWindow = getCurrentWindow();
       void appWindow.isFullscreen().then(async (fullscreen) => {
         if (!fullscreen) return;
         await appWindow.setFullscreen(false);
         setIsFullscreen(false);
       }).catch((err: unknown) => {
-        setSettingsError(err instanceof Error ? err.message : String(err));
+        setFullscreenError(err instanceof Error ? err.message : String(err));
       });
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const openSettings = async () => {
-    setShowSettings(true);
-    setSettingsError(null);
-    if (settings) return;
-    try {
-      setSettings(await getGlobalReadingSettings());
-    } catch (err) {
-      setSettingsError(err instanceof Error ? err.message : String(err));
-    }
-  };
+  }, [activeSection]);
 
   const persistSettings = async () => {
     if (!settings) return;
@@ -139,23 +190,20 @@ export function BookShelf({
   };
 
   const toggleFullscreen = async () => {
-    setSettingsError(null);
+    setFullscreenError(null);
     try {
       const appWindow = getCurrentWindow();
       const next = !(await appWindow.isFullscreen());
       await appWindow.setFullscreen(next);
       setIsFullscreen(next);
     } catch (err) {
-      setSettingsError(err instanceof Error ? err.message : String(err));
+      setFullscreenError(err instanceof Error ? err.message : String(err));
     }
   };
 
   const changeSection = (section: LibrarySection) => {
-    setShowSettings(false);
     onSectionChange(section);
   };
-
-  const meta = SECTION_META[activeSection];
 
   return (
     <div className="min-h-screen bg-[#edf1ee] text-[#18272c]">
@@ -175,7 +223,7 @@ export function BookShelf({
                 className={`mobile-nav-item relative grid min-w-[3.5rem] flex-1 place-content-center gap-1 px-2 py-1 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c5a76b] md:min-w-0 md:py-2 ${activeSection === item.section ? 'text-[#2e6e67]' : 'text-[#687571] hover:text-[#2e6e67]'}`}
               >
                 {activeSection === item.section && <span className="mobile-nav-active absolute left-2 right-2 top-0 h-[3px] bg-[#2e6e67] md:bottom-0 md:left-0 md:right-auto md:h-auto md:w-[3px]" aria-hidden="true" />}
-                <span className="text-lg leading-none" aria-hidden="true">{item.glyph}</span>
+                {item.section === 'settings' ? <SettingsGlyph /> : <span className="text-lg leading-none" aria-hidden="true">{item.glyph}</span>}
                 <span className="text-[0.65rem]">{item.label}</span>
               </button>
             ))}
@@ -184,34 +232,15 @@ export function BookShelf({
         </aside>
 
         <main className="mobile-main-content relative flex min-w-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
-          <header className="border-b border-[#d0d9d4] px-5 pb-7 pt-[calc(2.5rem+env(safe-area-inset-top))] sm:px-8 lg:px-16 lg:pt-14">
-            <div className="mx-auto flex max-w-[1500px] flex-col justify-between gap-6 xl:flex-row xl:items-start">
-              <div>
-                <p className="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[#2e6e67]">{meta.eyebrow}</p>
-                <h1 className="font-serif text-4xl font-medium tracking-[-0.055em] text-[#18272c] sm:text-5xl lg:text-6xl">{meta.title}</h1>
-                <p className="mt-3 max-w-xl font-serif text-base text-[#687571]">{meta.subtitle}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 xl:pt-3">
-                <button type="button" onClick={() => changeSection('search')} className="border-b border-transparent px-2 py-2 text-sm text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
-                  <span aria-hidden="true">⌕</span> <span className="hidden sm:inline">搜索书名、作者、系列</span><kbd className="ml-2 hidden font-mono text-[0.6rem] sm:inline">Ctrl K</kbd>
-                </button>
-                <button type="button" onClick={() => void openSettings()} className="border-b border-transparent px-2 py-2 text-sm text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">设置</button>
-                <button type="button" onClick={() => void toggleFullscreen()} className="border-b border-transparent px-2 py-2 text-sm text-[#687571] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">{isFullscreen ? '退出全屏' : '全屏'}</button>
-                <button type="button" onClick={() => void importFromDialog()} disabled={isLoading} className="bg-[#18272c] px-4 py-2.5 text-sm text-[#f9fbf7] transition hover:bg-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:cursor-not-allowed disabled:opacity-50">＋ 导入 EPUB</button>
-              </div>
+          <header className="border-b border-[#d0d9d4] px-5 py-3 sm:px-8 lg:px-16" aria-label="书架快捷入口">
+            <div className="mx-auto flex max-w-[1500px] justify-end gap-2">
+              <button type="button" onClick={() => void toggleFullscreen()} aria-label={isFullscreen ? '退出全屏' : '全屏'} title={isFullscreen ? '退出全屏' : '全屏'} aria-pressed={isFullscreen} className="desktop-fullscreen-control grid h-10 w-10 place-items-center border border-[#d0d9d4] text-lg leading-none text-[#687571] transition hover:border-[#2e6e67] hover:bg-[#f9fbf7] hover:text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">⛶</button>
+              {activeSection === 'library' && (
+                <button type="button" onClick={() => void importFromDialog()} disabled={isLoading} aria-label="导入 EPUB" title="导入 EPUB" className="grid h-10 w-10 place-items-center border border-[#d0d9d4] text-2xl leading-none text-[#18272c] transition hover:border-[#2e6e67] hover:bg-[#f9fbf7] hover:text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:cursor-not-allowed disabled:opacity-50">+</button>
+              )}
             </div>
           </header>
-
-          {showSettings && (
-            <SettingsPanel
-              settings={settings}
-              error={settingsError}
-              isSaving={isSavingSettings}
-              onClose={() => setShowSettings(false)}
-              onChange={setSettings}
-              onSave={() => void persistSettings()}
-            />
-          )}
+          {fullscreenError && <div className="desktop-fullscreen-error mx-auto w-full max-w-[1500px] px-5 pt-3 text-right text-xs text-[#a54b45] sm:px-8 lg:px-16" role="alert">全屏切换失败：{fullscreenError}</div>}
 
           <div className="mx-auto w-full max-w-[1500px] flex-1 px-5 pb-12 sm:px-8 lg:px-16">
             {import.meta.env.VITE_B2_CLOSEOUT === '1' && <B2CloseoutPanel />}
@@ -223,19 +252,35 @@ export function BookShelf({
             {activeSection === 'library' && (
               <>
                 <div className="pt-8 lg:pt-10">
-                  <LibraryInsights onOpenBook={onOpenBook} />
+                  <LibraryInsights onOpenBook={onOpenBook} period={readingPeriod} recommendationsEnabled={recommendationsEnabled} />
                 </div>
                 <BookCollection
                   books={books}
                   isLoading={isLoading}
                   onImport={() => void importFromDialog()}
                   onOpenBook={onOpenBook}
+                  onOpenSection={changeSection}
                   onRelocate={(bookId) => void relocateSource(bookId)}
                   onDelete={(bookId) => void removeBook(bookId)}
                 />
               </>
             )}
             {activeSection === 'footprint' && <div className="pt-8 lg:pt-10"><FootprintPage /></div>}
+            {activeSection === 'settings' && (
+              <SettingsPanel
+                embedded
+                readingPeriod={readingPeriod}
+                onReadingPeriodChange={setReadingPeriod}
+                recommendationsEnabled={recommendationsEnabled}
+                onRecommendationsEnabledChange={setRecommendationsEnabled}
+                settings={settings}
+                error={settingsError}
+                isSaving={isSavingSettings}
+                onClose={() => changeSection('library')}
+                onChange={setSettings}
+                onSave={() => void persistSettings()}
+              />
+            )}
             {(activeSection === 'series' || activeSection === 'search' || activeSection === 'notes') && <PlaceholderPage section={activeSection} />}
 
             <footer className="mt-12 flex flex-col gap-2 border-t border-[#d0d9d4] pt-4 font-mono text-[0.62rem] tracking-[0.08em] text-[#687571] sm:flex-row sm:items-center sm:justify-between">
@@ -254,6 +299,7 @@ function BookCollection({
   isLoading,
   onImport,
   onOpenBook,
+  onOpenSection,
   onRelocate,
   onDelete,
 }: {
@@ -261,6 +307,7 @@ function BookCollection({
   isLoading: boolean;
   onImport: () => void;
   onOpenBook: (book: BookSummary) => void;
+  onOpenSection: (section: LibrarySection) => void;
   onRelocate: (bookId: string) => void;
   onDelete: (bookId: string) => void;
 }) {
@@ -272,6 +319,21 @@ function BookCollection({
           <h2 id="all-books-title" className="font-serif text-3xl font-medium tracking-[-0.04em]">全部藏书</h2>
         </div>
         <span className="font-mono text-2xl text-[#5c7397]">{String(books.length).padStart(2, '0')}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d0d9d4] py-3" aria-label="书架工具">
+        <span className="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[#687571]">书架工具</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          {([
+            ['series', '系列'],
+            ['search', '搜索'],
+            ['notes', '批注'],
+          ] as const).map(([section, label]) => (
+            <button key={section} type="button" onClick={() => onOpenSection(section)} className="border-b border-transparent py-1 text-[#2e6e67] transition hover:border-[#2e6e67] hover:text-[#18272c] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">
+              {label} <span aria-hidden="true">↗</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading && books.length === 0 ? (
@@ -345,6 +407,17 @@ function ShelfCover({ book }: { book: BookSummary }) {
   );
 }
 
+function SettingsGlyph() {
+  return (
+    <svg className="h-[1.15rem] w-[1.15rem]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" />
+      <rect x="6" y="3.25" width="2.5" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.15" />
+      <rect x="12" y="8.25" width="2.5" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.15" />
+      <rect x="8.5" y="13.25" width="2.5" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="1.15" />
+    </svg>
+  );
+}
+
 function ShelfSkeleton() {
   return (
     <div className="grid gap-4 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" aria-label="正在读取书架">
@@ -402,6 +475,11 @@ function ErrorNotice({
 }
 
 function SettingsPanel({
+  embedded,
+  readingPeriod,
+  onReadingPeriodChange,
+  recommendationsEnabled,
+  onRecommendationsEnabledChange,
   settings,
   error,
   isSaving,
@@ -409,6 +487,11 @@ function SettingsPanel({
   onChange,
   onSave,
 }: {
+  embedded: boolean;
+  readingPeriod: ReadingOverviewPeriod;
+  onReadingPeriodChange: (period: ReadingOverviewPeriod) => void;
+  recommendationsEnabled: boolean;
+  onRecommendationsEnabledChange: (enabled: boolean) => void;
   settings: ReadingSettings | null;
   error: string | null;
   isSaving: boolean;
@@ -416,8 +499,12 @@ function SettingsPanel({
   onChange: (settings: ReadingSettings) => void;
   onSave: () => void;
 }) {
+  const panelClassName = embedded
+    ? 'mt-8 border-t-[3px] border-[#2e6e67] bg-[#f9fbf7] p-5 sm:mt-10 sm:p-7'
+    : 'absolute right-4 top-24 z-40 w-[min(22rem,calc(100vw-2rem))] border border-[#d0d9d4] bg-[#f9fbf7] p-5 shadow-[0_20px_44px_rgba(24,39,44,0.14)]';
+
   return (
-    <aside className="absolute right-4 top-24 z-40 w-[min(22rem,calc(100vw-2rem))] border border-[#d0d9d4] bg-[#f9fbf7] p-5 shadow-[0_20px_44px_rgba(24,39,44,0.14)]" aria-label="全局阅读设置">
+    <aside className={panelClassName} aria-label="书架设置">
       <div className="mb-4 flex items-start justify-between gap-4 border-b border-[#d0d9d4] pb-4">
         <div>
           <p className="mb-1 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[#2e6e67]">Preferences</p>
@@ -426,6 +513,19 @@ function SettingsPanel({
         </div>
         <button type="button" onClick={onClose} className="text-2xl leading-none text-[#687571] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]" aria-label="关闭设置">×</button>
       </div>
+      <section className="mb-6 border-b border-[#d0d9d4] pb-5" aria-labelledby="shelf-display-settings-title">
+        <p id="shelf-display-settings-title" className="mb-3 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[#2e6e67]">书架显示</p>
+        <div className="space-y-3 text-sm">
+          <ShelfSelect label="阅读时长周期" value={readingPeriod} options={READING_PERIOD_OPTIONS} onChange={(value) => onReadingPeriodChange(value as ReadingOverviewPeriod)} />
+          <label className="flex items-start justify-between gap-4">
+            <span>
+              <span className="block">推荐阅读</span>
+              <span className="mt-1 block max-w-sm text-xs leading-relaxed text-[#687571]">只使用书架关系和阅读状态；关闭后，藏书页不再显示这张卡。</span>
+            </span>
+            <input type="checkbox" checked={recommendationsEnabled} onChange={(event) => onRecommendationsEnabledChange(event.target.checked)} className="mt-1 h-4 w-4 accent-[#2e6e67]" />
+          </label>
+        </div>
+      </section>
       {settings ? (
         <div className="space-y-3 text-sm">
           <ShelfSelect label="主题" value={settings.theme} options={[['light', '浅色'], ['sepia', '暖色'], ['dark', '深色']]} onChange={(value) => onChange({ ...settings, theme: value as ReadingSettings['theme'] })} />
