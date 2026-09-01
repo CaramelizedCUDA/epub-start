@@ -6,6 +6,15 @@
   .reader-control {
     @apply rounded bg-gray-700 px-3 py-1 text-sm text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400;
   }
+
+  /* Chrome 79, used by some Android 9 WebViews, does not implement
+     aspect-ratio. The pseudo-element creates a 3:4 box without putting
+     padding into the absolute-positioned cover content's containing block. */
+  .library-shelf-cover::before {
+    content: '';
+    display: block;
+    padding-top: 133.333333%;
+  }
 }
 
 /* Some Android WebViews expose a physical-width CSS viewport. Touch devices
@@ -87,5 +96,38 @@
     border-top: 1px solid #d0d9d4;
     padding-left: 0 !important;
     padding-top: 2rem;
+  }
+
+  /* Keep the mobile collection dense enough to scan without turning each
+     cover into a full-screen card. */
+  .library-book-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    column-gap: 0.5rem !important;
+    row-gap: 1.5rem !important;
+  }
+
+  .library-book-card {
+    border-top-width: 2px !important;
+    padding: 0.5rem !important;
+  }
+
+  .library-shelf-cover-content {
+    padding: 0.45rem !important;
+  }
+
+  .library-book-card-title {
+    font-size: 0.78rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .library-book-card-author {
+    margin-top: 0.2rem !important;
+    font-size: 0.58rem !important;
+  }
+
+  .library-book-card-actions {
+    margin-top: 0.6rem !important;
+    min-height: 1.15rem !important;
+    font-size: 0.58rem !important;
   }
 }

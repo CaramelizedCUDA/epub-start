@@ -341,7 +341,7 @@ function BookCollection({
       ) : books.length === 0 ? (
         <EmptyShelf onImport={onImport} />
       ) : (
-        <div className={`grid gap-x-4 gap-y-10 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 ${isLoading ? 'opacity-60' : ''}`}>
+        <div className={`library-book-grid grid gap-x-4 gap-y-10 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 ${isLoading ? 'opacity-60' : ''}`}>
           {books.map((book) => (
             <ShelfBookCard
               key={book.id}
@@ -374,17 +374,17 @@ function ShelfBookCard({
   const canRelocate = book.status === 'missing';
   const canOpen = book.status !== 'error';
   return (
-    <article className="group min-w-0 border-t-[3px] border-[#2e6e67] bg-[#f9fbf7] p-3 shadow-[0_14px_28px_rgba(24,39,44,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(24,39,44,0.1)]">
+    <article className="library-book-card group min-w-0 border-t-[3px] border-[#2e6e67] bg-[#f9fbf7] p-3 shadow-[0_14px_28px_rgba(24,39,44,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(24,39,44,0.1)]">
       <button type="button" onClick={onOpen} disabled={disabled || !canOpen} className="block w-full text-left focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:cursor-not-allowed disabled:opacity-60">
         <ShelfCover book={book} />
         <div className="pt-3">
-          <h3 className="truncate font-serif text-lg font-medium text-[#18272c]" title={book.title}>{book.title}</h3>
-          <p className="mt-1 truncate text-xs text-[#687571]">{book.authors.length > 0 ? book.authors.join(' · ') : '作者信息未提供'}</p>
+          <h3 className="library-book-card-title truncate font-serif text-lg font-medium text-[#18272c]" title={book.title}>{book.title}</h3>
+          <p className="library-book-card-author mt-1 truncate text-xs text-[#687571]">{book.authors.length > 0 ? book.authors.join(' · ') : '作者信息未提供'}</p>
           {book.status === 'error' && <span className="mt-3 inline-block border-b border-[#a54b45] pb-1 text-xs text-[#a54b45]">解析失败</span>}
           {book.status === 'missing' && <span className="mt-3 inline-block border-b border-[#c5a76b] pb-1 text-xs text-[#8b7137]">文件缺失</span>}
         </div>
       </button>
-      <div className="mt-4 flex min-h-6 items-center justify-between gap-2 text-xs">
+      <div className="library-book-card-actions mt-4 flex min-h-6 items-center justify-between gap-2 text-xs">
         {canRelocate ? <button type="button" onClick={onRelocate} disabled={disabled} className="border-b border-[#c5a76b] text-[#8b7137] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">重新选择</button> : <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[#687571]">{book.format}</span>}
         <button type="button" onClick={onDelete} disabled={disabled} className="border-b border-transparent text-[#687571] transition hover:border-[#a54b45] hover:text-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">移除</button>
       </div>
@@ -395,14 +395,16 @@ function ShelfBookCard({
 function ShelfCover({ book }: { book: BookSummary }) {
   const [coverFailed, setCoverFailed] = useState(false);
   return (
-    <div className="relative aspect-[3/4] overflow-hidden bg-[#4d6188] p-3 text-[#f8faf5]">
-      <span className="relative font-mono text-[0.62rem] tracking-[0.1em]">{book.format.toUpperCase()}</span>
-      {book.cover_cache_path && !coverFailed ? (
-        <img src={convertFileSrc(book.cover_cache_path)} alt="" onError={() => setCoverFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
-      ) : (
-        <span className="relative mt-auto block max-w-[8rem] font-serif text-xl leading-tight">{book.title}</span>
-      )}
-      <span className="absolute bottom-0 right-0 top-0 w-1 bg-white/30" aria-hidden="true" />
+    <div className="library-shelf-cover relative overflow-hidden bg-[#4d6188]">
+      <div className="library-shelf-cover-content absolute bottom-0 left-0 right-0 top-0 p-3 text-[#f8faf5]">
+        <span className="relative font-mono text-[0.62rem] tracking-[0.1em]">{book.format.toUpperCase()}</span>
+        {book.cover_cache_path && !coverFailed ? (
+          <img src={convertFileSrc(book.cover_cache_path)} alt="" onError={() => setCoverFailed(true)} className="absolute bottom-0 left-0 right-0 top-0 h-full w-full object-cover" />
+        ) : (
+          <span className="relative mt-auto block max-w-[8rem] font-serif text-xl leading-tight">{book.title}</span>
+        )}
+        <span className="absolute bottom-0 right-0 top-0 w-1 bg-white/30" aria-hidden="true" />
+      </div>
     </div>
   );
 }
@@ -420,8 +422,8 @@ function SettingsGlyph() {
 
 function ShelfSkeleton() {
   return (
-    <div className="grid gap-4 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" aria-label="正在读取书架">
-      {Array.from({ length: 6 }, (_, index) => <div key={index} className="space-y-3 border-t-[3px] border-[#d7e2de] bg-[#f9fbf7] p-3"><div className="aspect-[3/4] bg-[#d7e2de]" /><div className="h-5 w-4/5 bg-[#d7e2de]" /><div className="h-3 w-1/2 bg-[#d7e2de]" /></div>)}
+    <div className="library-book-grid grid gap-4 pt-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" aria-label="正在读取书架">
+      {Array.from({ length: 6 }, (_, index) => <div key={index} className="space-y-3 border-t-[3px] border-[#d7e2de] bg-[#f9fbf7] p-3"><div className="library-shelf-cover bg-[#d7e2de]" /><div className="h-5 w-4/5 bg-[#d7e2de]" /><div className="h-3 w-1/2 bg-[#d7e2de]" /></div>)}
     </div>
   );
 }
