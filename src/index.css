@@ -25,7 +25,7 @@
 
   .reader-page-turn-effect {
     @apply pointer-events-none absolute inset-0 z-10 overflow-hidden;
-    animation: reader-page-turn-fade 700ms ease-out both;
+    animation: reader-page-turn-fade 320ms ease-out both;
   }
 
   .reader-page-turn-effect::before {
@@ -39,16 +39,68 @@
     will-change: transform;
   }
 
+  .reader-page-turn-effect-dragging,
+  .reader-page-turn-effect-settling,
+  .reader-page-turn-effect-canceling {
+    animation: none;
+    opacity: 1;
+  }
+
+  /* During a swipe the edge layer is controlled by a CSS variable updated
+     from pointermove, so the visual never runs ahead of the finger. */
+  .reader-page-turn-effect-dragging::before {
+    animation: none;
+    transition: none;
+  }
+
+  .reader-page-turn-effect-dragging.reader-page-turn-effect-next::before {
+    animation: none;
+    transform: translateX(var(--reader-page-turn-drag-offset, 0%));
+  }
+
+  .reader-page-turn-effect-dragging.reader-page-turn-effect-previous::before {
+    animation: none;
+    transform: translateX(var(--reader-page-turn-drag-offset, 0%));
+  }
+
   .reader-page-turn-effect-next::before {
     left: 100%;
     box-shadow: -1.5rem 0 2rem rgba(23, 33, 43, 0.28);
-    animation: reader-page-turn-screen-next 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation: reader-page-turn-screen-next 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   }
 
   .reader-page-turn-effect-previous::before {
     right: 100%;
     box-shadow: 1.5rem 0 2rem rgba(23, 33, 43, 0.28);
-    animation: reader-page-turn-screen-previous 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation: reader-page-turn-screen-previous 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  /* On release, the page is committed immediately and the edge layer exits
+     in parallel. This keeps the next page visible without a blocking wait. */
+  .reader-page-turn-effect-settling::before {
+    animation: none;
+    transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  .reader-page-turn-effect-settling.reader-page-turn-effect-next::before {
+    animation: none;
+    transform: translateX(-200%);
+  }
+
+  .reader-page-turn-effect-settling.reader-page-turn-effect-previous::before {
+    animation: none;
+    transform: translateX(200%);
+  }
+
+  .reader-page-turn-effect-canceling::before {
+    animation: none;
+    transition: transform 180ms ease-out;
+  }
+
+  .reader-page-turn-effect-canceling.reader-page-turn-effect-next::before,
+  .reader-page-turn-effect-canceling.reader-page-turn-effect-previous::before {
+    animation: none;
+    transform: translateX(0);
   }
 
   .reader-page-turn-effect::after {
@@ -75,13 +127,33 @@
   .reader-page-turn-effect-next::after {
     content: '›';
     right: 1rem;
-    animation: reader-page-turn-indicator-next 700ms ease-out both;
+    animation: reader-page-turn-indicator-next 320ms ease-out both;
   }
 
   .reader-page-turn-effect-previous::after {
     content: '‹';
     left: 1rem;
-    animation: reader-page-turn-indicator-previous 700ms ease-out both;
+    animation: reader-page-turn-indicator-previous 320ms ease-out both;
+  }
+
+  .reader-page-turn-effect-dragging.reader-page-turn-effect-next::after,
+  .reader-page-turn-effect-dragging.reader-page-turn-effect-previous::after {
+    animation: none;
+    opacity: 0.82;
+  }
+
+  .reader-page-turn-effect-settling.reader-page-turn-effect-next::after {
+    animation: reader-page-turn-indicator-next 260ms ease-out both;
+  }
+
+  .reader-page-turn-effect-settling.reader-page-turn-effect-previous::after {
+    animation: reader-page-turn-indicator-previous 260ms ease-out both;
+  }
+
+  .reader-page-turn-effect-canceling.reader-page-turn-effect-next::after,
+  .reader-page-turn-effect-canceling.reader-page-turn-effect-previous::after {
+    animation: none;
+    opacity: 0;
   }
 
   @keyframes reader-page-turn-fade {

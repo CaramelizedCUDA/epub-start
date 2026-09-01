@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useReaderStore } from '../../stores/readerStore';
 import {
   clearBookReadingSettings,
@@ -28,7 +29,9 @@ import { useReadingActivity } from './useReadingActivity';
 
 const RESIZE_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 300;
-const PAGE_TURN_EFFECT_MS = 700;
+const PAGE_TURN_EFFECT_MS = 320;
+const PAGE_TURN_GESTURE_CANCEL_MS = 180;
+const PAGE_TURN_GESTURE_RELEASE_MS = 260;
 
 interface EpubReaderProps {
   bookId: string;
@@ -42,9 +45,12 @@ type EditorDraft =
 
 type ReaderPanel = 'toc' | 'search' | 'notes' | 'settings';
 type PageTurnDirection = 'previous' | 'next';
+type PageTurnEffectPhase = 'playing' | 'dragging' | 'settling' | 'canceling';
 interface PageTurnEffect {
   direction: PageTurnDirection;
   id: number;
+  phase: PageTurnEffectPhase;
+  progress: number;
 }
 
 export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
@@ -102,6 +108,8 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const saveGenerationRef = useRef(0);
   const pageTurnEffectIdRef = useRef(0);
   const pageTurnEffectTimerRef = useRef<number | null>(null);
+  const pageTurnEffectRef = useRef<PageTurnEffect | null>(null);
+  const pageTurnEffectElementRef = useRef<HTMLDivElement | null>(null);
   const [pageTurnEffect, setPageTurnEffect] = useState<PageTurnEffect | null>(null);
 
   const togglePanel = (panel: ReaderPanel) => {
@@ -253,31 +261,121 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   };
 
   const showPageTurnEffect = useCallback((direction: PageTurnDirection) => {
-    pageTurnEffectIdRef.current += 1;
-    setPageTurnEffect({ direction, id: pageTurnEffectIdRef.current });
     if (pageTurnEffectTimerRef.current !== null) {
       window.clearTimeout(pageTurnEffectTimerRef.current);
     }
+    pageTurnEffectIdRef.current += 1;
+    const effect: PageTurnEffect = {
+      direction,
+      id: pageTurnEffectIdRef.current,
+      phase: 'playing',
+      progress: 0,
+    };
+    pageTurnEffectRef.current = effect;
+    setPageTurnEffect(effect);
+    const effectId = effect.id;
     pageTurnEffectTimerRef.current = window.setTimeout(() => {
+      if (pageTurnEffectRef.current?.id !== effectId) return;
       pageTurnEffectTimerRef.current = null;
+      pageTurnEffectRef.current = null;
       setPageTurnEffect(null);
     }, PAGE_TURN_EFFECT_MS);
   }, []);
 
+  const updatePageTurnGesture = useCallback((direction: PageTurnDirection, progress: number) => {
+    const boundedProgress = Math.max(0, Math.min(1, progress));
+    const current = pageTurnEffectRef.current;
+    if (!current || current.phase !== 'dragging' || current.direction !== direction) {
+      if (pageTurnEffectTimerRef.current !== null) {
+        window.clearTimeout(pageTurnEffectTimerRef.current);
+        pageTurnEffectTimerRef.current = null;
+      }
+      pageTurnEffectIdRef.current += 1;
+      const effect: PageTurnEffect = {
+        direction,
+        id: pageTurnEffectIdRef.current,
+        phase: 'dragging',
+        progress: boundedProgress,
+      };
+      pageTurnEffectRef.current = effect;
+      setPageTurnEffect(effect);
+      return;
+    }
+    current.progress = boundedProgress;
+    pageTurnEffectElementRef.current?.style.setProperty(
+      '--reader-page-turn-drag-offset',
+      `${(direction === 'next' ? -1 : 1) * boundedProgress * 100}%`,
+    );
+  }, []);
+
+  const cancelPageTurnGesture = useCallback(() => {
+    const current = pageTurnEffectRef.current;
+    if (!current || current.phase !== 'dragging') return;
+    if (pageTurnEffectTimerRef.current !== null) {
+      window.clearTimeout(pageTurnEffectTimerRef.current);
+    }
+    const effect: PageTurnEffect = { ...current, phase: 'canceling' };
+    pageTurnEffectRef.current = effect;
+    setPageTurnEffect(effect);
+    const effectId = effect.id;
+    pageTurnEffectTimerRef.current = window.setTimeout(() => {
+      if (pageTurnEffectRef.current?.id !== effectId) return;
+      pageTurnEffectTimerRef.current = null;
+      pageTurnEffectRef.current = null;
+      setPageTurnEffect(null);
+    }, PAGE_TURN_GESTURE_CANCEL_MS);
+  }, []);
+
+  const commitPageTurnGesture = useCallback((direction: PageTurnDirection, progress: number) => {
+    if (pageTurnEffectTimerRef.current !== null) {
+      window.clearTimeout(pageTurnEffectTimerRef.current);
+      pageTurnEffectTimerRef.current = null;
+    }
+    const boundedProgress = Math.max(0, Math.min(1, progress));
+    const current = pageTurnEffectRef.current;
+    const effect: PageTurnEffect = current
+      && current.phase === 'dragging'
+      && current.direction === direction
+      ? { ...current, phase: 'settling', progress: boundedProgress }
+      : {
+        direction,
+        id: ++pageTurnEffectIdRef.current,
+        phase: 'settling',
+        progress: boundedProgress,
+      };
+    pageTurnEffectRef.current = effect;
+    setPageTurnEffect(effect);
+
+    // Commit the page immediately. The edge layer finishes its sweep in
+    // parallel, so the reader never waits for the visual effect to end.
+    if (direction === 'previous') prevPage();
+    else nextPage();
+
+    const effectId = effect.id;
+    pageTurnEffectTimerRef.current = window.setTimeout(() => {
+      if (pageTurnEffectRef.current?.id !== effectId) return;
+      pageTurnEffectTimerRef.current = null;
+      pageTurnEffectRef.current = null;
+      setPageTurnEffect(null);
+    }, PAGE_TURN_GESTURE_RELEASE_MS);
+  }, [nextPage, prevPage]);
+
   const handlePreviousPage = useCallback(() => {
-    showPageTurnEffect('previous');
     prevPage();
+    showPageTurnEffect('previous');
   }, [prevPage, showPageTurnEffect]);
 
   const handleNextPage = useCallback(() => {
-    showPageTurnEffect('next');
     nextPage();
+    showPageTurnEffect('next');
   }, [nextPage, showPageTurnEffect]);
 
   useEffect(() => () => {
     if (pageTurnEffectTimerRef.current !== null) {
       window.clearTimeout(pageTurnEffectTimerRef.current);
+      pageTurnEffectTimerRef.current = null;
     }
+    pageTurnEffectRef.current = null;
   }, []);
 
   // Keyboard navigation
@@ -355,10 +453,23 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       },
       onPreviousPage: handlePreviousPage,
       onNextPage: handleNextPage,
+      onPageTurnGestureMove: updatePageTurnGesture,
+      onPageTurnGestureCancel: cancelPageTurnGesture,
+      onPageTurnGestureCommit: commitPageTurnGesture,
       onToggleNavigation: () => setIsNavigationVisible((visible) => !visible),
       isPaginated: () => settingsDraftRef.current?.flow !== 'scrolled',
     });
-  }, [rendition, isLoading, epubRootUrl, bookId, handlePreviousPage, handleNextPage]);
+  }, [
+    rendition,
+    isLoading,
+    epubRootUrl,
+    bookId,
+    handlePreviousPage,
+    handleNextPage,
+    updatePageTurnGesture,
+    cancelPageTurnGesture,
+    commitPageTurnGesture,
+  ]);
 
   // 打开完成后加载批注并恢复高亮标记。
   useEffect(() => {
@@ -571,10 +682,21 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
           <div
             key={pageTurnEffect.id}
             data-reader-page-turn={pageTurnEffect.direction}
+            data-reader-page-turn-phase={pageTurnEffect.phase}
             className={`reader-page-turn-effect ${pageTurnEffect.direction === 'next'
               ? 'reader-page-turn-effect-next'
-              : 'reader-page-turn-effect-previous'}`}
-            style={{ backgroundColor: readingBackground(settingsResult?.effective ?? null) }}
+              : 'reader-page-turn-effect-previous'} ${pageTurnEffect.phase === 'dragging'
+              ? 'reader-page-turn-effect-dragging'
+              : pageTurnEffect.phase === 'settling'
+                ? 'reader-page-turn-effect-settling'
+                : pageTurnEffect.phase === 'canceling'
+                  ? 'reader-page-turn-effect-canceling'
+                  : 'reader-page-turn-effect-playing'}`}
+            ref={pageTurnEffectElementRef}
+            style={{
+              backgroundColor: readingBackground(settingsResult?.effective ?? null),
+              '--reader-page-turn-drag-offset': `${(pageTurnEffect.direction === 'next' ? -1 : 1) * pageTurnEffect.progress * 100}%`,
+            } as CSSProperties}
             aria-hidden="true"
           />
         )}

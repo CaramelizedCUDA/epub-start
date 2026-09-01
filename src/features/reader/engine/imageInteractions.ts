@@ -18,6 +18,9 @@ interface ImageInteractionHandlers {
   onError: (message: string) => void;
   onPreviousPage: () => void;
   onNextPage: () => void;
+  onPageTurnGestureMove: (direction: 'previous' | 'next', progress: number) => void;
+  onPageTurnGestureCancel: () => void;
+  onPageTurnGestureCommit: (direction: 'previous' | 'next', progress: number) => void;
   onToggleNavigation: () => void;
   isPaginated: () => boolean;
 }
@@ -39,6 +42,7 @@ const LONG_PRESS_MS = 550;
 const MOVE_TOLERANCE_PX = 12;
 const PAGE_TURN_EDGE_RATIO = 0.25;
 const PAGE_TURN_LOCK_MS = 250;
+const SWIPE_DRAG_START_PX = 8;
 const SWIPE_MIN_DISTANCE_PX = 48;
 const SWIPE_MAX_DURATION_MS = 700;
 const SWIPE_VERTICAL_TOLERANCE = 1.25;
@@ -59,12 +63,29 @@ export function installImageInteractions(
     if (direction === 'previous') handlers.onPreviousPage();
     else handlers.onNextPage();
   };
+  const commitPageTurnGesture = (direction: 'previous' | 'next', progress: number) => {
+    const now = Date.now();
+    if (now < pageTurnLockedUntil || !handlers.isPaginated()) {
+      handlers.onPageTurnGestureCancel();
+      return;
+    }
+    pageTurnLockedUntil = now + PAGE_TURN_LOCK_MS;
+    handlers.onPageTurnGestureCommit(direction, progress);
+  };
   const attach = (content: Content, sectionHref?: string) => {
     if (cleanups.has(content.document)) return;
     const href = sectionHref || sectionHrefFromDocument(content.document, epubRootUrl, bookId);
     cleanups.set(
       content.document,
-      attachDocument(content, href, epubRootUrl, bookId, handlers, turnPage),
+      attachDocument(
+        content,
+        href,
+        epubRootUrl,
+        bookId,
+        handlers,
+        turnPage,
+        commitPageTurnGesture,
+      ),
     );
   };
   const attachCurrentViews = () => {
@@ -144,6 +165,7 @@ function attachDocument(
   bookId: string,
   handlers: ImageInteractionHandlers,
   turnPage: (direction: 'previous' | 'next') => void,
+  commitPageTurnGesture: (direction: 'previous' | 'next', progress: number) => void,
 ): () => void {
   const { document } = content;
   let longPressTimer: number | null = null;
@@ -154,6 +176,7 @@ function attachDocument(
     startedAt: number;
     target: EventTarget | null;
     isImage: boolean;
+    cancelled: boolean;
   } | null = null;
   let suppressNextClick = false;
 
@@ -262,6 +285,7 @@ function attachDocument(
       startedAt: Date.now(),
       target: event.target,
       isImage: Boolean(image),
+      cancelled: false,
     };
     if (!image) return;
     const target = resolveImageTarget(image, sectionHref, epubRootUrl, bookId);
@@ -279,21 +303,56 @@ function attachDocument(
     }, LONG_PRESS_MS);
   };
   const pointerMove = (event: PointerEvent) => {
-    if (!pressStart) return;
-    if (
+    if (pressStart && (
       Math.abs(event.clientX - pressStart.x) > MOVE_TOLERANCE_PX
       || Math.abs(event.clientY - pressStart.y) > MOVE_TOLERANCE_PX
-    ) {
+    )) {
       clearLongPress();
     }
+
+    const start = swipeStart;
+    if (!start || event.pointerType === 'mouse' || start.isImage || start.cancelled) return;
+    if (
+      Date.now() - start.startedAt > SWIPE_MAX_DURATION_MS
+      || hasActiveSelection(document)
+      || isInteractiveElement(start.target)
+    ) {
+      start.cancelled = true;
+      handlers.onPageTurnGestureCancel();
+      return;
+    }
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < SWIPE_DRAG_START_PX) return;
+    if (Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_VERTICAL_TOLERANCE) {
+      start.cancelled = true;
+      handlers.onPageTurnGestureCancel();
+      return;
+    }
+
+    const direction = deltaX < 0 ? 'next' : 'previous';
+    const viewportWidth = readerViewportWidth(content);
+    const progress = Math.min(1, Math.abs(deltaX) / viewportWidth);
+    event.preventDefault();
+    handlers.onPageTurnGestureMove(direction, progress);
   };
   const pointerUp = (event: PointerEvent) => {
     const start = swipeStart;
     swipeStart = null;
     clearLongPress();
     if (!start || event.pointerType === 'mouse' || start.isImage) return;
-    if (Date.now() - start.startedAt > SWIPE_MAX_DURATION_MS) return;
-    if (hasActiveSelection(document) || isInteractiveElement(start.target)) return;
+    const cancelGesture = () => {
+      if (!start.cancelled) handlers.onPageTurnGestureCancel();
+    };
+    if (start.cancelled || Date.now() - start.startedAt > SWIPE_MAX_DURATION_MS) {
+      cancelGesture();
+      return;
+    }
+    if (hasActiveSelection(document) || isInteractiveElement(start.target)) {
+      cancelGesture();
+      return;
+    }
 
     const deltaX = event.clientX - start.x;
     const deltaY = event.clientY - start.y;
@@ -301,13 +360,19 @@ function attachDocument(
       Math.abs(deltaX) < SWIPE_MIN_DISTANCE_PX
       || Math.abs(deltaX) < Math.abs(deltaY) * SWIPE_VERTICAL_TOLERANCE
       || !handlers.isPaginated()
-    ) return;
+    ) {
+      cancelGesture();
+      return;
+    }
 
     suppressNextClick = true;
     event.preventDefault();
-    turnPage(deltaX < 0 ? 'next' : 'previous');
+    const direction = deltaX < 0 ? 'next' : 'previous';
+    const progress = Math.min(1, Math.abs(deltaX) / readerViewportWidth(content));
+    commitPageTurnGesture(direction, progress);
   };
   const pointerCancel = () => {
+    if (swipeStart) handlers.onPageTurnGestureCancel();
     swipeStart = null;
     clearLongPress();
   };
@@ -328,6 +393,12 @@ function attachDocument(
     document.removeEventListener('pointerup', pointerUp, true);
     document.removeEventListener('pointercancel', pointerCancel, true);
   };
+}
+
+function readerViewportWidth(content: Content): number {
+  const viewport = window.document.getElementById('epub-reader-viewport');
+  const width = viewport?.getBoundingClientRect().width ?? content.window.innerWidth;
+  return Number.isFinite(width) && width > 0 ? width : 1;
 }
 
 function resolveImageTarget(
