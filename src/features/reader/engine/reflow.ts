@@ -403,6 +403,18 @@ export function injectReadingTheme(
       'margin-bottom': `${settings.paragraph_spacing_multiplier}em !important`,
       'text-indent': `${settings.text_indent_em}em !important`,
     },
+    // EPUB.js sizes images against the full fragmentainer. Direct body
+    // children carry the reader gutters, so constrain visual content to the
+    // child content box as well; otherwise an image can cross into the next
+    // column and leave a strip behind after a page turn.
+    img: {
+      'max-width': '100% !important',
+      'box-sizing': 'border-box !important',
+    },
+    svg: {
+      'max-width': '100% !important',
+      'box-sizing': 'border-box !important',
+    },
     '*': { color: `${palette.color} !important` },
   });
   rendition.themes.select('reader-settings');
