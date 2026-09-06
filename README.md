@@ -1,91 +1,59 @@
 # EpubStart
 
-一个基于 Tauri v2 和 React 的极简、高性能跨平台 EPUB 阅读器。项目优先交付 EPUB 的本地导入、渲染与阅读进度恢复；书架数据模型从一开始为 TXT、PDF、CBZ、CBR 预留扩展空间。
+一个本地优先的阅读器，面向轻小说与漫画阅读体验持续演进。当前以 **EPUB** 为核心，支持本地书架、正文阅读与进度恢复，后续计划逐步加入 TXT、图片漫画和 PDF。
 
-目标平台为 Windows、Linux、Android。iOS 不在当前路线图范围内。B2 已完成搜索/索引、目录资源契约、系列关系、标签 CRUD/继承/筛选、阅读设置、批注数据契约，以及 Android release 制品门禁和来源/封面缓存预算的代码与受控运行态收口。B3 技术冻结已于 2026-08-28 完成：当前 arm64 静态候选、双机空白安装/首次启动、37 个固定样本运行态占用和 release-like 私有 data 分项均已有范围证据；候选仍未正式签发，正式 release 签名另属最终发布门禁。B4 阅读洞察后端已完成：阅读时长、可独立删除的历史、继续阅读、足迹聚合和离线推荐已冻结并接入 49 个真实 Command；不包含生产书架/Reader UI。生产 F1–F3 现可在冻结契约上推进，隔离设计探索继续保留多方案，状态见 [TODO.md](TODO.md)。
+项目仍在开发中：前端功能和跨端体验正在收尾，正式发布候选尚未签发。未来格式不代表当前已经支持。
 
-## 文档导航
+## 当前功能
 
-仓库已包含可运行的 Tauri + React 应用。B0/B1 已于 2026-08-14 完成，B2 受控收口已覆盖活动读者、来源 hard-limit、六轮累计逻辑压力、SQLite 低余量和多记录业务/缓存恢复；封面 hard-limit 公共保护重叠仍只保留辅助逻辑证据。B3 收口验证通过 196/196 Rust feature 测试、Windows x64 安装包构建、当前 arm64 APK/AAB 静态审计和 `:app:lintArm64Release`（0 error、31 warning、1 hint）。黑鲨 SKW-A0、荣耀 PPG-AN00 已完成 37 个固定 EPUB 的导入/选择和 release-like data 分项观察；由于样本复测未重新卸载设备，报告保留为实际占用观察而非干净增量。正式 release 签名仍未执行。证据与边界见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)、[B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)、[B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)，执行顺序见 [TODO.md](TODO.md)。
+- 本地 EPUB 导入、封面书架、正文阅读与继续阅读。
+- 目录、书内搜索、阅读设置，以及文本高亮和批注。
+- 阅读时长、阅读足迹和基于本地书架的离线推荐。
+- 系列管理、系列正文索引搜索与按书回看批注已接入前端，完整操作验收仍在推进。
 
-当前开发策略已切换为 **Backend First**：先完成 Rust 后端、SQLite、来源/协议、平台适配、搜索/索引、阅读洞察和 IPC 契约，再重建和美化 React 前端。B0–B4 期间的前端曾作为 legacy shell 保留；随着后端冻结，生产 F1 第一批壳层与书架信息架构已进入桌面 Tauri 和荣耀 Android 15 WebView 真实运行态，Reader 的视觉与其余功能仍按 F2/F3 逐步接入。页面完成度、截图或前端构建通过仍不能单独替代跨端运行态验收；当前覆盖与未测清单见 [TODO.md](TODO.md)。B4 是在 B3 候选基础上经用户明确批准的追加后端变更，现已纳入技术冻结输入；正式签名不提前冒充完成。具体阶段、门禁和冻结规则见 [ROADMAP.md](ROADMAP.md)，当前执行看板见 [TODO.md](TODO.md)。
+标签已有后端契约，其管理和筛选前端仍在收尾范围。目录、搜索、批注、手势和阅读计时在不同设备上的覆盖范围不相同，具体限制见 [当前任务与验收状态](TODO.md)。
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)：模块职责、目录边界与资源访问原则。
-- [DATABASE.md](DATABASE.md)：SQLite 的唯一 Schema 定义与迁移规则。
-- [IPC.md](IPC.md)：Rust Command 和 TypeScript 调用方的唯一公开契约。
-- [CONVENTIONS.md](CONVENTIONS.md)：代码风格、依赖白名单和 Agent 行为约束。
-- [CONTEXT.md](CONTEXT.md)：产品、文档与代码共享的领域词汇。
-- [ROADMAP.md](ROADMAP.md)：阶段边界与冻结区。
-- [TODO.md](TODO.md)：当前阶段的执行看板；开始开发前必须先阅读。
-- [BACKEND_AUDIT.md](BACKEND_AUDIT.md)：B0 后端审计结论、B3 边界与 B4 追加复核。
-- [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)：2026-08-23 Windows 开发态与 release 桌面回归的已测项、未测项和搜索修复证据。
-- [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)：B3 技术冻结、当前 arm64 APK/AAB、完整 lint、双机固定样本占用证据与候选未签发边界。
-- [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)：B3 当前 arm64 真机复测使用的 37 个唯一 EPUB、哈希和固定导入顺序。
-- [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)：B3 Command、模型、错误、数据库、资源预算和来源状态的冻结候选及未签发条件。
-- [docs/adr/0001-reading-duration-history.md](docs/adr/0001-reading-duration-history.md)：B4 阅读时长、历史独立性、继续阅读与离线推荐的已接受决策。
-- [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md)：B2 受控 Android 虚拟设备低存储、重启和长期压力验收包；已记录活动读者、来源 hard-limit、SQLite 低余量、长期压力和多记录恢复证据，并明确封面 hard-limit 与 B3/F2 设备矩阵边界。
+## 平台与格式
 
-若文档间存在冲突，以职责更专门的文档为准：依赖与命令以本文件为准，目录职责以架构文档为准，表字段以数据库文档为准，Command 签名和错误语义以 IPC 文档为准。
-
-## 技术栈白名单
-
-除非先获得人类确认并同步更新本节，项目只能使用下列第三方依赖。
-
-| 范围 | 允许使用 |
+| 平台 | 当前状态 |
 | --- | --- |
-| 桌面/移动框架 | Tauri v2、`@tauri-apps/cli`、`@tauri-apps/api`、`@tauri-apps/plugin-dialog`、`tauri-plugin-dialog`、项目自有 Android SAF 移动插件（不引入额外第三方依赖） |
-| 前端运行时 | React 18、React DOM、EPUB.js（npm 包 `epubjs`）、Zustand |
-| 前端构建与样式 | Vite、`@vitejs/plugin-react`、TypeScript、`@types/react`、`@types/react-dom`、TailwindCSS、PostCSS、Autoprefixer |
-| Rust | `tauri` v2、`tauri-build`、`serde`、`serde_json`、`rusqlite`、`zip`、`quick-xml`、`tokio`、`uuid` |
-| 存储 | SQLite（通过 `rusqlite`） |
+| Windows | 已有桌面构建及部分真实运行态记录；新前端完整回归待完成 |
+| Android | 已有 Android 9 / Android 15 设备上的限定范围验证；完整功能与体验回归待完成 |
+| Linux | 目标平台，当前前端运行态验收待完成 |
+| iOS | 不在当前路线图范围内 |
 
-`@tauri-apps/plugin-dialog` 与 `tauri-plugin-dialog` 是已批准的唯一额外官方插件，用于 Windows/Linux 原生文件选择。其 Android 实现不提供 Phase 1 所需的持久 SAF 授权，因此 Android EPUB 选择必须使用仓库内的 Tauri 移动插件，通过 `ACTION_OPEN_DOCUMENT` 完成；该插件属于项目源码，不是新的 npm 包或 Rust crate。项目不得直接依赖 `jni` crate，移动端桥接使用 Tauri v2 已提供的插件通道。PDF、RAR/CBR、远程网盘、WebDAV、HTTP/OAuth 或厂商 Provider SDK 相关依赖不在白名单内，详见 [ROADMAP.md](ROADMAP.md) 的冻结区。
+| 格式 | 当前状态 |
+| --- | --- |
+| EPUB | 当前实现格式；完整跨端体验仍在验收 |
+| TXT | 规划中 |
+| CBZ / 纯图片 ZIP | 规划中 |
+| PDF | 规划中；文本版与扫描版将按实际能力区分 |
+| CBR / 通用书籍分发 ZIP | 后续规划 |
+| 散图 / 图片文件夹 | 待设计，尚不承诺导入方式 |
 
-## 快速启动
+当前没有外部网盘接入或跨设备进度、批注同步功能。
 
-使用以下命令启动与验证。Agent 必须使用这些命令进行验证：
+## 开始使用
+
+本仓库当前记录的候选尚未完成正式发布签发。开发者可从源码运行；Android debug/profile 制品用于开发或诊断，不能视为正式发布包。
+
+准备 Node.js/npm、Rust 和对应平台的 Tauri 构建环境后，在仓库根目录执行：
 
 ```powershell
-# 前端启动
-npm run dev
-
-# Rust 编译检查
-cd src-tauri && cargo check
-
-# 前端与静态审计
-cd ..
-npm run build
-npm run audit:unwrap
-npm run audit:android-release
-
-# 全局构建
-npm run tauri build
+npm ci
+npm run tauri dev
 ```
 
-需要同时运行前端和 Rust 后端并打开桌面窗口时，使用 `npm run tauri dev`。`audit:android-release` 只审计已经生成的 arm64 release APK/AAB、原生库与 `dist`，不会自行构建或证明 Android 运行态。Android SDK/NDK、Rust targets 和双机环境已经具备；桌面构建不能替代 Android 验收，普通模拟器也不能替代真实设备上的 SAF Provider、持久权限、OEM 进程回收、WebView、性能和手势证据。由于现有真机无法安全构造近满存储，B2 的 ENOSPC/SQLite 满盘、长期/2 GiB 压力及重启清理允许延期到固定 API、受控 `/data` 容量的可复现 Android 虚拟设备执行；该例外不外推到其他实机门禁。B1 首次真实设备来源链门禁已经完成；B2 受控 AVD 已补齐活动读者、来源 hard-limit、SQLite 低余量、六轮固定样本逻辑压力和多记录业务/缓存恢复，真实设备取消/进程终止/重建记录直接保留；封面 hard-limit 公共并发分支和更广 OEM/真实设备矩阵分别按边界记录，后者移至 B3/F2。详细证据见 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 与 [ROADMAP.md](ROADMAP.md)。
+这会运行前端与 Rust 后端并打开桌面应用。仅运行 `npm run dev` 是前端开发服务器，不提供完整的本地阅读能力。详细构建前置、检查命令与测试样本说明见 [开发指南](docs/DEVELOPMENT.md)。
 
-## 测试 EPUB
+## 后续方向
 
-`测试文档存放处/epub/` 是本地功能验收用的 EPUB 样本目录，仅保留在工作区、不纳入版本库（已在 `.gitignore` 排除）。目录内当前有 37 个唯一 EPUB；B3 arm64 的扩大样本口径与哈希见 [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)。以下两本保留为结构差异最明确的主要验收文档：
+先完成 EPUB 的阅读、管理、恢复与跨端体验，再按 **TXT → CBZ/图片漫画 → PDF → CBR → 分发 ZIP** 推进。每个新增格式都需要完成后端、前端和设备验收；外部网盘属于更晚阶段。
 
-### `这里是终末停滞委员会 - 04.epub`（TODO #5 主要验收文档）
+详细阶段与实施门禁见 [ROADMAP](ROADMAP.md)，当前工作见 [TODO](TODO.md)。
 
-- OPF 位于 `OEBPS/content.opf`（非根目录），spine href 相对 OPF 目录，用于验证 entryPath 解析是否保留 OPF 所在目录前缀。
-- 全页插图使用 `<svg><image xlink:href="../Images/204617.jpg"/></svg>`，用于验证 SVG `<image>` 检测、边缘翻页与图片查看器联动。
-- `rendition:spread-none` 属性的封面/前页章节用于验证 spread 模式下边缘翻页与 image 优先原则的交互。
+## 反馈与参与
 
-### `测试文档存放处/6（x）=.epub` / `测试文档存放处/epub/6.epub`（Phase 1 基线验收文档）
+普通问题请通过仓库 Issues 反馈，附上应用版本、系统/WebView 版本、复现步骤和预期行为。请勿公开来源路径、私有书籍或阅读历史；安全问题按 [安全策略](SECURITY.md) 私下报告。
 
-- Phase 1 的导入、封面提取、删除、EPUB 阅读、可见翻页与应用重启后的 CFI 恢复均以此书验收。
-- OPF 位于 `item/standard.opf`（根目录下的子目录），与 vol04 的 `OEBPS/` 结构不同，用于验证不同 OPF 路径布局的兼容性。
-- 全页插图使用 `<svg><image xlink:href="../image/i-071.jpg"/></svg>`（单数 `image/` 目录），用于验证 SVG `<image>` 检测在另一种路径布局下的行为。
-- 正文章节含 `page-spread-left` / `page-spread-right` 属性，用于验证 spread 双页模式下左右 View 的 click handler attach 及边缘翻页稳定性。
-
-## 开发原则
-
-- React 负责 UI 与 EPUB.js iframe 渲染；Rust 负责文件、ZIP/XML、SQLite、权限和自定义协议。
-- 前端只通过 Tauri `invoke` 访问本地数据，必须处理 `Result<T, String>` 的错误结果。
-- EPUB ZIP 内部资源统一由 Rust 的 `epub` 协议处理，不能将 `asset://` 当作 ZIP 文件读取器；Windows/Android WebView 通过 `http://epub.localhost/...` 映射，其他桌面平台保留 `epub://localhost/...` 形式。
-- P3 解锁后，外层 ZIP 只能作为导入分发容器，或在内容全为受支持图片时以 CBZ 漫画语义导入；项目不得新增 `BookFormat::Zip`。当前 `zip` crate 只批准用于 EPUB 与既有安全读取，不代表通用 ZIP/CBZ 已进入实现范围。
-- 用户明确删除图书时会按数据库契约级联删除进度与批注；之后重新导入属于新记录。数据库中仍存在的同 `source_locator` 记录会复用原 `book_id`；文件移动后，通用导入也只会按指纹恢复唯一匹配的 `missing/error` 记录，多候选时拒绝猜测。
-- 每次工作从 [TODO.md](TODO.md) 第一个未完成且无外部阻塞的 `[ ]` 任务开始，并满足该任务的完成标准后再勾选。后端 B0–B4 技术门禁未通过前，禁止新增生产前端功能或视觉优化；仅允许隔离在 `design-exploration/` 的静态方案探索，以及为 IPC 契约同步、类型检查、安全修复和构建阻塞进行最小前端改动。
+参与开发前请阅读 [文档索引](docs/README.md) 和 [实现规范](CONVENTIONS.md)。本仓库当前未提供 LICENSE 文件；第三方依赖的许可证不替代项目自身的授权声明。

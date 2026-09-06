@@ -132,7 +132,7 @@ V1、V2、V3、V4、V5 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，
 
 ## 依赖更新与发布修复
 
-- 所有 Rust 和 npm 依赖变更必须先更新 README 白名单
+- 所有 Rust 和 npm 依赖变更必须遵守 [CONVENTIONS.md](CONVENTIONS.md) 的审批规则并同步唯一白名单
 - 安全修复优先于功能开发
 - 每个发布版本需经过 `cargo test` + `tsc --noEmit` + `vite build` 验证
 

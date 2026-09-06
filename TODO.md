@@ -1,183 +1,80 @@
-# 当前执行看板（Backend First）
+# 当前执行看板
 
-本文件是唯一执行顺序。开始工作前必须阅读 [README.md](README.md)、[ARCHITECTURE.md](ARCHITECTURE.md)、[DATABASE.md](DATABASE.md)、[IPC.md](IPC.md)、[CONVENTIONS.md](CONVENTIONS.md)、[ROADMAP.md](ROADMAP.md) 和 [SECURITY.md](SECURITY.md)。
+本文件是唯一执行顺序。开始实现前阅读 [README](README.md)、[ARCHITECTURE](ARCHITECTURE.md)、[DATABASE](DATABASE.md)、[IPC](IPC.md)、[CONVENTIONS](CONVENTIONS.md)、[ROADMAP](ROADMAP.md) 与 [SECURITY](SECURITY.md)。命令见 [开发指南](docs/DEVELOPMENT.md)。
 
-执行规则：
+## 当前状态与工作规则
 
-- 只处理本文件中第一个未完成且无外部阻塞的任务；满足完成标准并完成验证后才能勾选。
-- B0–B3 期间禁止新增前端功能、视觉优化或交互重构。`src/` 只允许为 IPC 镜像、类型检查、安全修复和构建阻塞做最小改动。
-- 前端现有实现是 legacy shell，不把旧的 `[x]` 前端条目继承为新前端验收结果。
-- 未实现能力不得注册 stub、空返回、`todo!`、`unimplemented!` 或假进度；不支持能力必须返回稳定错误。
-- 发现数据库、IPC、架构或安全文档冲突时，先停在文档/契约层解决，不用代码绕过规范。
+B0–B2 已按记录范围完成，B3 技术冻结与 B4 后端契约已完成；F1/F2 正在实现和回归，F3 完整体验验收未完成。正式发布签名单列在本轮收尾之后。P3/P4 仍冻结。
 
-## B0 后端审计与健康基线（已完成，完成证明 2026-08-14 重新签发）
+- 按下面顺序处理第一个未完成且无外部阻塞的任务；阻塞要记录原因和解除条件，不因延期的发布签名阻塞前端开发。
+- 未勾选不表示所有代码尚未实现，而表示该项完整完成标准尚未满足。历史已测子集不自动覆盖新版本。
+- 前端消费冻结 IPC；确需后端语义变更时，回到契约/迁移/测试流程。不得注册 stub 或用空结果伪装能力。
+- 每项收尾分别记录：辅助逻辑（静态/自动验证）、桌面端（待人工验证或已测具体范围）、Android（待人工验证；实际有环境障碍时写“阻塞”及原因）。同时列出未测项。
+- 原 TODO 完整记录迁至 [历史归档](docs/verification/development-history-through-2026-09-06.md)，不再参与排序。
 
-### 0.1 初次审计基线（历史执行事实，不代表当前最终状态）
+## EPUB 收尾任务（当前可执行，按顺序）
 
-- [x] `cargo fmt --check` 通过（2026-08-14）。
-- [x] `cargo check` 通过（2026-08-14）。
-- [x] 初次审计时 `cargo test` 为绿色：67/67（2026-08-14）。当时未覆盖事实：新增 V1/V3 迁移失败回滚测试尚未留存“故意注入缺陷→测试变红→恢复→测试变绿”证据；该缺口随后已在 0.2 与 B0 完成标准中补齐。B1 收尾最终执行为 108/108，见 3 节。
-- [x] `npm.cmd run build` 通过（2026-08-14）；仅证明 TypeScript/Vite 可构建，不证明前端体验或后端完成。
-- [x] `npm.cmd run tauri build` 通过两次、第二次 exit 0（2026-08-14 11:48/11:53），产出 MSI（5.20 MB）与 NSIS（3.01 MB）安装包；`Cargo.lock`/`package-lock.json` 均在位，构建可重复。
-- [x] Android 环境准备已完成（2026-08-14）：工具链装于 `D:\Android\Sdk`（JDK17/cmdline-tools/platform-tools/android-35/build-tools/NDK27），Rust Android targets 已装，荣耀 PPG-AN00（Android 15）与黑鲨 SKW-A0（Android 9）可用于探查，固定 EPUB 样本已就绪（8 本）。该条只记录环境就绪；B1 门禁的后续通过证据见 1.52。
+### E1 / F1：壳层与书架状态
 
-### 0.2 生产代码健康审计
+- [ ] 完成真实空库、加载、失败/重试、导航返回和不同来源状态的可用性；保留已接入的洞察与书架布局。完成标准：Windows/Android 实际操作上述状态并记录覆盖和未测项，不以静态原型替代。
 
-- [x] 审计 `src-tauri/src` 生产代码：`panic!`/`todo!`/`unimplemented!`/`unreachable!` 0 处；由 `npm run audit:unwrap` 自动统计为 672 行（共 687 次调用），全部在 `#[cfg(test)]` 测试模块；生产 `.expect()` 仅 `lib.rs` 事件循环收口；锁 poisoning 均映射为错误。未统计 `src-tauri/target` 生成代码。
-- [x] 审计截至 B3 候选的 44 个 `#[tauri::command]`：全部为薄适配；3 个历史缺口已关闭，B2 搜索 5 个 Command、系列关系读取和标签读取/筛选 Command 已接入真实服务。B4 已追加 5 个真实 Command，当前注册总数为 49，见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.20。
-- [x] 审计 `lib.rs` 启动错误语义：setup 内目录/数据库/迁移失败均映射为带上下文错误传播，无启动期 panic 掩盖；唯一 `expect` 为 Tauri 事件循环收口（低风险，可选修复）。
-- [x] 生成 B3 历史 Command 注册清单并三方比对：Rust 44 == IPC.md 44 == `tauri.ts` 44，命名一致；B2 搜索 5 个 Command 已接入真实服务；21 个系列/标签 wrapper 前端未调用（legacy shell 冻结，F2 接入）；发现并修复 IPC.md 缺少 `BOOK_RESOURCE_NOT_FOUND:` 行、系列关系读取以及标签读取/筛选契约的文档缺口。B4 当前 49/49 对齐见 0.2.20。
-- [x] 迁移实现清单已生成，且 V1/V3 回滚测试已完成变红自证（2026-08-14）：V1/V2/V3 均使用 `BEGIN IMMEDIATE`+`COMMIT/ROLLBACK` 和版本门控。变红证据：在 V1/V3 目标失败分支注入 `COMMIT;` 破坏回滚后，`test_v1_failure_rolls_back_every_v1_object` 失败于 `books was not rolled back`（migrations.rs:640）、`test_v3_failure_rolls_back_every_v3_object` 失败于 `font_size_px` 列存在断言（migrations.rs:682）；恢复后 `cargo test db::migrations` 9/9、完整 `cargo test` 67/67 通过。
-- [x] 初次审计生成安全边界清单。辅助逻辑当时已测：ZIP 预算、路径规范化、MIME、CORS、错误脱敏以及桌面来源/租约相关单元测试；当时未测：Android 稳定导入、干净 Android 构建和自动化设备流水线，`Range` 仍是 B1 缺口。前两项与 Range 随后已关闭；自动化设备流水线及低存储/长期压力仍未覆盖。桌面保存对话框与实际写入只有历史人工运行态记录；legacy 前端/WebView 的资源请求方式不属于 B0 后端审计。
+### E2 / F2：导入、删除与来源重新定位
 
-### 0.3 B0 完成标准
+- [ ] 在新前端验证选择/取消、导入失败、删除后刷新、失效来源重新选择及重启恢复。完成标准：进度/批注按契约保留或级联，Android 覆盖 SAF 权限失效；保留旧记录和失败候选清理证据。
 
-- [x] 形成 [BACKEND_AUDIT.md](BACKEND_AUDIT.md)，缺口清单含文件位置、风险等级、修复任务和验证命令。
-- [x] 明确区分辅助逻辑（静态/单元自动验证）、桌面端人工运行态和 Android 设备探查；不再把环境就绪或等价调试路由当作 Android 门禁。
-- [x] 已同步 README、ROADMAP、TODO、SECURITY 与 BACKEND_AUDIT 的当前结论，并保留 IPC.md 已修复的 `BOOK_RESOURCE_NOT_FOUND:` 文档记录。
-- [x] Android 平台工程可从干净、已审查的 scaffold 通过官方 `npm.cmd run tauri -- android build --debug --target aarch64` 构建（2026-08-14：`gen/android` 删除后重新 `tauri android init --ci` 生成、仅放回 `EpubSafPlugin.kt`、无本地绕过，exit 0 产出 APK 与 AAB）。
-- [x] 重新签发 B0 完成证明（2026-08-14）：V1/V3 回滚测试变红/变绿证据已补齐（注入 COMMIT 破坏回滚 → 目标断言变红 → 恢复 → 绿），Android 官方干净构建已通过，审计覆盖清单与文档结论已复核。
+### E3 / F2：系列管理
 
-## B1 后端核心能力（已完成，完成证明 2026-08-14 签发）
+- [ ] 实际执行创建/改名/删除、归属、卷标和排序并重启读取。完成标准：错误/冲突可处理，删系列不删书，补桌面及双机操作证据；空状态读取不等于写操作通过。
 
-### 1. 来源、格式和协议
+### E4 / F2：标签管理与筛选
 
-- [x] 来源指纹、`SourceLease`、独立 `Read + Seek` Reader 和 Android 私有缓存已落地。
-- [x] 整本 EPUB 缓存已移除；ZIP 条目数、控制文件、单条目、总解压量和压缩比预算已统一。
-- [x] `formats/capabilities.rs`、`registry.rs`、`active.rs` 和 EPUB 实现已建立；未支持格式返回 `FORMAT_NOT_SUPPORTED:`。
-- [x] `services/` 已承载导入、打开、删除、重新定位、图片和格式用例；Command 保持薄适配。
-- [x] 对每条 `epub://` 资源请求补齐测试（2026-08-14）：成功路径与 MIME（format_service 3 个）、来源失效脱敏与状态码映射（协议层 2 个）、路径穿越（format_service/protocol 各有）、Range（8 个 + 变红自证）、CORS（既有白名单测试）、超预算（formats/epub 压缩比/条目超限既有测试）、并发 Reader 租约（cache 5 个 + 变红自证）；`epub://` 已支持 Range。
-- [x] 审计 `save_book_image` 的桌面保存、用户取消、非图片 MIME、来源失效和敏感信息不出前端；Android 明确返回稳定未支持错误（2026-08-14）。覆盖清单（已测）：入口规范化、BOOK_NOT_FOUND、非图片 MIME 拒绝、文件名消毒、来源失效脱敏（修复 `sanitize_source_error`：旧 `split_once(':')` 会把 Windows 盘符 "C" 当错误前缀返回，改为前缀白名单 + 3 个新测试，变红自证）、Android `FORMAT_NOT_SUPPORTED:` 稳定错误；未测（待人工验证）：桌面保存对话框与用户取消路径（`None → Ok(false)` 语义经代码审查确认，需 AppHandle 无法自动测）。
-- [x] 补齐 Android SAF 选择、持久授权、重启校验、撤销授权和失效来源的静态测试（2026-08-14）。做法：picker 响应转换（取消→空 / 无 URI→SAF_PERMISSION_DENIED / 非法 URI→VALIDATION_ERROR / 成功→AndroidContentUri）与 `content://` 前缀校验（含非空 authority）抽为 `platform/mod.rs` 平台无关纯函数，Android 实现复用；桌面构建新增 9 个 SAF 测试 + 桌面 `validate_selected_source` 3 个测试，全部变红自证。未测（真机行为，标注）：Kotlin 侧 takePersistableUriPermission、重启复核与撤销授权仍以双机探查为准，Rust 侧无法自动覆盖。
-- [x] **B1 Android 后端/平台首次实机门禁（通过，2026-08-14）：** 官方干净构建已关闭；SAF 选择、持久权限、重启、授权撤销、重新定位、私有缓存、FD 计数、协议状态码/MIME/CORS/Range/路径防护均已在双机验证；导入卡住已定位（tauri#14994 wry MainPipe 唤醒）并以 200ms 唤醒窗口 workaround 修复，黑鲨 30 轮循环导入/删除无卡住（详见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.4 与缺口 #7）。legacy 前端/WebView 的 `fetch` 行为不作为本门禁或 B0 的否决条件。
+- [ ] 接入标签组、直接标签、系列继承和 AND 筛选。完成标准：重复/继承及删除语义、空结果与错误状态真实消费，桌面/Android 回归；不在前端重造后端筛选。
 
-### 2. 数据库、服务和错误契约
+### E5 / F2：Reader 引擎与阅读恢复
 
-- [x] V1/V2/V3 迁移、来源缓存、设置、批注、系列、标签和关系基础已存在。
-- [x] 批注服务已覆盖 CFI、长度、颜色、审计字段保留、缺失错误和删除级联。
-- [x] 审计全部仓储函数的参数化 SQL、事务边界、空结果语义和错误脱敏（2026-08-14）。结论：SQL 全部参数化（`params!`，`entity_exists` 表名白名单）；修复 `delete_book` SELECT+DELETE 两步竞态窗口（BEGIN IMMEDIATE 单事务原子化）；`reorder_series_books`/`replace_tags` 事务边界正确（IMMEDIATE + COMMIT/ROLLBACK）；空结果语义 find→Option、`delete_note`→usize 由服务层映射稳定错误；services 层 41 处 `: {error}` rusqlite 原始错误透传全部移除，`INTERNAL_ERROR:` 后仅稳定消息。
-- [x] 为系列、标签、设置和批注补齐并发更新、重复关系、删除级联、继承去重和失败回滚测试（2026-08-14）。新增：系列并发创建（8 线程×25=200 行不丢失）、更新失败保留原名、删除缺失 SERIES_NOT_FOUND；`finish_transaction` 失败回滚并释放事务自证；批注并发创建（8×20=160 条）、失败更新保留原内容、删书级联清空 notes；设置全局保存失败保留原值、9 线程并发保存不损坏、未知书稳定拒绝；notes/progress 级联删除测试。全部变红自证；并发测试验证无死锁与行数守恒，不做强线性一致声明。重复关系/继承去重既有测试（catalog_repository 7 个）继续覆盖。
-- [x] 为所有公开 Command 固定稳定错误前缀（2026-08-14）：51 处小写 `internal error:` 已全部统一为 `INTERNAL_ERROR:`，grep 复核 0 处残留；禁止返回原始 SQL、堆栈、完整路径或完整 Android URI（脱敏测试在协议层/image_service）。
+- [ ] 在现有 engine 内集中 EPUB.js 生命周期、iframe 事件、翻页、CFI 和重排。完成标准：快速开关书、旧异步回调隔离、字号/窗口变化锚定、退出保存及重启恢复均按平台取证；不预建新格式处理器。
 
-### 3. B1 完成标准
+### E6 / F2：目录与搜索
 
-- [x] Rust 核心模块完成自动化测试：正常路径、错误路径、恶意输入、来源失效、权限失败和资源耗尽均有覆盖（当前 195/195；搜索专项覆盖清单见 BACKEND_AUDIT.md 0.2.5，目录/搜索契约见 0.2.6，系列关系见 0.2.7，标签关系/筛选见 0.2.8，阅读设置见 0.2.9，批注数据契约见 0.2.10，Android 制品/缓存见 0.2.13，B4 阅读洞察见 0.2.20；桌面对话框类运行态与 Android Kotlin/WebView/低存储行为按三类口径标注，不计入自动覆盖）。
-- [x] `cargo fmt --check`、`cargo check`、完整 `cargo test` 通过（当前 195/195；B2 搜索、目录/搜索、系列、标签、阅读设置、批注、缓存收口/复核及 B4 阅读洞察测试均完成目标变红自证）。
-- [x] IPC、模型、数据库和安全文档已同步（B2 新增 5 个真实搜索 Command、`list_series_books`、`list_series_tags` 与 `filter_books_by_tags`，目录/搜索资源接口、系列/标签关系读取、筛选、阅读设置 V4 默认归一、批注纯文本/CFI/长度/颜色/重启恢复契约，以及 Android 制品/缓存预算与延期验收边界已登记；BACKEND_AUDIT.md 已同步 audit:unwrap 自动统计 672 行/687 次）。
+- [ ] 完成目录跳转、当前书搜索、系列索引构建/取消/部分结果/恢复/超限提示。完成标准：命中至少可靠打开目标书并明确位置精度；只有经过真实 DOM 解析才能宣称精确定位，不能生成伪 CFI；补桌面/Android 操作证据。
 
-## B2 后端业务能力（已完成，2026-08-23）
+### E7 / F2：批注与图片工具
 
-### 4. 搜索与索引（真实后台实现）
+- [ ] 完成创建/编辑/删除/重启恢复高亮、按书切换和 Reader 跳转，以及图片放大、手势返回和桌面保存/取消。完成标准：桌面/Android 分别记录工具交互；Android 导出仍按现有 IPC 明确未支持，不作为假成功。
 
-- [x] 设计并实现同系列/多卷搜索需要的后端任务模型：任务 ID、状态、进度、取消、错误、结果上限、同系列任务原子去重和来源失效（桌面自动验证；真实黑鲨 Android 9 已有取消、进程终止与重建记录并直接作为当前证据；受控 AVD closeout 另验证活动读者在索引 `building` 时完成 2 次翻页，最终 `10/10 ready`，以及来源 hard-limit 场景 `4,900/4,900 ready`）。当前书章节内查找按 IPC 留给 F2 EPUB.js，不冒充后端索引能力。
-- [x] 使用 bundled SQLite FTS5 trigram 建立惰性增量索引；查询短于 3 个字符时使用参数化 `LIKE`。
-- [x] 索引按来源指纹失效，支持部分结果、手动重建和过期重建；实现未把整本 EPUB 一次性读入 `Vec<u8>`。
-- [x] 执行预算：单章节 8 MiB、单书 64 MiB；提取计数使用溢出检查。一次索引任务累计提取量 2 GiB 已由辅助逻辑与受控 AVD 补充压力共同验证：6×46 固定 fixture 的逻辑累计输入为 `2,352,070,068` 字节；不外推唯一物理 2 GiB 或多样内容。
-- [x] 搜索索引持久化文本账面硬上限 256 MiB；超限保持事务一致性并返回 `BOOK_RESOURCE_LIMIT_EXCEEDED:`。黑鲨 Android 9 七卷 135/135 重建期间实测 `epubstart.db` 11,640,832 B、峰值 rollback journal 8,309,808 B，未出现 `-wal`；补充 6 GiB AVD 低余量索引运行态返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: search index storage is full`，峰值主库 111,452,160 B、rollback journal 411,888 B，清理后 `integrity_check=ok`。WAL/SHM 未观察到，不把它们写成已使用或已通过。
-- [x] 覆盖 spine 顺序、中日韩文本、OPF 相对/百分号编码 href、短词 LIKE 字面 `%`/`_`/反斜杠、三字以上 trigram、跨章节结果、取消、同系列任务原子去重、结果上限、未就绪错误、损坏章节、章节资源超限、提取计数溢出、索引预算超限、单任务 2 GiB 累计预算、错误状态事务回滚，以及真实 SQLite `SQLITE_FULL` 到 `BOOK_RESOURCE_LIMIT_EXCEEDED:` 的映射与旧索引保留；新增测试均完成“注入错误→目标测试变红→恢复变绿”。Android 缓存常见存储耗尽 OS 错误的稳定前缀映射仍由内存错误对象覆盖；未替代 Android 低存储运行态。
-- [x] 注册并记录真实搜索 Command：`ensure_series_search_index`、`get_search_index_status`、`cancel_search_index`、`search_series`、`rebuild_search_index`。
-- [x] 在 Android 真实设备验证索引取消与应用进程被系统终止后的恢复：当前 APK 在黑鲨 Android 9 上七卷系列取消后保留 101/135 章节部分结果；force-stop 后重启状态恢复为 `pending`（101/135），重新执行后恢复到 135/135 `ready`。
-- [x] 在 Android 真实设备以系统 picker 导入 13.20 MiB EPUB，并验证大章节索引限制：章节超过 8 MiB 得到 `ready`、0/1 且保留超限明细；此前已持久 URI 重拷贝并恢复原 EPUB 到 34/34。该证据覆盖单次大文件导入，不等于长期/2 GiB 压力。
-- [x] **受控 Android 虚拟设备收口（限定范围，2026-08-23）：** 按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 已完成活动读者与后台索引并发（`building` 中 2 次翻页，最终 `10/10 ready`）、来源 hard-limit 拒绝（补充 6 GiB AVD，保护租约时返回稳定资源错误，慢索引 `4,900/4,900 ready`）、ENOSPC/SQLite 低余量峰值、复制中断/重试、6 轮×46 固定 fixture 的 `2,352,070,068` 字节逻辑累计压力，以及 4 本书/2 个系列/4 条关系/标签/设置/进度/批注和来源/封面/两个索引的综合恢复；完整 Gradle release lint 也已通过。封面 hard-limit 的公共 Android 路径只观察到 admission 串行化和软淘汰，保留辅助逻辑证据，不伪造受保护三候选重叠拒绝。真实黑鲨 Android 9 的取消、进程终止与重建记录直接接受，不在 AVD 重复；更广 OEM/真实设备矩阵移至 B3/F2。长期压力使用同一固定 EPUB，不外推唯一物理 2 GiB 或内容多样性；受控 AVD 例外仍不替代 SAF Provider、OEM 进程管理、性能或手势实机证据。
+### E8 / F2：阅读设置与洞察
 
-### 5. 目录、系列、标签、设置和批注后端收口
+- [ ] 完成设置覆盖/继承/清除、重排恢复及计时消费。完成标准：正文可见计时、后台/锁屏暂停、恢复/进程终止、书架/足迹回填与独立删除历史均保留正确进度；补双机和桌面实际消费。
 
-- [x] 固定目录/搜索所需的后端资源与错误契约（2026-08-17）：目录链统一使用 `open_book.epub_root_url -> ResourceProvider` 提供 `container.xml`、OPF、NAV/NCX、spine 与关联资源，不新增目录 Command；搜索提取改经 `ActiveFormat -> SearchContentProvider`，删除未实现的 `TocProvider`/`TextContentProvider` 占位接口；后端返回 `book_id + spine_index + OPF href`，提取及 LIKE/trigram 查询的 `cfi` 固定为 `null`，精确 CFI 留给 EPUB.js；资源协议补齐脱敏与 400/404/413/422/500/501 稳定映射。已测（辅助逻辑/自动化）：四类控制/导航资源正文与 MIME、格式分派与解析错误、来源前缀脱敏、协议状态、旧伪 CFI 不再返回，新增 2 个及强化 5 个测试均完成目标变红→恢复变绿，完整 `cargo test` 139/139、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 EPUB.js 的完整 NCX/NAV 运行态链（待人工验证）；Android WebView 同链路与版本矩阵（阻塞至 B3 设备回归）。
-- [x] 完成系列 CRUD、单系列归属、卷标、排序和关系事务（2026-08-17）：新增 `list_series_books` 只读 Command/服务 seam，按 `sort_order, book_id` 返回完整关系；系列名称冲突稳定映射为 `VALIDATION_ERROR:`，卷标修剪后限制 200 字符；单书归属由 `book_series.book_id` 主键与 UPSERT 保证，重排语句失败或 `COMMIT` 失败均回滚并释放事务。已测（辅助逻辑/自动化）：CRUD/名称修剪/审计字段保留、大小写不敏感重复名、缺失实体、并发创建、单系列替换、关系读取与排序、卷标 200/201 边界、重复/越界重排拒绝、成功重排、后段更新失败回滚、提交失败回滚释放、删系列仅级联关系不删书；新增 7 个测试及卷标强化均完成目标变红自证，完整 `cargo test` 146/146、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell 对系列 Command 的实际运行态消费（待 B3/F2 人工验证）；Android 同链路与 OEM/进程恢复矩阵（阻塞至 B3 设备回归）；当前应用只有单进程 `Mutex<Connection>`，未声称多进程/多连接并发语义。
-- [x] 完成标签组/标签 CRUD、书籍直接标签、系列继承标签、筛选查询和删除关系语义（2026-08-17）：新增 `list_series_tags` 与 `filter_books_by_tags`，筛选按全部所选有效标签（直接或系列继承）匹配并以 `COUNT(DISTINCT tag_id)` 去重，返回无来源字段的 `BookSummary[]`，按 `updated_at DESC, title NOCASE, id` 稳定排序；标签组/同组标签 NOCASE 冲突映射为 `VALIDATION_ERROR:`，关系替换保持单事务，删除标签组只取消分组，删除标签只级联关系。已测（辅助逻辑/自动化）：CRUD、名称/颜色规范化、审计字段保留、同组冲突/跨组同名、缺失实体、系列标签读取排序、直接/继承标记与去重、AND 筛选、空/重复/缺失筛选 ID、书籍/系列关系失败保留、标签组/标签删除后的定义/关系/所有者语义；新增 4 个测试均完成目标变红自证，catalog 专项 24/24、完整 `cargo test` 150/150、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell 对标签 Command 的实际运行态消费（待 B3/F2 人工验证）；Android 同链路与 OEM/进程恢复矩阵（阻塞至 B3 设备回归）；当前应用只有单进程 `Mutex<Connection>`，未声称多进程/多连接并发语义。
-- [x] 完成全局/单书阅读设置的持久化、逐字段覆盖、默认值和迁移回归（2026-08-17）：`settings_service` 负责全局整行保存、单书可空字段覆盖、有效值合并和清除恢复；补充 V4 只归一未修改 V2 默认行，保留已保存旧值。已测（辅助逻辑/自动化）：全字段默认值、全局/单书保存与写入后重新读取、逐字段继承、全局变更后的继承更新、清除覆盖、空覆盖清空字段、未知图书错误、全局验证失败保留旧值、V3 旧字段全量转换、单书 NULL 保持继承、V4 默认值修正及提交步骤失败回滚；新增 4 个设置测试与 1 个迁移回滚测试均完成目标变红→恢复变绿，完整 `cargo test`、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell 的设置运行态与 EPUB.js 重排消费（待 B3/F2 人工验证）；Android WebView/设备矩阵与进程恢复运行态（阻塞至 B3）；真实损坏数据库、断电/满盘恢复；当前应用只有单进程 `Mutex<Connection>`，不声明多进程/多连接并发语义。
-- [x] 完成批注数据契约的最终审计（2026-08-18）：`notes_service` 对创建/更新字段先修剪外层空白，`cfi_start`/`cfi_end` 必须非空，空白 `cfi_range` 归一为 `NULL`；单个 CFI、选中文本与正文分别限制为 4,096/10,000/20,000 个 Unicode 字符，类似 HTML 的内容只按字面纯文本往返，颜色统一为小写 `#RRGGBB`，更新保留 `book_id/created_at`。已测（辅助逻辑/自动化）：创建/更新/读取/删除、纯文本字面值、空白规范化、Unicode 精确边界与越界、CFI 完整往返、颜色合法性、缺失图书/批注错误、失败更新保留、并发创建、真实文件数据库关闭重开后的全部恢复字段、删书后通过服务 seam 观察到 `NOTE_NOT_FOUND:`；新增 3 个测试并强化 2 个测试，均完成目标变红→恢复变绿，notes 专项 21/21、完整 `cargo test` 158/158、`cargo fmt --check`、`cargo check`、`npm.cmd run build` 通过。未测：桌面 legacy shell/EPUB.js 的真实选区、高亮、跳转与应用重启恢复（待 B3/F2 人工验证）；Android WebView、OEM 进程恢复和设备矩阵（阻塞至 B3/F2）；真实损坏数据库、断电/满盘恢复及多进程/多连接并发语义。
+### E9 / F3：视觉与交互
 
-### 6. Android 制品与运行时存储预算
+- [ ] 完成 Tailwind 视觉系统、深色模式、加载/空/错状态、键盘/触摸、图片长按、窄屏/横屏/软键盘、安全区和全屏。完成标准：桌面、Android 9 与主流设备分别取证，记录未覆盖的模式和设备。
 
-- [x] 建立并收紧 arm64 release 体积报告与 B2 最终静态基线：外部 Android 子项目 build 目录改到工程内，desktop dialog 依赖/Capability 从 Android 构建隔离，原 `tauri-plugin-fs/android/.tauri/tauri-api` 冲突关闭；2026-08-22 最终记录 APK 11,557,632 B、AAB 11,365,807 B、Cargo `.so` 13,040,288 B、打包 `.so` 8,951,720 B、`dist` 595,644 B 与工具链。未删除 Cargo 全局缓存、未提交 `.so`/build 产物。
-- [x] 实施静态发布门禁：`npm run audit:android-release` 检查 arm64 release APK ≤ 40 MiB、Rust 原生库 ≤ 30 MiB、前端 `dist` ≤ 2 MiB、相对基线增长 ≤10%、Node/npm/rustc/cargo/JDK/Gradle/AGP/NDK/Tauri CLI/Tauri crate，以及 APK 与 AAB 各自的 ABI、ELF 调试段和禁止 payload；APK 1 B 基线、Node 漂移和 AAB 错误 ABI 三类注入均按预期失败，恢复后通过。放宽预算需人工批准并同步路线图和安全文档。
-- [x] 明确并实现 debug/profile/release 用途：debug 用于 native/JNI 诊断；profile 使用 release Rust、独立包名、可调试应用、关闭 JNI debug/R8 和 debug 签名；release 使用 release Rust/R8。arm64 与 x86_64 profile APK/AAB 已作制品级检查，未发现打包 ELF 调试/符号表或测试 EPUB；空白安装 code/data 不在本条声称范围。
-- [x] 将 Android 来源缓存实施为软上限 256 MiB、硬上限 512 MiB；命中以单调值更新 `source_cache_entries.last_accessed_at`，按持久化真实 LRU 淘汰；`SourceLease` 在缓存检查前注册，淘汰持有同一 registry 锁至元数据和文件清理完成，关闭 TOCTOU；原子复制/指纹失败清理临时文件，启动协调孤儿/缺失/大小不符状态并重新执行预算，无法安全淘汰或 SQLite 满盘时返回稳定资源错误。
-- [x] 为封面缓存实施软上限 64 MiB、硬上限 128 MiB：原子候选、并发候选共享同一硬预算、导入失败/替换/删书清理、启动时事务清除缺失/越界路径与孤儿；淘汰先更新数据库再删文件并按 `books.updated_at, id` 排序，不把不可观测 asset 命中冒充 LRU。来源 512 + 封面 128 + 搜索 256 = 896 MiB 实际硬预算，另以 1 GiB ceiling 约束总和。
-- [x] 自动化覆盖缓存命中时间、真实文件大小、持久 LRU、活动租约、硬上限、重启预算、孤儿/缺失协调、原子候选、失败清理、并发候选与 ENOSPC/SQLite full 稳定映射；初始新增 17 个测试，复核新增 6 个并强化 1 个，均完成目标步骤变红→恢复变绿，完整套件 181/181。未覆盖 Android 真实磁盘、进程和文件系统行为。
-- [x] 保持缓存统计/清理为后端内部维护，不新增公开 Command 或 stub；V2 字段足够，本次无迁移。
-- [x] **完整 Gradle release lint（2026-08-23）：** 从阿里云 Maven 镜像取得四个缺失 AndroidX 制品及 JUnit/Hamcrest 元数据，使用既有 Gradle module SHA-256 与 Maven Central SHA-1 校验后组装独立本地 Maven 仓库；未手工改写 Gradle 缓存。补齐依赖后首次真实 lint 以 scaffold 遗留的 `MissingTvBanner` / `ImpliedTouchscreenHardware` 两条 error 变红；项目不支持 Android TV，移除 Leanback feature/category 后，`:app:lintUniversalRelease` 与 `:app:lintArmRelease` 均 `BUILD SUCCESSFUL`，各为 0 error、31 warning、1 hint。未处理非阻塞 warning，也未把此前跳过 lint 生成的 APK/AAB 追认为完整发布候选。
-- [x] **Android B2 受控环境收口（限定范围，2026-08-23）：** 受控 AVD 已完成活动读者与后台索引并发（索引 `building` 中完成 2 次翻页，最终 `10/10 ready`）、来源 hard-limit 拒绝（补充 6 GiB AVD，保护租约时返回稳定资源错误，慢索引 `4,900/4,900 ready`）、复制中断/重试、来源复制 ENOSPC、SQLite 低余量峰值、6 轮×46 固定 fixture 的 `2,352,070,068` 字节逻辑压力，以及 4 本书/2 个系列/4 条关系/标签/设置/进度/批注和来源/封面/两个索引的综合恢复。完整 Gradle release lint 也已通过。封面 hard-limit 的公共 Android 路径只观察到 admission 串行化和软淘汰，保留辅助逻辑证据，不伪造受保护三候选重叠拒绝；真实黑鲨 Android 9 的取消、进程终止与重建记录直接接受，不在 AVD 重复；更广 OEM/真实设备矩阵移至 B3/F2。证据见 `target/android-b2-runtime-closeout-20260823`、`target/android-b2-acceptance-20260822-184117`、`target/android-b2-closeout-20260822`、`target/android-b2-pressure-20260823-direct` 与 `target/android-b2-recovery-20260823`。长期压力使用同一固定 EPUB，不外推唯一物理 2 GiB 或内容多样性；受控 AVD 例外仍不替代 SAF Provider、OEM 进程管理、性能或手势实机证据。
+### E10 / F3：跨端候选验收
 
-### 7. B2 完成标准
+- [ ] 在同一候选记录 Windows/Linux/Android 导入到重启恢复的完整矩阵、样本范围、内存/性能及 Android 耗电。完成标准：标明版本、设备、已测/未测及阻塞项；Linux 未执行不得标全平台完成；新增测试须变红自证。
 
-- [x] 所有后端业务能力都有真实服务实现、IPC 契约、数据库迁移（如需要）、错误语义和自动化测试。
-- [x] 搜索任务可取消、可查询、可重建，资源预算和来源失效行为可验证。
-- [x] Android 发布制品存在可重复分项基线并通过绝对上限与 10% 回归门禁；运行时可重建数据具备软/硬上限、真实 LRU、活动租约保护、低存储错误和可验证清理语义。
-- [x] 不存在“前端已接入但后端未实现”的 Command、假数据或临时本地状态替代品。
+### E11 / 发布：正式候选签发
 
-## B3 后端验证与契约冻结
+- [ ] 前端/后端回归完成后生成正式签名制品。完成标准：核对静态预算、lint、版本/hash与签名信息，执行候选设备回归，明确项目许可证及发布说明；凭据不入聊天/仓库，未签发不称正式版。
 
-- [x] Windows 运行态回归：legacy shell 实际具备的导入、封面、打开、资源链、删除、重新定位、进度、批注、设置、搜索和重启恢复均已覆盖；系列/标签的 Rust/IPC/事务契约由自动化覆盖，管理/消费 UI 按 Backend First 边界留给 F2，不再用尚未解锁的前端入口循环阻塞 B3。详见 [B3_WINDOWS_RUNTIME.md](B3_WINDOWS_RUNTIME.md)。
-- [x] Android 静态链、B1 首次实机来源链，以及 B2 搜索任务、活动读者、来源 hard-limit、缓存/低存储、长期压力和综合恢复均已有对应范围证据；真实黑鲨取消/进程终止/重建记录直接接受。更广 OEM/前端消费矩阵归 F2，不由 B3 后端冻结重复执行。
-- [x] **B3 技术冻结（2026-08-28）：**当前 arm64 release 候选的 APK/AAB、原生库、前端 `dist`、空白安装/首次启动和 B3 固定样本集运行态均已取得范围证据，并取得 release-like 构建的私有 data 精确字节分项。样本集见 [B3_ANDROID_SAMPLE_MANIFEST.md](B3_ANDROID_SAMPLE_MANIFEST.md)：37 个唯一 EPUB、215,965,079 字节；根目录/附件重复副本不计入。当前静态结果为 APK 11,960,465 B、AAB 11,769,321 B、Cargo `.so` 13,229,512 B、打包 `.so` 8,952,024 B、`dist` 596,824 B；增长均低于 10%，ABI/ELF/禁止载荷与完整 `:app:lintArm64Release`（0 error、31 warning、1 hint）通过。黑鲨 SKW-A0 与荣耀 PPG-AN00 均完成 37/37 样本选择/导入并取得 data 分类观察；由于样本复测未重新卸载设备，报告不解释为干净基线下的逐本增量。私有 data 统计通过仅在 `b3-diagnostics` feature 下编译的受控诊断路径完成，不加入普通生产 Command 集合。详见 [B3_ANDROID_RELEASE_CANDIDATE.md](B3_ANDROID_RELEASE_CANDIDATE.md)。
-- [ ] **B3 发布候选签发：**在 B3 技术冻结后，使用正式 release keystore、alias 和密码完成正式签名并记录签名制品；密码不进入聊天或版本库。该门禁可推迟到前后端接近完成、准备对外发布时。
-- [x] 2026-08-24 当前提交执行 `cargo fmt --check`、`cargo check`、完整 `cargo test`（181/181）、`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:android-release` 和 `npm.cmd run tauri build` 均通过；Windows x64 产出 MSI 5,537,792 B、NSIS 3,215,710 B。已知非阻塞警告：Android/Kotlin 上游 deprecated API、Gradle 9 deprecated features、arm64 lint 31 warning/1 hint。
-- [x] 2026-08-24 完成文档审计：README、ARCHITECTURE、DATABASE、IPC、CONVENTIONS、ROADMAP、TODO、SECURITY 与当前实现一致；Rust 注册 44 个 Command == TypeScript 44 个 wrapper，V1–V4 迁移与 DATABASE 对齐，17 个公共稳定错误前缀均在 IPC 登记，Markdown 本地链接 0 个缺失，`audit:check` 仍为 575 行/590 次，当前无生产代码 diff。未测/不由文档审计替代：新前端 UI、arm64 候选设备占用及更广 OEM 运行态。
-- [x] 建立 B3 技术冻结点：冻结 Command、模型、错误前缀、数据库字段、资源预算和来源状态语义；正式签名不属于该技术冻结点。
-- 历史候选冻结清单仍保留于 [B3_CONTRACT_FREEZE.md](B3_CONTRACT_FREEZE.md)；Windows、B2 Android 后端范围和当前 arm64 技术候选均已关闭。B3 仍保持“候选未签发”：正式 release 签名、干净基线下的逐本增量复核，以及更广 OEM/前端消费矩阵分别留给最终发布门禁和 F2/F3。
+E1–E10 对应原 F1–F3 未完成项的拆分；E11 承接原 B3 发布签名门禁。本次拆分不新增完成标记，也不扩大 Android 图片导出等已明确不支持的能力。
 
-## B4 阅读洞察后端（已完成，2026-08-28）
+## 已有证据与仍未覆盖的范围
 
-B3 技术冻结已完成，正式签发仍依赖发布条件；用户已明确批准先在候选基础上推进本节。B4 不追认正式签名、不合并生产前端，也不取消 B3 的候选未签发边界。
+| 范围 | 已有记录 | 未测 / 不可外推 |
+| --- | --- | --- |
+| B0–B4 后端 | [后端审计](BACKEND_AUDIT.md)、[Android 候选](B3_ANDROID_RELEASE_CANDIDATE.md) | 不替代新前端完整消费与正式签名 |
+| F1 壳层/洞察 | [历史归档](docs/verification/development-history-through-2026-09-06.md)：桌面书架/计时回填，双机布局，黑鲨封面兼容 | Android 计时完整生命周期、Linux及跨端全矩阵 |
+| 2026-09-06 系列/搜索/批注 | 历史归档记录桌面读取/搜索与双机启动 | 系列写入/排序、正文索引取消、批注跨书及精确跳转；启动不等于逐项触控验收 |
+| F2 Reader | 历史归档记录荣耀 Android 15 正文、分页留白、按钮/滑动、跟手/回弹 | 黑鲨最终 Reader、桌面当前 Reader、滚动/长按/工具完整矩阵、横屏/深色模式 |
 
-- [x] 冻结领域词汇、ADR、V5 Schema、5 个 Command、稳定错误和 TypeScript 模型；正文/精彩文段/搜索索引推荐只登记为 Reader 完成后的评审项，不加入占位实现。
-- [x] 追加 V5 并完成空库、V1–V4 升级、重复启动、旧进度状态补种、后段失败回滚和删书/删历史独立语义测试；所有本轮新增测试完成目标变红→恢复变绿。
-- [x] 实现阅读活动：正文可见时开始，`visible/paused/ended` 状态、严格序列幂等、约 30 秒调用约定、90 秒确认上限、跨本地午夜拆分、偏移变化保守断开、启动中断恢复不外推。
-- [x] 实现书架概览：日/周/月/季度中性时间桶、最近图书及已保存进度、系列下一本/较久未读完/未开始三类离线推荐；不读取正文或搜索索引。
-- [x] 实现年/总计阅读足迹和按活动/日期/历史图书/全部删除历史；覆盖删书后历史快照保留、删历史后图书/进度/继续阅读状态保留。
-- [x] 注册并同步 49 个 Rust Command / TypeScript wrapper；`cargo fmt --check`、`cargo check`、完整 `cargo test`（195/195）、`npm.cmd run build`、`npm.cmd run audit:unwrap`、`npm.cmd run audit:check` 均通过，覆盖与未测清单已更新。B4 只交付后端与 IPC，不提前宣称桌面/Android Reader 消费完成。
+## 后续评审（不参与当前排序）
 
-## F1–F3 前端（已解锁，2026-08-28 起以冻结契约推进）
+- Reader 完成后评审正文/精彩文段推荐：选段、剧透、语言、本地规则或模型、隐私、索引生命周期与失败回退；只评审，不默认批准实现或占位契约。
+- EPUB 的 B0–B4、F1–F3 门禁满足后，按 [P3 路线](ROADMAP.md) 评审并获批实施：P3.0 → TXT → CBZ/纯图片 ZIP → PDF → CBR → 通用分发 ZIP。
+- 散图/文件夹归 P3.2 专项设计；ZIP 不加入 BookFormat。P4 远程来源仍在 P3.5 后，跨设备数据同步另行设计。
 
-生产任务现已具备后端入口，但仍按“先方案、后收敛、再实现”的节奏推进；`design-exploration/` 可继续增加不接入生产代码的隔离方案比较：
+## 自动统计
 
-2026-08-30 F1 第一批已落地生产 `src/`：重建 A+C 应用壳层与桌面左侧/移动底部导航，接入真实书架列表、阅读时长、继续阅读、离线推荐和独立阅读足迹页；系列/搜索/批注显示明确的后续状态，不使用假数据。桌面运行态已测：实际 Tauri 窗口读取本地 8 本书，缺失来源给出受控提示，有效 EPUB 可渲染正文并把进度更新为 8%；Reader 前台约 60 秒形成 1 条活动会话和 1 条可见区段，书架回填 1 分钟，足迹回填 1 个阅读日/1 本书。Android 运行态已测：当前 arm64 debug APK 在荣耀 PPG-AN00 / Android 15 与黑鲨 SKW-A0 / Android 9 覆盖安装并从真实 WebView 启动；两台设备均复核纵向内容、底部主导航、状态栏/系统导航安全区和独立足迹页，其中黑鲨额外覆盖了宽 CSS 视口触控设备兼容路径。未测：本轮 APK 的 Android EPUB 正文与阅读时长回填、空库/重试状态的人工运行态、Linux、更多窄屏/横屏/软键盘/手势/深色模式，以及 F2 Reader 视觉与功能重构。
-- [x] 2026-09-01 F1 第四轮“三张洞察卡保留式重排”已接入生产书架：继续阅读缩为阅读轮盘下方的小挂件；阅读时长总量与当前周期的起止日期收进轮盘中心；触控/Android WebView 强制采用左侧小轮盘、右侧继续阅读、推荐区下排；底部导航收敛为“藏书/足迹/设置”，系列/搜索/批注入口收进“全部藏书”的书架工具行；阅读时长日/周/月/季度筛选与推荐阅读开关进入设置页，推荐卡支持在开启状态下收起/展开；移动端“全部藏书”改为紧凑三列网格，缩小卡片内边距、封面留白及标题/作者/操作文字，桌面端网格保持不变；针对 Android 9 Chrome 79 不支持 `aspect-ratio` 与 `inset` 简写，封面比例改用伪元素占位并将绝对定位改为显式四向定位，保证封面完整渲染；桌面端各分区顶部保留紧凑全屏入口，Android/触控 WebView 隐藏该入口；仅藏书页显示小“+”导入入口；所有书架页均移除大标题区；设置导航改为单色线性滑杆图标；原生桌面标题栏固定浅色以贴合书架底色。未新增 Rust/SQLite/IPC，Reader 文件与界面未改。已验证（辅助逻辑）：`npm.cmd run build`、`npm.cmd run audit:check`、`npm.cmd run audit:unwrap`、`git diff --check`；已验证（桌面运行态）：实际 Tauri 窗口显示轮盘日期范围、各分区全屏入口、仅藏书页导入入口、浅色原生标题栏和线性设置图标，且保留周期设置、推荐开关、推荐卡收起/展开和书架工具入口；证据见 `target/f1-runtime/phase4-desktop-titlebar-light-window-clean.png`、`phase4-desktop-settings-top-fullscreen.png`、`phase4-desktop-footprint-top-fullscreen-final.png`、`phase4-desktop-settings-icon-final.png`。已验证（Android 环境）：黑鲨 SKW-A0 当前 arm64 debug APK 安装启动、藏书页轮盘日期范围/仅导入入口、设置页无全屏和导入入口，以及“全部藏书”三列网格和封面完整渲染，证据见 `target/f1-runtime/phase4-blackshark-final-entry-boundary.png`、`phase4-blackshark-settings-final.png`、`target/f1-runtime/phase4-blackshark-three-column-shelf-cover-fixed.png`。未测：本轮 Android APK 的 Reader 正文/阅读时长回填、Android 端推荐开关与折叠的逐项触控操作、荣耀因无线配对码失效未复测、空库/重试、Linux、横屏/软键盘/深色模式；F2 Reader 视觉与功能仍不在本轮。
-
-- [x] 2026-09-06 F1 书架工具首轮真实消费：系列页接入 `list/create/update/delete_series`、单系列归属、卷标和上下移动排序；搜索页区分本地书名/作者即时搜索与系列正文索引搜索，展示索引已索引/总章节、部分索引提示、取消入口和无结果范围，命中仅打开对应图书，不伪造 B2 尚未提供的精确 CFI；批注页按书懒加载 `list_notes`，提供选书、批注快速回看和进入 Reader 入口，未新增全库 N+1 查询或修改 Reader 批注面板。未新增 Rust/SQLite/IPC，既有系列、搜索、批注 Command 保持不变。已验证（辅助逻辑）：`npm.cmd run build`、`git diff --check`；已验证（桌面运行态）：修复 Windows 默认 `localhost` 解析到 IPv6 `::1` 导致的 Tauri devUrl 探测失败，将桌面默认 Vite 监听固定为 `127.0.0.1`（仍保留 `TAURI_DEV_HOST` 覆盖），随后用原始 `npx tauri dev` 启动真实 Tauri 窗口；藏书页显示真实阅读时长/继续阅读/推荐阅读和 8 本书架数据，系列页加载出 0 系列空状态，搜索“终末”返回 4 条真实书架结果，批注页显示选定图书及 1 条已有批注。已验证（Android 环境，启动级）：本轮 arm64 debug APK 已覆盖安装并启动于黑鲨 SKW-A0 / Android 9 与荣耀 PPG-AN00 / Android 15；没有把 WebView 容器级启动证据扩写为三个页面的逐项触控验收。未测：系列 CRUD/归属/排序写入、系列正文索引/取消/精确打开位置、批注跨书切换与 Reader 精确跳转、全库批注聚合、空库/索引资源超限人工交互、Linux、横屏/软键盘/深色模式；整体 F1/F2/F3 仍未宣称完成。
-
-- [x] 2026-09-01 F2 Reader 首轮导航、分页边界与触控过渡修复（范围性完成，不代表 F2/F3 整体完成）：已测（辅助逻辑/构建）前端 build、Android debug arm64 build、`git diff --check`；已测（Android 环境）荣耀 PPG-AN00 / Android 15 真实 WebView 的底部浮动导航、系统上下安全区、单击隐藏/恢复、实际列宽下约 34.8px 左右正文留白、无可见行侧向串页、按钮翻页、左右滑动翻页及不遮挡正文的半透明边缘光带与方向箭头；可横向滚动的 LTR 分页段落在拖动阶段按 30px/80px 分段让正文容器和光带同步位移，正文在拖动截图中保持可见，松手后只补齐剩余页距，短滑将正文平滑拉回且不改页码；指针捕获和收尾互斥避免 iframe 位移造成坐标漂移及并发翻页。未测（Android/桌面运行态）：黑鲨本轮 Reader、Android 9 Reader、桌面 Tauri Reader、滚动模式滑动、图片长按、目录/搜索/批注/设置完整交互矩阵、所有 EPUB 样本、横屏/软键盘/深色模式、正式签名和更广 OEM 矩阵；未新增 Rust、SQLite 或 IPC。
-
-- [ ] F1 重建应用壳层、导航、书架信息架构、加载/空/错状态；替换 legacy shell。
-- [ ] F1 只消费冻结 IPC；不得在 React 解析 ZIP/XML/SQLite 或自行判断来源有效性。
-- [ ] F2 接入阅读器、目录、搜索、批注、系列、标签、设置、来源重新定位和全屏等功能。
-- [ ] F2 将 EPUB.js 生命周期、CFI 视口锚定、iframe 事件和交互状态集中在 `src/features/reader/engine/`。
-- [ ] F2 在真实 Android 设备验证书架、阅读器、目录、搜索、批注、设置、图片查看和来源重新定位。
-- [ ] Reader 完成后单独评审正文/精彩文段推荐：选段来源、章节/结局避让、推荐语言、本地规则或模型、搜索索引输入生命周期、隐私与失败回退；评审前不增加 Command、占位字段或理由枚举。
-- [ ] F3 建立 Tailwind 视觉系统、响应式布局、可发现控件、键盘/触摸补充交互、深色模式和跨端细节。
-- [ ] F3 完成 Windows/Linux/Android 运行态人工验收；Android 必须覆盖手势、窄屏、软键盘、性能、内存、耗电、系统/WebView 版本和发布候选回归；构建通过不等于体验完成。
-
-## 后续扩展冻结说明
-
-- P3 多格式和 P4 外部网盘均不属于当前执行看板；阅读器本体的 B0–B3、F1–F3 完成前不得启动。
-- P3 固定顺序为：P3.0 多格式架构与 `ImportInspector` → P3.1 TXT → P3.2 CBZ/纯图片 ZIP → P3.3 PDF → P3.4 CBR → P3.5 通用 ZIP 分发包。
-- ZIP 只作为分发容器或 CBZ 兼容图片归档，不增加 `BookFormat::Zip`；现有 `zip` crate 不代表通用 ZIP/漫画能力已经获批。
-- P4 排在 P3.5 之后，只在路线图中保留方向；当前不新增远程 `source_kind`、账号/令牌 Schema、Provider Command、网络依赖或前端入口。
-- 远程书籍来源与阅读进度/批注的跨设备同步是两项不同能力；后者未进入当前路线图实施范围。
-
-## 历史记录
-
-- 2026-08-14：撤回 B0 完成证明。保留桌面构建与 67/67 绿色执行事实，但 V1/V3 新增迁移回滚测试缺少变红自证，Android 官方构建也不能从干净 scaffold 稳定复现；两项均是 B0 缺口。Android 导入偶发卡住属于 B1 运行态缺口。前端 `fetch(epub://...)` 不属于 B0 后端判定。后续修改方向见 [BACKEND_AUDIT.md](BACKEND_AUDIT.md) 0.2.5、0.4 与缺口清单。
-- 2026-08-14：B0 完成证明重新签发——V1/V3 回滚测试完成变红自证、Android 官方干净构建通过；B1 缺口 #1/#2/#3/#4 关闭（services 下沉、错误前缀统一、Range + 并发 Reader + 资源读取测试）；`cargo test` 85/85、`cargo fmt --check` 与 `audit:check` 通过。剩余：Android 导入偶发卡住（B1 门禁，缺口 #7）。
-- 2026-08-14：B1 缺口 #7 关闭——导入卡住根因 tauri#14994（wry MainPipe 唤醒）以 200ms 唤醒窗口 workaround 修复并黑鲨 30 轮验证；B1 Android 后端/平台首次实机门禁通过。Codex 提出的 8 项修改方向全部完成。
-- 2026-08-14：Phase 1 Windows 桌面 EPUB 基线、来源重新定位和 CFI 恢复保留历史验收记录；Android 工具链、官方 debug 构建和 B1 首次实机门禁均已完成，仍无自动化设备验收流水线。
-- 2026-08-15：B2 新增 Android 制品与运行时存储预算规划。旧/中间产物曾显示 151.08 MiB；当前官方 arm64 debug APK 实测 310,548,144 字节（296.16 MiB），Rust 原生库 145.08 MiB，另有约 144.20 MiB ZIP 对齐/保留空洞。两者都不得外推 release 体积；当前应用私有数据约 31.45 MiB，其中来源缓存约 26.82 MiB、封面约 3.99 MiB。release 基线尚未建立，预算任务保持未完成。
-- 2026-08-15：B2 搜索与索引服务完成真实实现并完成 132/132 桌面测试、变红自证和当前 APK 的取消/进程恢复复测；修复索引预算对 UTF-8 中日韩文本按字符而非字节计数的缺陷，新增单任务 2 GiB 累计预算溢出/超限测试、SQLite 非满盘 I/O 不误报资源耗尽的回归测试，以及内存错误对象覆盖 Android 缓存存储错误，不填充设备存储；黑鲨 Android 9 通过系统 picker 导入 13.20 MiB EPUB，验证超限章节明细，并以一次性诊断探针释放 SAF 授权后确认索引进入 `BOOK_SOURCE_UNAVAILABLE`；另记录七卷 135/135 重建期间主库 11,640,832 B、峰值 rollback journal 8,309,808 B；来源恢复/临时数据已清理。低存储、长期/2 GiB 压力仍未完成。
-- 2026-08-15：B2 搜索复核修复同系列并发任务竞争、错误状态非事务写入/全系列错误扩散、合法 OPF 相对及百分号编码 href、短词 LIKE 通配符误匹配；新增 5 个测试均以恢复旧缺陷确认目标变红后再恢复变绿。SQLite 满盘测试使用受限 `max_page_count` 的真实写事务，确认稳定资源错误并保留旧索引；完整 `cargo test` 137/137，`audit:unwrap` 348 行/355 次。IPC 专门边界确定当前书章节内查找留给 F2 EPUB.js，同系列/多卷全文搜索由 B2 后端负责。低存储/长期压力经批准延期至受控 Android 虚拟设备，尚未勾选。
-- 2026-08-17：B2 第五节首项完成。目录链冻结为 `epub_root_url + ResourceProvider`，搜索文本冻结为 `ActiveFormat + SearchContentProvider`；移除未实现能力占位，修复资源协议错误映射/来源脱敏，并停止生成或返回伪 CFI。新增 2 个、强化 5 个测试均完成变红自证；完整 `cargo test` 139/139，`audit:unwrap` 354 行/361 次。桌面 EPUB.js 与 Android WebView 的 NAV/NCX 运行态仍分别标记待人工验证/阻塞至 B3。
-- 2026-08-17：B2 第五节第二项完成。新增 `list_series_books` 并同步 Rust/IPC/TypeScript，补齐重启后可恢复的系列关系读取；重复系列名改为稳定校验错误，卷标修剪后限制 200 字符，关系事务在语句失败和 `COMMIT` 失败时都回滚释放。新增 7 个测试及 1 个卷标强化均完成目标变红自证；完整 `cargo test` 146/146，`audit:unwrap` 388 行/395 次。桌面消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
-- 2026-08-17：B2 第五节第三项完成。新增 `list_series_tags` 与 `filter_books_by_tags` 并同步 Rust/IPC/TypeScript；筛选按直接/继承有效标签的 AND 语义匹配、去重并返回稳定排序的 `BookSummary[]`，标签组/同组标签名称冲突改为稳定校验错误，删除与关系事务语义完成收口。新增 4 个测试均完成目标变红自证；完整 `cargo test` 150/150，`audit:unwrap` 426 行/433 次。桌面消费待 B3/F2 人工验证，Android 消费阻塞至 B3 设备回归。
-- 2026-08-18：B2 第五节第五项完成。批注创建/更新统一修剪文本字段，空白 CFI 拒绝、空白 range 归一为 `NULL`，冻结 4,096/10,000/20,000 字符上限、小写颜色与字面纯文本语义；新增真实 SQLite 文件关闭重开恢复测试，并把删书级联改为通过服务 seam 观察。新增 3 个测试、强化 2 个测试，5 组均完成目标变红自证；notes 专项 21/21、完整 `cargo test` 158/158，`audit:unwrap` 455 行/462 次。桌面 EPUB.js 批注运行态待 B3/F2 人工验证，Android WebView/设备矩阵阻塞至 B3/F2。
-- 2026-08-18：B2 Android 制品/存储代码收口完成。修复 desktop dialog/外部 Android 子项目 build 目录冲突，加入 profile 与 arm64 release 基线/审计门禁；来源缓存完成 256/512 MiB、持久 LRU、活动租约和重启协调，封面完成 64/128 MiB、原子候选、事务化元数据/孤儿清理，统一可重建数据硬上限 896 MiB。新增 17 个测试均完成目标变红自证，完整 `cargo test` 175/175，`audit:unwrap` 550 行/563 次。完整 Gradle lint 的四个 AndroidX 制品受当前沙箱网络权限阻塞；Android 低存储/中断/长期压力等待固定 AVD，故 B2 总完成标准保持未勾选。
-- 2026-08-22：B2 收口复核关闭来源租约/淘汰竞态、原子写失败残留、来源/封面元数据失败一致性、封面并发候选预算和 SQLite full 稳定错误缺口；实际 896 MiB 硬预算与 1 GiB ceiling 分离。新增 6 个测试、强化 1 个测试均逐项变红→变绿，完整 `cargo test` 181/181，`audit:unwrap` 575 行/590 次。release 门禁补齐全部基线工具链与 AAB ABI/ELF，最终静态基线收紧；完整 Gradle lint 仍因 Google Maven TLS 握手中断阻塞，无可运行 AVD，故 B2 总完成标准继续未勾选。
-- 2026-08-22：补齐 `custom-protocol` Cargo feature 别名并修正 Android 验收文档的真实 `app_data_dir` 路径和 profile 资源打包步骤；正式 x86_64 profile APK 构建成功。受控 AVD 完成新包空白安装、46 份逐份导入、来源缓存 31 条/约 256 MiB、封面 46 个/约 54.1 MB、缺失缓存元数据协调和孤儿清理；SQLite 完整性保持 `ok`。重新定位后的阅读请求暴露 Android WebView 不支持当前 `epub:///localhost/...` URL，活动读取/后台索引未通过；ENOSPC、复制中断、清理重建和六轮 2 GiB 压力仍阻塞。
-- 2026-08-22：WebView 修复复测将 Android 根地址切换为 `http://epub.localhost/...`，并在 EPUB.js 请求边界归一化 `null/...`、`epub://localhost/...` 和 `epub:///localhost/...`。使用重新编译的 x86_64 profile APK 在同一 AVD 完成重新定位后的固定 EPUB 单书首屏读取，回归输出 `WEBVIEW_REGRESSION=GREEN`，未出现不支持 scheme、`Failed to fetch`、`epub:///` 或 `localhost:1420`；证据为 `target/android-b2-acceptance-20260822-184117/reader-after-final-fix.png`。后台索引、ENOSPC、复制中断、清理重建和六轮 2 GiB 压力仍未执行。
-- 2026-08-22：同一受控 AVD 完成 B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理临时来源文件且重试成功；全新 profile 在保留约 4 MiB 空间时导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性为 `ok`。证据为 `target/android-b2-closeout-20260822`；后台索引无可观察触发入口，六轮累计 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态仍未执行，B2 总门禁保持未勾选。
-- 2026-08-22：同一受控 AVD 完成 B2 收口补测：143 MB 有效 EPUB 在 `copy_source_atomically start` 后 force-stop，重启清理临时来源文件且重试成功；全新 profile 在保留约 4 MiB 空间时导入新 locator，UI 返回 `BOOK_RESOURCE_LIMIT_EXCEEDED: source cache copy failed because device storage is full`，清理填充文件后无 `.tmp`；删除 `source-cache/` 与 `covers/` 后单书来源/封面从持久 SAF 来源重建，数据库完整性为 `ok`。证据为 `target/android-b2-closeout-20260822`；后台索引无可观察触发入口，六轮累计 2 GiB、完整业务数据重建和来源/封面 hard-limit 运行态当时尚未执行，B2 总门禁保持未勾选。
-- 2026-08-23：受控 AVD 完成 B2 长期压力与限定范围综合恢复补测。`target/android-b2-pressure-20260823-direct` 以固定 8,521,993 字节 EPUB fixture 完成 6 轮×46 次 direct IPC/SAF 导入，累计逻辑输入 `2,352,070,068` 字节；每轮分段重启、轮末 force-stop/restart，第 6 轮保留 30 分钟后清理，日志以 `LONG_PRESSURE_DONE` 正常结束。`target/android-b2-recovery-20260823` 先验证启动协调不会凭空重建缓存，再通过持久化 SAF locator 的真实重新导入恢复来源、封面和 `34/34 ready` 索引，同时保留 1 本书、1 个系列、1 条关系。未覆盖来源/封面 hard-limit、索引期间并发活动读取、完整多记录业务、唯一物理 2 GiB 和多样内容；完整 Gradle lint 已在后续同日收口，B2 总门禁仍因其余 Android 运行态矩阵保持未勾选。
-- 2026-08-23：完整 Gradle release lint 收口。阿里云镜像下载与独立哈希校验关闭 AndroidX/JUnit/Hamcrest 依赖缺口；`generateReleaseLintModel` 先变绿，完整 lint 随后以 scaffold Leanback TV 声明的两条 error 变红。移除未承诺的 TV 声明后，Universal/Arm release lint 均为 0 error、31 warning、1 hint，且全程未使用 lint baseline、禁用检查或跳过 lint 任务。
-- 2026-08-23：启动 B3 Windows 桌面回归；开发态与 x64 release 的打开、资源链、目录、搜索、批注、设置、进度、全屏和基础重启已记录。修复 `section.load()` Promise 被误当回调导致的桌面搜索空结果；导入、删除、失效来源重新定位、系列/标签消费仍待后续覆盖。
-- 2026-08-24：B3 Windows 边界裁决完成。导入、删除与失效来源重新定位已由隔离 fixture 补齐；系列/标签已有 Rust/IPC/事务自动化，但 legacy shell 没有 UI，按 Backend First 规则把真实消费留给 F2，不再形成“必须先做 F2 才能通过 B3”的循环门禁。更广 Android OEM/前端消费矩阵同样归 F2。
-- 2026-08-24：从当前提交重新生成 arm64 release 静态候选。完整 `lintArm64Release` 为 0 error、31 warning、1 hint，`audit:android-release` 通过 ABI/ELF/禁止载荷、绝对上限和 10% 回归门禁；全仓 `cargo fmt/check/test`（181/181）、前端 build、audit:check 与 Windows x64 Tauri build 均通过。随后在黑鲨 SKW-A0（Android 9）和荣耀 PPG-AN00（Android 15）上完成同一 release payload 的卸载后空白安装、`primaryCpuAbi=arm64-v8a`、首次启动、WebView 和主进程内存复测；设备运行态证据已补齐，但固定样本运行时占用、release 私有 data 精确字节分项和正式 release 签名仍未完成，B3 契约保持候选未签发。
+当前 `audit:unwrap` 登记：672 行（共 687 次调用）。仅为源码文本统计，分类结论与例外见 [BACKEND_AUDIT](BACKEND_AUDIT.md)；不据此声称运行态或所有生产路径安全。每次代码任务按脚本输出同步，并运行 `audit:check`，历史统计不回写。

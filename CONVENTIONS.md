@@ -1,11 +1,11 @@
 # 代码规范与 AI 行为准则
 
-本文件是实现时的强制规则。依赖清单的唯一权威来源为 [README.md](README.md)，数据与 IPC 的具体定义分别以 [DATABASE.md](DATABASE.md) 和 [IPC.md](IPC.md) 为准。
+本文件是实现时的强制规则。本文件维护唯一依赖白名单；开发与验证命令以 [开发指南](docs/DEVELOPMENT.md) 为准，数据与 IPC 的具体定义分别以 [DATABASE.md](DATABASE.md) 和 [IPC.md](IPC.md) 为准。
 
 ## Backend First 工作边界
 
 - B0–B4 后端阶段优先处理 `src-tauri/`、SQLite、平台、协议、后台任务和 IPC；现有 `src/` 视为 legacy shell。
-- 后端阶段禁止新增前端功能、视觉优化或交互重构。只有 IPC 契约同步、类型检查、安全修复和构建阻塞允许最小前端改动。
+- 上述后端阶段内禁止新增前端功能、视觉优化或交互重构。只有 IPC 契约同步、类型检查、安全修复和构建阻塞允许最小前端改动。
 - 后端完成必须以 Rust/数据库/协议/错误路径/运行态验收为证据；`npm run build`、页面截图和前端人工操作不能单独证明后端完成。
 - 只有完成 [ROADMAP.md](ROADMAP.md) 的 B3 技术冻结条件与经批准追加的 B4 契约，才可进入生产前端 F1–F3。进入前端阶段后，先重建信息架构和状态处理，再做视觉美化；正式 release 签名不替代技术冻结，也不因此提前成为生产 UI 的输入。
 - B3 技术冻结前允许为真实 Android 取证增加 feature-gated、只读、非稳定诊断 seam；该 seam 不得注册到普通 release，不得写入被测 data 根目录，也不得被描述为产品 Command。正式 release 签名仍单列为最终发布门禁。
@@ -20,7 +20,7 @@
 - 格式能力不得以 `Option` 默认空结果、`panic!`、`todo!` 或 `unimplemented!()` 伪装支持；不支持的格式或能力返回稳定错误。
 - 未来能力不得以空 Command、永远为 `null` 的字段、永不产生的枚举分支或通用 JSON 预占契约；进入对应阶段时通过显式契约变更加入。
 - 任何来源读取前必须校验文件存在性/可读性或 Android URI 权限。失效时持久化 `missing` 状态并返回 `BOOK_SOURCE_UNAVAILABLE:`。
-- 编写 Rust 后先在心中检查所有权、借用与生命周期，再使用 README 规定的 `cargo check` 验证。
+- 编写 Rust 后先在心中检查所有权、借用与生命周期，再使用开发指南规定的 `cargo check` 验证。
 
 ## React 与样式
 
@@ -86,16 +86,20 @@
 
 ### 当前允许使用的库
 
+本节是唯一白名单。版本和启用 feature 仍以获批的 package/Cargo 清单及锁文件为准，列入白名单不表示可任意升级或扩大用途。
+
 - 前端运行时：`react`、`react-dom`、`@tauri-apps/api`、`@tauri-apps/plugin-dialog`、`epubjs`、`zustand`。
 - 前端构建与样式：`@tauri-apps/cli`、`vite`、`@vitejs/plugin-react`、TypeScript、`@types/react`、`@types/react-dom`、`tailwindcss`、`postcss`、`autoprefixer`。
 - Rust：`tauri` v2、`tauri-build`、`tauri-plugin-dialog`、`serde`、`serde_json`、`rusqlite`、`zip`、`quick-xml`、`tokio`、`uuid`。项目不得直接添加 `jni`；Tauri 自身的传递依赖不视为项目白名单项。
+
+存储使用 `rusqlite` 提供的 SQLite。React 沿用当前 React 18。`@tauri-apps/plugin-dialog` 与 `tauri-plugin-dialog` 是已批准的额外官方插件，用于 Windows/Linux 文件选择；Android 持久 SAF 选择使用项目自有 Tauri 移动插件和 `ACTION_OPEN_DOCUMENT`，不引入额外第三方依赖。不得通过 JSON 在 Kotlin/Rust 之间复制整本 EPUB。PDF、RAR/CBR、HTTP/OAuth、WebDAV 和厂商 Provider SDK 尚未获批。
 
 ### 严格引入协议
 
 1. 禁止擅自引入：上述白名单外的任何 npm 包或 Rust crate 均不得加入、安装或在代码中引用。
 2. 遇到能力瓶颈：若白名单无法实现功能（例如 PDF、RAR、复杂富文本），必须停止编码，不能以临时代码绕过限制。
-3. 提案流程：向人类说明“我需要一个库来实现 [功能]”、“推荐 [库 A] 或 [库 B] 及理由”，等待确认将其加入 README 白名单后才可继续。
-4. 冻结区：`ROADMAP.md` 标记为冻结区的 TXT、CBZ/图片 ZIP、PDF、CBR、通用 ZIP 分发包与外部网盘/远程来源，在当前阶段禁止触碰，禁止提前引入任何相关依赖或 Command。
+3. 提案流程：向人类说明“我需要一个库来实现 [功能]”、“推荐 [库 A] 或 [库 B] 及理由”，等待确认将其加入本文件白名单后才可继续。
+4. 冻结区：`ROADMAP.md` 标记为冻结区的 TXT、CBZ/图片 ZIP、PDF、CBR、通用 ZIP 分发包与外部网盘/远程来源，当前禁止实施和提前引入依赖或 Command；允许记录需求和待评审设计问题，但规划不构成实施授权。
 
 现有 `zip` crate 仅批准用于 EPUB 和当前受控资源读取，不代表获准实现 CBZ、图片 ZIP 或通用 ZIP 分发包。P3 解锁前不得增加 `BookFormat::Zip`、`ImportInspector` 占位实现或外层归档导入入口。
 
@@ -104,6 +108,8 @@
 当前无法可靠评估的页面渲染 trait、PDF/图像归档接口、Cargo Feature 拆包、新格式依赖、外部网盘 Provider、网络/OAuth/安全存储依赖、Android/Linux WebView 性能和跨端触控专项必须记录到 ROADMAP 对应冻结区。记录建议不代表批准实现；进入对应阶段后仍须重新评估并获得人类确认。
 
 ## Agent 工作流
+
+所有模型（包括 Luna）均按 [AGENTS.md](AGENTS.md) 的开始任务、实现/构建、验证和交接检查点执行。不得因为主要由模型构建而省略人工运行态门禁。
 
 - 每次开始实现前读取 [TODO.md](TODO.md)，只处理按顺序第一个未完成且无阻塞的任务，并先阅读其完成标准。
 - 完成且验证通过后，才将该任务改为 `[x]`；不得提前勾选或声称未实现模块已完成。

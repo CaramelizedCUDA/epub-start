@@ -2,7 +2,7 @@
 
 本文件是 Tauri Command 的唯一公开接口定义。数据库字段定义以 [DATABASE.md](DATABASE.md) 为准，前端调用位置以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。serde 结构体字段与 TypeScript 镜像字段使用 `snake_case`；Tauri 扁平 Command 参数键遵循 Tauri v2 调用约定，在 TypeScript 中使用 `camelCase`（例如 Rust `book_id` 对应 `bookId`）。禁止对嵌套 serde 对象做隐式重命名。
 
-项目当前处于后端 B4（叠加在待技术冻结的 B3 候选上）。此阶段新增能力必须先交付真实 Rust 实现、测试和本文件契约，再允许最小 TypeScript 镜像同步；不得为了展示页面注册 stub Command。B3 技术冻结与 B4 完成后，本文件、serde 模型、TypeScript 镜像、稳定错误前缀和资源预算共同形成前端重建所依赖的契约冻结点；正式 release 签名另属最终发布门禁。
+本文件定义当前已实现的公开契约；阶段状态与执行顺序只在 [TODO.md](TODO.md) 维护。新增能力必须交付真实 Rust 实现、测试和契约，再同步 TypeScript 镜像及调用方；不得为了展示页面注册 stub Command。冻结后的语义变更仍须履行迁移、IPC 同步和验证流程。正式 release 签名另属最终发布门禁。
 
 ## 共享模型
 
@@ -124,7 +124,7 @@ export interface SelectedSource {
 
 export interface OpenBookResult {
   book: Book;
-  epub_root_url: string; // Windows: http://epub.localhost/book/{id}/; Linux/Android: epub://localhost/book/{id}/
+  epub_root_url: string; // Windows/Android: http://epub.localhost/book/{id}/; Linux: epub://localhost/book/{id}/
 }
 
 export type DeleteBookArgs = {

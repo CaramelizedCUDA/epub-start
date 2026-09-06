@@ -1,5 +1,7 @@
 # B3 后端契约冻结候选
 
+> **历史快照，不作为当前阶段锁。** 下文保留旧候选当时的状态和未测项；B3 技术冻结及 B4 后续状态以 [TODO.md](TODO.md) 为准，当前契约以 [IPC.md](IPC.md) 和 [DATABASE.md](DATABASE.md) 为准。旧快照中的“尚不解锁”不阻塞当前 F1/F2。
+
 日期：2026-08-24
 分支：`codex/b3-contract-freeze`
 状态：**候选冻结，未签发**。Windows legacy shell 实际具备的运行态链、系列/标签后端契约、B1/B2 Android 后端范围、当前 arm64 静态候选以及两台真实 arm64 设备的空白安装/首次启动均已关闭；当前仍缺固定样本运行时占用、release 私有 data 精确分项和正式 release 签名。因此本文件记录当前实现边界，但尚不正式解锁 F1/F2。

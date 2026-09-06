@@ -1,6 +1,6 @@
 # 架构蓝图与职责边界
 
-本文件规定模块职责和目录位置。持久化字段以 [DATABASE.md](DATABASE.md) 为准，公开 Command 契约以 [IPC.md](IPC.md) 为准，依赖限制以 [README.md](README.md) 为准。
+本文件规定模块职责和目录位置。持久化字段以 [DATABASE.md](DATABASE.md) 为准，公开 Command 契约以 [IPC.md](IPC.md) 为准，依赖限制以 [CONVENTIONS.md](CONVENTIONS.md) 为准，命令以 [开发指南](docs/DEVELOPMENT.md) 为准。
 
 ## 开发阶段边界
 
@@ -75,7 +75,7 @@ Rust command -> services -> db/source/formats/platform -> Result<T, String> -> R
 - 重启后 `open_book` 必须重新验证持久读取权限。授权撤销、Provider 不可访问或文件已删除时，按来源失效处理。
 - 校验失败时，Rust 把书籍状态更新为 `missing`，再返回 `BOOK_SOURCE_UNAVAILABLE:` 错误；解析异常则更新为 `error`。
 
-EPUB 内部资源的逻辑地址为 `book/{book_id}/{entry_path}`：Windows WebView2 通过 `http://epub.localhost/book/{book_id}/{entry_path}` 访问，Linux/Android 使用 `epub://localhost/book/{book_id}/{entry_path}`。URL 选择属于 `platform::epub_root_url` 的平台职责。协议处理器在 Rust 中根据已验证来源打开 ZIP，并返回对应 XHTML、CSS、图片或字体的正确 MIME 响应。`entry_path` 必须进行规范化并拒绝路径穿越。封面缓存可由同一受控资源机制暴露。
+EPUB 内部资源的逻辑地址为 `book/{book_id}/{entry_path}`：Windows WebView2 通过 `http://epub.localhost/book/{book_id}/{entry_path}` 访问，Android WebView 同样通过 `http://epub.localhost/book/{book_id}/{entry_path}` 访问，Linux 使用 `epub://localhost/book/{book_id}/{entry_path}`。URL 选择属于 `platform::epub_root_url` 的平台职责。协议处理器在 Rust 中根据已验证来源打开 ZIP，并返回对应 XHTML、CSS、图片或字体的正确 MIME 响应。`entry_path` 必须进行规范化并拒绝路径穿越。封面缓存可由同一受控资源机制暴露。
 
 `asset://` 只可用于已授权的普通本地缓存文件；不能替代 `epub://`，也不能把 EPUB ZIP 内路径直接映射到宿主文件系统。
 
@@ -138,13 +138,13 @@ commands/reading_activity.rs
 - `get_library_reading_overview` 是书架的深接口，一次返回按日/周/月/季度聚合的中性时间桶、继续阅读项和最多三类离线推荐；桌面左右排布、Android 上下排布及时间轮盘形态不进入后端模型。
 - `get_reading_footprint` 按年或全部历史返回日级阅读时长、图书数和系列数；后端不返回颜色、热力等级、连续天数或成就语义。
 - 离线推荐只读取书架元数据、系列关系、阅读进度和图书阅读状态。`SearchContentProvider`、`search_documents` 与正文片段不依赖本模块；未来正文推荐必须经过单独契约评审，不通过空字段或占位理由提前耦合。
-- Reader 后续只在正文成功显示且页面前台可见时调用活动观察 seam；B4 当前只同步 TypeScript 契约与 wrapper，不修改 legacy shell、EPUB.js 生命周期或生产 UI。
+- Reader 后续只在正文成功显示且页面前台可见时调用活动观察 seam；B4 当时只交付 TypeScript 契约与 wrapper；后续 Reader/书架实际消费与未测范围统一见 TODO，不将后端完成等同于前端消费完成。
 
 ## P3 多格式目标边界（冻结设计）
 
 当前代码不得提前实现本节，但现有架构也不得把 EPUB 的 CFI、EPUB.js Rendition 或文本排版设置误写成所有格式的通用能力。长期阅读模型分为可重排文档（EPUB/TXT）和固定页面（PDF/CBZ/CBR）；PDF 的文本层能力按文件声明，不是固定保证。
 
-P3.0 需要先设计 capability 组合，而不是万能 Reader 或散落的格式分支：`MetadataProvider`、`ResourceProvider`、`TocProvider`、`TextContentProvider`、`PageProvider`、`SearchProvider`、`AnnotationProvider`。格式不支持某项能力时返回稳定的不支持结果，前端隐藏入口；不得用空目录、空搜索结果或默认页伪装支持。
+P3.0 从当前真实的 `MetadataProvider`、`ResourceProvider`、`SearchContentProvider` 出发评审能力组合；目录、页面和批注等接口只在有真实获批实现时加入，不预建万能 Reader 或一套占位 trait。格式不支持某项能力时返回稳定的不支持结果，前端隐藏入口；不得用空目录、空搜索结果或默认页伪装支持。
 
 导入检查应独立于格式处理器：
 
@@ -156,13 +156,13 @@ SelectedSource / future cached remote source
   -> format-specific import service
 ```
 
-`ImportInspector` 负责识别 EPUB、单书分发包、纯图片漫画归档和多书候选；格式处理器负责解释已经确定的格式内容。ZIP 是外层分发容器或 CBZ 图片归档，不是数据库图书格式；禁止定义 `BookFormat::Zip`。EPUB 必须先通过 EPUB 签名与容器结构识别，不能被外层 ZIP 规则解包。暂存文件只进入应用私有目录，成功后原子转入受控缓存，失败或取消必须清理。
+`ImportInspector` 负责识别 EPUB、单书分发包、纯图片漫画归档和多书候选；格式处理器负责解释已经确定的格式内容。ZIP 是外层分发容器或 CBZ 图片归档，不是数据库图书格式；禁止定义 `BookFormat::Zip`。EPUB 必须先通过 EPUB 签名与容器结构识别，不能被外层 ZIP 规则解包。暂存文件只进入应用私有目录，失败或取消必须清理。成功后的永久来源与可重建缓存须按 ROADMAP P3.0 先行设计：原归档/条目关系或受管理原件不可被一个暂存路径替代，用户唯一副本不得进入可淘汰缓存。
 
 位置和设置同样按阅读模型隔离：EPUB 使用 CFI，TXT 使用经过设计的文本锚点，PDF/漫画使用页码及必要的页内坐标；文本排版设置与页面缩放/阅读方向分开持久化。具体 Schema 和 IPC 只能在 P3.0 评审后通过追加迁移引入。
 
 ## 前端阶段结构（后端冻结后）
 
-以下内容描述 F1–F3 的目标结构，不表示当前阶段已经完成，也不授权在 B3 之前继续扩展前端：
+以下内容规定 F1–F3 的目标结构；实际完成范围见 TODO。当前 E5 先集中 EPUB 引擎行为，P3 再设计文本/固定页面适配器与通用位置；不让 UI 或公共状态暴露新的格式内部对象：
 
 分页正文点击由 EPUB iframe 捕获事件，但判定方向时必须换算为阅读器视口坐标，并按整个视口左右各 25% 命中；一个用户点击只允许触发一次翻页，滚动模式不得启用该命中区。图片、链接、表单控件、活动文本选区和已渲染的高亮标记必须优先。
 
