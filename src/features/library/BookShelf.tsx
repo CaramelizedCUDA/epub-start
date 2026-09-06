@@ -6,7 +6,10 @@ import { getGlobalReadingSettings, saveGlobalReadingSettings } from '../../lib/t
 import type { BookSummary, ReadingOverviewPeriod, ReadingSettings } from '../../types/models';
 import { B2CloseoutPanel } from '../closeout/B2CloseoutPanel';
 import { B3PrivateDataPanel } from '../closeout/B3PrivateDataPanel';
+import { ArchiveSearchPage } from './ArchiveSearchPage';
+import { NotesPage } from './NotesPage';
 import { FootprintPage, LibraryInsights } from './ReadingInsights';
+import { SeriesPage } from './SeriesPage';
 
 export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'footprint' | 'settings';
 
@@ -33,39 +36,6 @@ const READING_PERIOD_OPTIONS: Array<[string, string]> = [
 const READING_PERIOD_VALUES: ReadingOverviewPeriod[] = ['day', 'week', 'month', 'quarter'];
 const READING_PERIOD_STORAGE_KEY = 'epubstart.library.reading-period';
 const RECOMMENDATIONS_STORAGE_KEY = 'epubstart.library.recommendations-enabled';
-
-const SECTION_META: Record<LibrarySection, { eyebrow: string; title: string; subtitle: string }> = {
-  library: {
-    eyebrow: 'PERSONAL READING ARCHIVE',
-    title: '今天想读哪一本？',
-    subtitle: '先看看你在读什么，再决定下一页。',
-  },
-  series: {
-    eyebrow: 'COLLECTION RELATIONSHIPS',
-    title: '系列还在整理中。',
-    subtitle: '先把位置留好，系列管理将在后续功能阶段接入。',
-  },
-  search: {
-    eyebrow: 'SEARCH THE ARCHIVE',
-    title: '搜索还没打开。',
-    subtitle: '搜索入口已放在这里，真实查询将在后续功能阶段接入。',
-  },
-  notes: {
-    eyebrow: 'MARGINALIA',
-    title: '批注还没打开。',
-    subtitle: '先保留阅读边栏的位置，批注消费将在 Reader 完成后接入。',
-  },
-  footprint: {
-    eyebrow: 'READING HISTORY',
-    title: '这一年留下的痕迹。',
-    subtitle: '不评价读了多少，只把走过的日子留在这里。',
-  },
-  settings: {
-    eyebrow: 'SHELF PREFERENCES',
-    title: '把书架调成你的样子。',
-    subtitle: '阅读时长的观察方式和推荐阅读，都可以在这里安静地调整。',
-  },
-};
 
 function readReadingPeriodPreference(): ReadingOverviewPeriod {
   const stored = readLocalPreference(READING_PERIOD_STORAGE_KEY);
@@ -281,7 +251,9 @@ export function BookShelf({
                 onSave={() => void persistSettings()}
               />
             )}
-            {(activeSection === 'series' || activeSection === 'search' || activeSection === 'notes') && <PlaceholderPage section={activeSection} />}
+            {activeSection === 'series' && <SeriesPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
+            {activeSection === 'search' && <ArchiveSearchPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
+            {activeSection === 'notes' && <NotesPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
 
             <footer className="mt-12 flex flex-col gap-2 border-t border-[#d0d9d4] pt-4 font-mono text-[0.62rem] tracking-[0.08em] text-[#687571] sm:flex-row sm:items-center sm:justify-between">
               <span>EpubStart · PERSONAL READING ARCHIVE</span>
@@ -435,21 +407,6 @@ function EmptyShelf({ onImport }: { onImport: () => void }) {
       <p className="mt-2 max-w-lg text-sm leading-relaxed text-[#687571]">从本地选择 EPUB，书籍会留在这里。阅读记录、系列关系和标签都会围绕这份书架展开。</p>
       <button type="button" onClick={onImport} className="mt-5 border-b border-[#2e6e67] py-1 text-sm text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">添加第一本 EPUB <span aria-hidden="true">→</span></button>
     </div>
-  );
-}
-
-function PlaceholderPage({ section }: { section: 'series' | 'search' | 'notes' }) {
-  const meta = SECTION_META[section];
-  return (
-    <section className="mx-auto max-w-3xl px-2 pb-20 pt-20 lg:pt-28" aria-labelledby={`${section}-placeholder-title`}>
-      <p className="mb-3 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[#2e6e67]">{meta.eyebrow}</p>
-      <h2 id={`${section}-placeholder-title`} className="font-serif text-4xl font-medium tracking-[-0.05em] text-[#18272c] sm:text-5xl">{meta.title}</h2>
-      <p className="mt-5 max-w-xl font-serif text-lg leading-relaxed text-[#687571]">{meta.subtitle}</p>
-      <div className="mt-12 border-t border-[#d0d9d4] pt-5 text-sm leading-relaxed text-[#687571]">
-        <p>F1 先确定入口、页面边界和空状态，不用假数据填充尚未接入的能力。</p>
-        <span className="mt-4 inline-block border border-[#d0d9d4] px-3 py-2 font-mono text-[0.65rem] tracking-[0.1em] text-[#5c7397]">NEXT · F2 FUNCTIONAL CONSUMPTION</span>
-      </div>
-    </section>
   );
 }
 

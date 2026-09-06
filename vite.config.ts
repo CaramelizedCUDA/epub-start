@@ -22,7 +22,11 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // Windows may resolve the implicit localhost listener to ::1 while
+    // Tauri's desktop devUrl probe connects through IPv4. Keep the explicit
+    // TAURI_DEV_HOST override for Android/device development, but make the
+    // desktop default deterministic.
+    host: host || "127.0.0.1",
     hmr: host
       ? {
           protocol: "ws",
