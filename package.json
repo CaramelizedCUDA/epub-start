@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "test:frontend": "node scripts/test-frontend.mjs",
     "audit:android-release": "node scripts/audit-android-release.mjs",
     "audit:unwrap": "node scripts/audit-unwrap.mjs",
     "audit:check": "node scripts/audit-unwrap.mjs --check"

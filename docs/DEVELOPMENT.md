@@ -20,16 +20,39 @@ npm run tauri dev
 
 仅开发前端资源时使用 `npm run dev`，不能用浏览器页面证明 Rust/SQLite/SAF 功能正常。
 
-按改动范围执行验证；仅文档修改执行链接、差异检查及统计核对，不要求重新构建应用。代码验证命令如下：
+先按 [验证策略](VERIFICATION.md) 选择影响面。下面是命令字典，不是每次必跑清单；仅文档修改检查链接、差异与状态，不构建应用。
+
+| 触发条件 | 命令 |
+| --- | --- |
+| 前端生产代码/样式变化 | `npm run build` |
+| libraryStore 并发/加载行为变化 | `npm run test:frontend -- --library library` |
+| Rust 源码变化 | `cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo check --manifest-path src-tauri/Cargo.toml`，以及 `cargo test --manifest-path src-tauri/Cargo.toml <相关测试过滤器>` |
+| Rust 跨模块影响或后端阶段回归 | `cargo test --manifest-path src-tauri/Cargo.toml` |
+| Rust 源码或当前统计登记变化 | `npm run audit:unwrap`，核对并同步登记后 `npm run audit:check` |
+| 只修改测试运行器/测试 | 执行对应测试；新增/改变行为时自证红绿，不因此构建未变化的产品或设备制品 |
+
+过滤测试时确认实际命中了预期测试；零个测试不是通过证据。不要把字典整段复制执行。
+
+### 前端回归
+
+现有 TypeScript 编译器加 Node 内置测试运行器，无新增依赖。命令从仓库根目录执行：
 
 ```powershell
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
-npm run build
-npm run audit:unwrap
-npm run audit:check
+npm run test:frontend -- --list
+npm run test:frontend -- --library library
 ```
+
+默认 `npm run test:frontend` 执行当前登记的全部前端自动测试；日常优先选择受影响子集。目前只有 `library`：编译实际 `src/stores/libraryStore.ts`，仅替换 IPC 边界，在隔离目录验证旧列表不覆盖新列表、删除刷新不被旧列表恢复、并发加载与失败后的恢复。成功输出场景数、源码摘要和退出码，失败返回非零；不需要启动应用或连接设备。
+
+新增/改变该组测试时运行一次自证（普通重跑不必）：
+
+```powershell
+npm run test:frontend -- --library library --red-green
+```
+
+自证只改变 `target/` 下隔离副本，执行目标缺陷失败及干净源码恢复；生产源文件不注入缺陷。临时构建位于已忽略的 `target/frontend-tests/`，不得提交。此入口不验证 React 页面、真实 IPC/SQLite、CFI 或 SAF；对应机械步骤与阶段分配见 [验证策略](VERIFICATION.md#前端机械执行路径)。未来仅在相关功能变更时加入高价值回归。
+
+### 平台构建
 
 桌面发布构建：
 
@@ -47,7 +70,7 @@ npm run audit:android-release
 
 ## 验证记录规则
 
-新增测试必须按 [AGENTS](../AGENTS.md) 完成目标缺陷变红、恢复变绿自证。记录必须同时写明测了什么、没测什么、版本与平台；构建和静态审查不能替代设备运行态。Android 破坏性存储实验只能按 [受控验收流程](../ANDROID_STORAGE_ACCEPTANCE.md) 在确认的受限虚拟设备执行。
+新增或改变测试行为按 [验证策略](VERIFICATION.md) 自证；原缺陷复现变红即可，不重复为未改测试注入。记录必须同时写明测了什么、没测什么、版本与平台；构建和静态审查不能替代设备运行态。Android 破坏性存储实验只能按 [受控验收流程](../ANDROID_STORAGE_ACCEPTANCE.md) 在确认的受限虚拟设备执行。
 
 `audit:unwrap` 输出当前统计；`audit:check` 核对 BACKEND_AUDIT/TODO 中登记的当前数字。历史归档中的旧数字是当时的事实，不改写为当前统计。
 

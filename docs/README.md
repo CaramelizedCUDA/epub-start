@@ -6,6 +6,7 @@
 | --- | --- |
 | [TODO](../TODO.md) | 当前执行顺序、状态、完成标准和验收证据入口 |
 | [ROADMAP](../ROADMAP.md) | 长期阶段、进入/退出门禁与冻结范围 |
+| [验证策略](VERIFICATION.md) | 验证影响面、必跑/建议、阶段门禁、证据复用与停止条件 |
 | [开发指南](DEVELOPMENT.md) | 环境、开发/验证命令及样本使用 |
 | [CONVENTIONS](../CONVENTIONS.md) | 实现规则、唯一依赖白名单和引入审批 |
 | [ARCHITECTURE](../ARCHITECTURE.md) | 当前模块职责与目标设计的明确区分 |

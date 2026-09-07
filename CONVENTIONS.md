@@ -72,6 +72,8 @@
 
 ### Android 验证门禁
 
+验证频率与证据复用以 [验证策略](docs/VERIFICATION.md) 为准。下述设备/制品要求约束对应验收的有效性，不要求每次前端提交运行全矩阵；B1–B3 为历史阶段门禁。
+
 - 模拟器通常只用于构建和基础行为检查，真实设备仍负责 SAF Provider、持久授权、授权撤销、OEM 进程回收、WebView、性能与手势验证。唯一例外是现有真机无法安全构造的破坏性存储压力：固定 API、固定镜像并限制 `/data` 容量的受控 Android 虚拟设备可替代执行 ENOSPC/SQLite 满盘、长期/2 GiB 写入及重启清理；必须记录镜像、容量、初始/峰值/清理后占用和命令，不得把结果外推为真实设备性能或 OEM 行为。
 - B1 第一次真实设备来源链门禁已经完成；B3 前必须完成来源链回归，否则不得宣称全平台后端冻结或开始 Android 前端功能接入。
 - B2 在真实设备验证索引取消、系统终止恢复、大文件和可安全执行的缓存行为；低存储与长期/2 GiB 破坏性压力按上述受控虚拟设备例外延期。F2/F3 分别验证功能接入与体验/兼容性矩阵。
@@ -80,7 +82,7 @@
 - 体积门禁优先使用现有构建工具和可复现脚本；不得为了缩小包体删除安全检查、错误诊断能力或用户数据，也不得把调试段、测试 EPUB、本机缓存、`.so` 或构建目录提交入库。
 - `npm run audit:android-release` 只读取当前 arm64 release 制品，并核对绝对/相对基线、工具链、ABI、ELF 调试段和禁止 payload；执行前必须先生成 APK/AAB 与 `dist`。脚本通过不等于 Gradle lint、签名发布或设备运行态通过。
 - Android build type 角色固定为：debug 使用 debug Rust/JNI 调试；profile 使用 release Rust、`applicationIdSuffix=.profile`、应用可调试、JNI 不可调试、R8 关闭和 debug 签名；release 使用 release Rust/R8 且不携带运行时调试段。为 AVD 暂存到已忽略 `jniLibs` 的本地 `.so` 只能用于 profile 打包，禁止提交或当作官方 release 构建链。
-- 破坏性存储验收必须先通过 `emulator-*` 序列号与 `ro.kernel.qemu=1` 双重检查，并按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 留存证据；未执行时统一标记 Android 环境“阻塞”。
+- 破坏性存储验收必须先通过 `emulator-*` 序列号与 `ro.kernel.qemu=1` 双重检查，并按 [ANDROID_STORAGE_ACCEPTANCE.md](ANDROID_STORAGE_ACCEPTANCE.md) 留存证据；仅在本次确需该场景且无法执行时，将该场景标为“阻塞”并说明原因；不把整个 Android 环境统一标为阻塞。
 
 ## 依赖管理与白名单控制（最高优先级）
 
@@ -109,8 +111,8 @@
 
 ## Agent 工作流
 
-所有模型（包括 Luna）均按 [AGENTS.md](AGENTS.md) 的开始任务、实现/构建、验证和交接检查点执行。不得因为主要由模型构建而省略人工运行态门禁。
+所有模型（包括 Luna）均按 [AGENTS.md](AGENTS.md) 的开始任务、实现/构建、验证和交接检查点执行。验证范围统一使用 [验证策略](docs/VERIFICATION.md)，不因模型执行增加检查，也不把静态结果当成真实运行态。
 
-- 每次开始实现前读取 [TODO.md](TODO.md)，只处理按顺序第一个未完成且无阻塞的任务，并先阅读其完成标准。
-- 完成且验证通过后，才将该任务改为 `[x]`；不得提前勾选或声称未实现模块已完成。
+- 每次开始实现前读取 [TODO.md](TODO.md)，用户指定工作优先，否则处理按顺序第一个未完成且无阻塞的实现项，并先阅读其完成标准。
+- 实现与本次影响面必跑检查完成后，才勾选实现项；阶段验收另记，未测不能写成已通过，也不阻塞后续独立实现。
 - 不在任务范围内重构，不复制现有模块，不跳过阶段。发现冲突、缺少批准依赖或安全/权限风险时，记录阻塞并请求人类决策。
