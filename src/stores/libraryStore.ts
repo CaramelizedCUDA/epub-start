@@ -20,86 +20,125 @@ interface LibraryState {
   clearError: () => void;
 }
 
-export const useLibraryStore = create<LibraryState>((set, get) => ({
-  books: [],
-  isLoading: false,
-  error: null,
+export const useLibraryStore = create<LibraryState>((set, get) => {
+  // Each operation owns one slot until its complete async chain finishes. A
+  // refresh started by import/relocate therefore cannot clear the loading
+  // state belonging to the outer operation.
+  let activeOperations = 0;
+  let nextOperationId = 0;
+  let latestOperationId = 0;
+  let latestListRequestId = 0;
+  let latestErrorOperationId = 0;
 
-  loadBooks: async () => {
+  const beginOperation = () => {
+    const operationId = ++nextOperationId;
+    latestOperationId = operationId;
+    latestErrorOperationId = operationId;
+    activeOperations += 1;
     set({ isLoading: true, error: null });
-    try {
-      const books = await listBooks();
-      set({ books, isLoading: false });
-    } catch (err) {
-      set({
-        isLoading: false,
-        error: userFacingError(err),
-      });
-    }
-  },
+    return operationId;
+  };
 
-  importFromDialog: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const sources = await selectEpubSources();
-      if (sources.length === 0) {
-        set({ isLoading: false });
-        return; // user cancelled
+  const finishOperation = () => {
+    activeOperations = Math.max(0, activeOperations - 1);
+    set({ isLoading: activeOperations > 0 });
+  };
+
+  const setOperationError = (operationId: number, error: unknown) => {
+    if (operationId !== latestOperationId || operationId < latestErrorOperationId) return;
+    set({ error: userFacingError(error) });
+  };
+
+  return {
+    books: [],
+    isLoading: false,
+    error: null,
+
+    loadBooks: async () => {
+      const operationId = beginOperation();
+      const requestId = ++latestListRequestId;
+      try {
+        const books = await listBooks();
+        // Only the newest list request may replace shelf data. Older requests
+        // can finish after a retry or a mutation-triggered refresh.
+        if (requestId === latestListRequestId) {
+          set({ books });
+        }
+      } catch (err) {
+        if (requestId === latestListRequestId) {
+          setOperationError(operationId, err);
+        }
+      } finally {
+        finishOperation();
       }
-      for (const source of sources) {
-        try {
-          await importBook({ source });
-        } catch (importErr) {
-          const msg =
-            importErr instanceof Error ? importErr.message : String(importErr);
-          // If it's a controlled error (BOOK_PARSE_FAILED), still refresh shelf
-          if (!msg.startsWith('BOOK_PARSE_FAILED:')) {
-            set({ error: userFacingError(msg), isLoading: false });
-            return;
+    },
+
+    importFromDialog: async () => {
+      const operationId = beginOperation();
+      try {
+        const sources = await selectEpubSources();
+        if (sources.length === 0) return; // user cancelled
+
+        for (const source of sources) {
+          try {
+            await importBook({ source });
+          } catch (importErr) {
+            const msg = importErr instanceof Error ? importErr.message : String(importErr);
+            // A parse failure is persisted as an error-status book. Continue
+            // through the selection so the shelf can show it and offer retry.
+            if (msg.startsWith('BOOK_PARSE_FAILED:')) continue;
+            throw importErr;
           }
         }
+        // Refresh shelf after all imports. loadBooks owns its own request slot
+        // and keeps the outer import operation active until it finishes.
+        await get().loadBooks();
+      } catch (err) {
+        setOperationError(operationId, err);
+      } finally {
+        finishOperation();
       }
-      // Refresh shelf after all imports
-      await get().loadBooks();
-    } catch (err) {
-      set({
-        isLoading: false,
-        error: userFacingError(err),
-      });
-    }
-  },
+    },
 
-  relocateSource: async (bookId) => {
-    set({ isLoading: true, error: null });
-    try {
-      const sources = await selectEpubSources();
-      if (sources.length === 0) {
-        set({ isLoading: false });
-        return;
+    relocateSource: async (bookId) => {
+      const operationId = beginOperation();
+      try {
+        const sources = await selectEpubSources();
+        if (sources.length === 0) return;
+        await relocateBook({ bookId, source: sources[0] });
+        await get().loadBooks();
+      } catch (err) {
+        setOperationError(operationId, err);
+      } finally {
+        finishOperation();
       }
-      await relocateBook({ bookId, source: sources[0] });
-      await get().loadBooks();
-    } catch (err) {
-      set({ isLoading: false, error: userFacingError(err) });
-    }
-  },
+    },
 
-  clearError: () => set({ error: null }),
+    clearError: () => {
+      // Prevent an already-running operation from resurfacing a dismissed
+      // error; the next operation receives a newer generation.
+      latestErrorOperationId = latestOperationId + 1;
+      set({ error: null });
+    },
 
-  removeBook: async (bookId) => {
-    set({ isLoading: true, error: null });
-    try {
-      await deleteBook({ bookId });
-      // Remove from local shelf immediately — no full reload needed.
-      set((state) => ({
-        books: state.books.filter((b) => b.id !== bookId),
-        isLoading: false,
-      }));
-    } catch (err) {
-      set({ isLoading: false, error: userFacingError(err) });
-    }
-  },
-}));
+    removeBook: async (bookId) => {
+      const operationId = beginOperation();
+      try {
+        await deleteBook({ bookId });
+        // Remove from local shelf immediately, then refresh so an older
+        // in-flight list response cannot reintroduce the deleted card.
+        set((state) => ({
+          books: state.books.filter((b) => b.id !== bookId),
+        }));
+        await get().loadBooks();
+      } catch (err) {
+        setOperationError(operationId, err);
+      } finally {
+        finishOperation();
+      }
+    },
+  };
+});
 
 function userFacingError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);

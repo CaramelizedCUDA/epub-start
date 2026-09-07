@@ -228,6 +228,7 @@ export function BookShelf({
                   books={books}
                   isLoading={isLoading}
                   onImport={() => void importFromDialog()}
+                  onRetryImport={() => void importFromDialog()}
                   onOpenBook={onOpenBook}
                   onOpenSection={changeSection}
                   onRelocate={(bookId) => void relocateSource(bookId)}
@@ -270,6 +271,7 @@ function BookCollection({
   books,
   isLoading,
   onImport,
+  onRetryImport,
   onOpenBook,
   onOpenSection,
   onRelocate,
@@ -278,6 +280,7 @@ function BookCollection({
   books: BookSummary[];
   isLoading: boolean;
   onImport: () => void;
+  onRetryImport: () => void;
   onOpenBook: (book: BookSummary) => void;
   onOpenSection: (section: LibrarySection) => void;
   onRelocate: (bookId: string) => void;
@@ -320,6 +323,7 @@ function BookCollection({
               book={book}
               disabled={isLoading}
               onOpen={() => onOpenBook(book)}
+              onRetryImport={onRetryImport}
               onRelocate={() => onRelocate(book.id)}
               onDelete={() => onDelete(book.id)}
             />
@@ -334,12 +338,14 @@ function ShelfBookCard({
   book,
   disabled,
   onOpen,
+  onRetryImport,
   onRelocate,
   onDelete,
 }: {
   book: BookSummary;
   disabled: boolean;
   onOpen: () => void;
+  onRetryImport: () => void;
   onRelocate: () => void;
   onDelete: () => void;
 }) {
@@ -357,7 +363,7 @@ function ShelfBookCard({
         </div>
       </button>
       <div className="library-book-card-actions mt-4 flex min-h-6 items-center justify-between gap-2 text-xs">
-        {canRelocate ? <button type="button" onClick={onRelocate} disabled={disabled} className="border-b border-[#c5a76b] text-[#8b7137] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">重新选择</button> : <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[#687571]">{book.format}</span>}
+        {canRelocate ? <button type="button" onClick={onRelocate} disabled={disabled} className="border-b border-[#c5a76b] text-[#8b7137] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">重新选择</button> : book.status === 'error' ? <button type="button" onClick={onRetryImport} disabled={disabled} className="border-b border-[#a54b45] text-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">重新导入</button> : <span className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[#687571]">{book.format}</span>}
         <button type="button" onClick={onDelete} disabled={disabled} className="border-b border-transparent text-[#687571] transition hover:border-[#a54b45] hover:text-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">移除</button>
       </div>
     </article>

@@ -7,7 +7,7 @@ import { useLibraryStore } from './stores/libraryStore';
 
 type View =
   | { kind: 'shelf'; section: LibrarySection }
-  | { kind: 'reader'; bookId: string; epubRootUrl: string };
+  | { kind: 'reader'; bookId: string; epubRootUrl: string; returnSection: LibrarySection };
 
 function App() {
   const [view, setView] = useState<View>({ kind: 'shelf', section: 'library' });
@@ -16,6 +16,7 @@ function App() {
 
   const handleOpenBook = useCallback(async (book: BookSummary) => {
     setReaderError(null);
+    const returnSection = view.kind === 'shelf' ? view.section : 'library';
     try {
       if (book.status === 'missing') {
         setReaderError('BOOK_SOURCE_UNAVAILABLE: 文件已移动，请重新选择。');
@@ -31,6 +32,7 @@ function App() {
         kind: 'reader',
         bookId: result.book.id,
         epubRootUrl: result.epub_root_url,
+        returnSection,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -41,10 +43,12 @@ function App() {
         setReaderError(msg);
       }
     }
-  }, [loadBooks]);
+  }, [loadBooks, view]);
 
   const handleCloseReader = useCallback(() => {
-    setView({ kind: 'shelf', section: 'library' });
+    setView((current) => current.kind === 'reader'
+      ? { kind: 'shelf', section: current.returnSection }
+      : current);
   }, []);
 
   if (view.kind === 'reader') {
