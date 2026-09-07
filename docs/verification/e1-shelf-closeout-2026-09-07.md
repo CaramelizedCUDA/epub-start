@@ -37,10 +37,18 @@
 - arm64 Rust `release` 构建：通过；`libepub_start_lib.so` SHA-256 为 `799319E1C07FB0768BCD828C32063557F58E60C67F34AA84ACA38896710DCA09`。
 - `:app:assembleArm64Profile -x rustBuildArm64Profile`：通过，生成 `app-arm64-profile.apk`，SHA-256 为 `BA05788BF40D31708E89A2390C0DD3D869FD55C952B602A797C3293906BAE264`。
 - profile 包安装成功，确认同时存在正式包 `com.epubstart.reader` 与隔离包 `com.epubstart.reader.profile`。
-- 设备在启动后进入安全图案锁屏；未取得解锁操作，因此没有执行 Android UI、WebView、SAF 导入或 E1 状态操作。`target/e1-20260907/android-profile-main.png` 是锁屏证据，不是应用通过证据。
+- 初次验收时设备处于安全图案锁屏，`target/e1-20260907/android-profile-main.png` 仅是阻塞证据，不是应用通过证据。用户解锁黑鲨并接入荣耀后，于同一候选 profile APK 上重新执行了以下运行态检查。
+- 黑鲨解锁后的主路径已覆盖：启动空书架、真实 Android DocumentsUI/SAF 选择器、从“下载”选择 `e1-shelf.epub`、导入后书架出现、打开 EPUB 正文、点击“返回书架”。证据截图：`target/e1-20260907-android-rerun/88477008-launch.png`、`88477008-picker-open.png`、`88477008-downloads.png`、`88477008-after-import-scroll.png`、`88477008-reader.png`、`88477008-after-return.png`。设备数据库中的书籍状态为 `available`，来源为 `android_content_uri`。
 
-因此 E1 保持未勾选：Windows 覆盖已完成，本轮 Android 运行态为“阻塞（设备锁屏，需用户解锁后重跑）”。未测范围包括 Android 空/错/重试/返回、SAF 来源恢复、黑鲨 WebView 书架消费，以及 Linux。
+### Android（荣耀 PPG-AN00，序列号 AXSF025528000409，Android 15）
+
+- 使用同一 `app-arm64-profile.apk` 安装隔离包 `com.epubstart.reader.profile`，启动时为空库。
+- 主路径已覆盖：启动空书架、真实 Android 15 DocumentsUI/SAF 选择器、从“下载内容”选择 `e1-shelf.epub`、导入后书架出现、打开 EPUB 正文、点击“返回书架”。证据截图：`target/e1-20260907-android-rerun/AXSF025528000409-profile-launch.png`、`AXSF025528000409-picker-open.png`、`AXSF025528000409-downloads-scroll1.png`、`AXSF025528000409-after-import-scroll.png`、`AXSF025528000409-reader.png`、`AXSF025528000409-after-return.png`。设备数据库中的书籍状态为 `available`，来源为 `android_content_uri`。
+
+本轮 Android 已实际验证“空库 → SAF 导入 → 书架消费 → Reader 正文 → 返回书架”主路径，且分别在 Android 9 黑鲨和 Android 15 荣耀上执行。Android 仍未覆盖：无效 EPUB 的解析失败/同源重试、来源文件消失后的重新选择、SAF 权限撤销后的恢复、取消选择和删除后刷新；这些属于 E1 的失败/重试或后续 E2 状态，不能由本轮主路径外推。Linux 仍未执行。
+
+因此 E1 保持未勾选：Windows 的空库、加载、搜索打开/原版块返回、来源缺失/恢复、解析失败同源重试已完成；Android 只完成双机主路径，失败/重试与来源状态矩阵仍有明确未测项。
 
 ## 交接
 
-本轮代码不改变 P3 冻结路线；后续应先在已解锁黑鲨上补做 Android E1 状态矩阵，再决定是否勾选 E1，随后进入 E2 导入/删除/来源重新定位的完整跨端验收。
+本轮代码不改变 P3 冻结路线；后续应补做 Android 双机的失败/重试与来源状态矩阵，再决定是否勾选 E1，随后进入 E2 导入/删除/来源重新定位的完整跨端验收。
