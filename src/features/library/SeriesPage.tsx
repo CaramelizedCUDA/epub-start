@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   clearBookSeries,
   createSeries,
@@ -26,16 +26,21 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
   const [newVolumeLabel, setNewVolumeLabel] = useState('');
   const [seriesNameDraft, setSeriesNameDraft] = useState('');
   const [volumeDrafts, setVolumeDrafts] = useState<Record<string, string>>({});
+  const [assignmentsSeriesId, setAssignmentsSeriesId] = useState('');
   const [isLoadingSeries, setIsLoadingSeries] = useState(true);
   const [isLoadingBooks, setIsLoadingBooks] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const writeLockRef = useRef(false);
+  const selectedSeriesIdRef = useRef(selectedSeriesId);
+  selectedSeriesIdRef.current = selectedSeriesId;
 
   const selectedSeries = series.find((item) => item.id === selectedSeriesId) ?? null;
-  const assignedBookIds = useMemo(() => new Set(assignments.map((item) => item.book_id)), [assignments]);
+  const selectedAssignments = assignmentsSeriesId === selectedSeriesId ? assignments : [];
+  const assignedBookIds = useMemo(() => new Set(selectedAssignments.map((item) => item.book_id)), [selectedAssignments]);
   const assignedBooks = useMemo(
-    () => assignments.map((assignment) => ({ assignment, book: books.find((item) => item.id === assignment.book_id) ?? null })),
-    [assignments, books],
+    () => selectedAssignments.map((assignment) => ({ assignment, book: books.find((item) => item.id === assignment.book_id) ?? null })),
+    [selectedAssignments, books],
   );
   const availableBooks = useMemo(
     () => books.filter((book) => !assignedBookIds.has(book.id)),
@@ -50,7 +55,12 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
       .then((nextSeries) => {
         if (disposed) return;
         setSeries(nextSeries);
-        setSelectedSeriesId((current) => nextSeries.some((item) => item.id === current) ? current : (nextSeries[0]?.id ?? ''));
+        const nextSelectedSeriesId = nextSeries.some((item) => item.id === selectedSeriesIdRef.current)
+          ? selectedSeriesIdRef.current
+          : (nextSeries[0]?.id ?? '');
+        selectedSeriesIdRef.current = nextSelectedSeriesId;
+        setIsLoadingBooks(Boolean(nextSelectedSeriesId));
+        setSelectedSeriesId(nextSelectedSeriesId);
       })
       .catch((err: unknown) => {
         if (!disposed) setError(err instanceof Error ? err.message : String(err));
@@ -68,16 +78,23 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
   useEffect(() => {
     if (!selectedSeriesId) {
       setAssignments([]);
+      setAssignmentsSeriesId('');
       setVolumeDrafts({});
+      setIsLoadingBooks(false);
       return;
     }
     let disposed = false;
     setIsLoadingBooks(true);
+    setAssignments([]);
+    setAssignmentsSeriesId('');
+    setVolumeDrafts({});
     setError(null);
-    void listSeriesBooks({ seriesId: selectedSeriesId })
+    const requestedSeriesId = selectedSeriesId;
+    void listSeriesBooks({ seriesId: requestedSeriesId })
       .then((nextAssignments) => {
-        if (disposed) return;
+        if (disposed || selectedSeriesIdRef.current !== requestedSeriesId) return;
         setAssignments(nextAssignments);
+        setAssignmentsSeriesId(requestedSeriesId);
         setVolumeDrafts(Object.fromEntries(nextAssignments.map((item) => [item.book_id, item.volume_label])));
       })
       .catch((err: unknown) => {
@@ -89,21 +106,49 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
     return () => { disposed = true; };
   }, [selectedSeriesId]);
 
+  const beginWrite = (key: string): boolean => {
+    if (writeLockRef.current || isLoadingSeries || isLoadingBooks) return false;
+    writeLockRef.current = true;
+    setBusyKey(key);
+    return true;
+  };
+
+  const endWrite = () => {
+    writeLockRef.current = false;
+    setBusyKey(null);
+  };
+
+  const isCurrentSelection = (seriesId: string) => selectedSeriesIdRef.current === seriesId;
+
+  const handleSelectSeries = (seriesId: string) => {
+    if (seriesId === selectedSeriesIdRef.current || writeLockRef.current || isLoadingBooks) return;
+    selectedSeriesIdRef.current = seriesId;
+    setAssignments([]);
+    setAssignmentsSeriesId('');
+    setVolumeDrafts({});
+    setIsLoadingBooks(true);
+    setSelectedSeriesId(seriesId);
+  };
+
   const handleCreateSeries = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = newSeriesName.trim();
-    if (!name) return;
-    setBusyKey('create-series');
+    if (!name || !beginWrite('create-series')) return;
     setError(null);
     try {
       const created = await createSeries({ series: { name } });
       setSeries((current) => [...current, created]);
+      selectedSeriesIdRef.current = created.id;
+      setAssignments([]);
+      setAssignmentsSeriesId('');
+      setVolumeDrafts({});
+      setIsLoadingBooks(true);
       setSelectedSeriesId(created.id);
       setNewSeriesName('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
@@ -111,102 +156,126 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
     if (!selectedSeries) return;
     const name = seriesNameDraft.trim();
     if (!name || name === selectedSeries.name) return;
-    setBusyKey('rename-series');
+    const seriesId = selectedSeries.id;
+    if (!beginWrite('rename-series')) return;
     setError(null);
     try {
-      const updated = await updateSeries({ series: { id: selectedSeries.id, name } });
+      const updated = await updateSeries({ series: { id: seriesId, name } });
       setSeries((current) => current.map((item) => item.id === updated.id ? updated : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
   const handleDeleteSeries = async () => {
     if (!selectedSeries || !window.confirm(`删除系列“${selectedSeries.name}”？书籍不会被删除。`)) return;
-    setBusyKey('delete-series');
+    const deletedSeriesId = selectedSeries.id;
+    if (!beginWrite('delete-series')) return;
     setError(null);
     try {
-      await deleteSeries({ seriesId: selectedSeries.id });
-      const nextSeries = series.filter((item) => item.id !== selectedSeries.id);
+      await deleteSeries({ seriesId: deletedSeriesId });
+      const nextSeries = series.filter((item) => item.id !== deletedSeriesId);
       setSeries(nextSeries);
-      setSelectedSeriesId(nextSeries[0]?.id ?? '');
-      setAssignments([]);
+      if (isCurrentSelection(deletedSeriesId)) {
+        const nextSelectedSeriesId = nextSeries[0]?.id ?? '';
+        selectedSeriesIdRef.current = nextSelectedSeriesId;
+        setSelectedSeriesId(nextSelectedSeriesId);
+        setAssignments([]);
+        setAssignmentsSeriesId('');
+        setVolumeDrafts({});
+        setIsLoadingBooks(Boolean(nextSelectedSeriesId));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
   const handleAssignBook = async (bookId: string) => {
-    if (!selectedSeriesId || !bookId) return;
-    const nextSortOrder = assignments.reduce((max, item) => Math.max(max, item.sort_order), -1) + 1;
-    setBusyKey(`assign-${bookId}`);
+    const seriesId = selectedSeriesId;
+    if (!seriesId || !bookId || !beginWrite(`assign-${bookId}`)) return;
+    const nextSortOrder = selectedAssignments.reduce((max, item) => Math.max(max, item.sort_order), -1) + 1;
     setError(null);
     try {
       const assignment = await setBookSeries({
         assignment: {
           book_id: bookId,
-          series_id: selectedSeriesId,
+          series_id: seriesId,
           volume_label: newVolumeLabel.trim(),
           sort_order: nextSortOrder,
         },
       });
-      setAssignments((current) => [...current.filter((item) => item.book_id !== bookId), assignment].sort((left, right) => left.sort_order - right.sort_order));
-      setVolumeDrafts((current) => ({ ...current, [bookId]: assignment.volume_label }));
-      setNewVolumeLabel('');
+      if (isCurrentSelection(seriesId)) {
+        setAssignments((current) => [...current.filter((item) => item.book_id !== bookId), assignment].sort((left, right) => left.sort_order - right.sort_order));
+        setAssignmentsSeriesId(seriesId);
+        setVolumeDrafts((current) => ({ ...current, [bookId]: assignment.volume_label }));
+        setNewVolumeLabel('');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
   const handleRemoveBook = async (bookId: string) => {
-    setBusyKey(`remove-${bookId}`);
+    const seriesId = selectedSeriesId;
+    if (!seriesId || !beginWrite(`remove-${bookId}`)) return;
     setError(null);
     try {
       await clearBookSeries({ bookId });
-      setAssignments((current) => current.filter((item) => item.book_id !== bookId));
+      if (isCurrentSelection(seriesId)) {
+        setAssignments((current) => current.filter((item) => item.book_id !== bookId));
+        setAssignmentsSeriesId(seriesId);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
   const handleSaveVolume = async (assignment: BookSeries) => {
-    if (!selectedSeriesId) return;
+    const seriesId = selectedSeriesId;
+    if (!seriesId) return;
     const volumeLabel = volumeDrafts[assignment.book_id]?.trim() ?? '';
     if (volumeLabel === assignment.volume_label) return;
-    setBusyKey(`volume-${assignment.book_id}`);
+    if (!beginWrite(`volume-${assignment.book_id}`)) return;
     setError(null);
     try {
-      const updated = await setBookSeries({ assignment: { ...assignment, volume_label: volumeLabel } });
-      setAssignments((current) => current.map((item) => item.book_id === updated.book_id ? updated : item));
+      const updated = await setBookSeries({ assignment: { ...assignment, series_id: seriesId, volume_label: volumeLabel } });
+      if (isCurrentSelection(seriesId)) {
+        setAssignments((current) => current.map((item) => item.book_id === updated.book_id ? updated : item));
+        setAssignmentsSeriesId(seriesId);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
   const handleMoveBook = async (index: number, direction: -1 | 1) => {
     const targetIndex = index + direction;
-    if (!selectedSeriesId || targetIndex < 0 || targetIndex >= assignments.length) return;
-    const nextAssignments = [...assignments];
+    const seriesId = selectedSeriesId;
+    if (!seriesId || targetIndex < 0 || targetIndex >= selectedAssignments.length || !beginWrite('reorder-series')) return;
+    const nextAssignments = [...selectedAssignments];
     [nextAssignments[index], nextAssignments[targetIndex]] = [nextAssignments[targetIndex], nextAssignments[index]];
     const positions = nextAssignments.map((item, position) => ({ book_id: item.book_id, sort_order: position }));
-    setBusyKey('reorder-series');
     setError(null);
     try {
-      setAssignments(await reorderSeriesBooks({ seriesId: selectedSeriesId, positions }));
+      const reorderedAssignments = await reorderSeriesBooks({ seriesId, positions });
+      if (isCurrentSelection(seriesId)) {
+        setAssignments(reorderedAssignments);
+        setAssignmentsSeriesId(seriesId);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusyKey(null);
+      endWrite();
     }
   };
 
@@ -241,7 +310,8 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setSelectedSeriesId(item.id)}
+                  onClick={() => handleSelectSeries(item.id)}
+                  disabled={isLoadingBooks || busyKey !== null}
                   className={`flex min-h-12 w-full items-center justify-between gap-3 border-l-[3px] px-4 py-3 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#c5a76b] ${selectedSeriesId === item.id ? 'border-[#2e6e67] bg-[#edf1ee] text-[#18272c]' : 'border-transparent text-[#687571] hover:bg-[#edf1ee] hover:text-[#18272c]'}`}
                 >
                   <span className="truncate">{item.name}</span>
@@ -254,7 +324,7 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
             <label htmlFor="new-series-name" className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">新建系列</label>
             <div className="mt-2 flex gap-2">
               <input id="new-series-name" value={newSeriesName} onChange={(event) => setNewSeriesName(event.target.value)} placeholder="系列名称" className="min-w-0 flex-1 border-b border-[#b9c9c2] bg-transparent px-1 py-2 text-sm outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
-              <button type="submit" disabled={busyKey === 'create-series' || !newSeriesName.trim()} className="border border-[#2e6e67] px-3 py-2 text-xs text-[#2e6e67] transition hover:bg-[#2e6e67] hover:text-[#f9fbf7] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">添加</button>
+              <button type="submit" disabled={isLoadingSeries || isLoadingBooks || busyKey !== null || !newSeriesName.trim()} className="border border-[#2e6e67] px-3 py-2 text-xs text-[#2e6e67] transition hover:bg-[#2e6e67] hover:text-[#f9fbf7] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">添加</button>
             </div>
           </form>
         </aside>
@@ -272,10 +342,10 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
                   <p className="mb-1 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[#2e6e67]">Selected series</p>
                   <div className="flex flex-wrap items-center gap-3">
                     <input aria-label="系列名称" value={seriesNameDraft} onChange={(event) => setSeriesNameDraft(event.target.value)} className="min-w-[12rem] flex-1 border-b border-[#b9c9c2] bg-transparent py-1 font-serif text-3xl text-[#18272c] outline-none focus:border-[#2e6e67]" />
-                    <button type="button" onClick={() => void handleRenameSeries()} disabled={busyKey === 'rename-series' || !seriesNameDraft.trim() || seriesNameDraft.trim() === selectedSeries.name} className="border-b border-[#2e6e67] py-1 text-xs text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">保存名称</button>
+                    <button type="button" onClick={() => void handleRenameSeries()} disabled={isLoadingBooks || busyKey !== null || !seriesNameDraft.trim() || seriesNameDraft.trim() === selectedSeries.name} className="border-b border-[#2e6e67] py-1 text-xs text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">保存名称</button>
                   </div>
                 </div>
-                <button type="button" onClick={() => void handleDeleteSeries()} disabled={busyKey === 'delete-series'} className="border-b border-transparent py-1 text-xs text-[#a54b45] transition hover:border-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">删除系列</button>
+                <button type="button" onClick={() => void handleDeleteSeries()} disabled={isLoadingBooks || busyKey !== null} className="border-b border-transparent py-1 text-xs text-[#a54b45] transition hover:border-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">删除系列</button>
               </div>
 
               <div className="mt-6 border-l-[3px] border-[#2e6e67] bg-[#f9fbf7] px-4 py-4 sm:px-5">
@@ -286,7 +356,7 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
                   </div>
                   <div className="flex min-w-[min(100%,24rem)] flex-1 flex-wrap justify-end gap-2 sm:flex-none">
                     <input aria-label="新书卷标" value={newVolumeLabel} placeholder="卷标，如 01" onChange={(event) => setNewVolumeLabel(event.target.value)} className="w-28 border-b border-[#b9c9c2] bg-transparent px-1 py-2 text-sm outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
-                    <select aria-label="选择书籍" defaultValue="" onChange={(event) => { const bookId = event.target.value; void handleAssignBook(bookId); event.currentTarget.value = ''; }} disabled={isLoadingBooks || availableBooks.length === 0 || busyKey !== null} className="min-w-[12rem] flex-1 border border-[#d0d9d4] bg-[#edf1ee] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#c5a76b] sm:flex-none">
+                    <select aria-label="选择书籍" defaultValue="" onChange={(event) => { const bookId = event.target.value; void handleAssignBook(bookId); event.currentTarget.value = ''; }} disabled={isLoadingSeries || isLoadingBooks || availableBooks.length === 0 || busyKey !== null} className="min-w-[12rem] flex-1 border border-[#d0d9d4] bg-[#edf1ee] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#c5a76b] sm:flex-none">
                       <option value="">{availableBooks.length === 0 ? '没有可加入的书' : '选择一本书'}</option>
                       {availableBooks.map((book) => <option key={book.id} value={book.id}>{book.title}</option>)}
                     </select>
@@ -296,7 +366,7 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
 
               <div className="mt-7 flex items-center justify-between border-b border-[#d0d9d4] pb-3">
                 <h2 id="series-detail-title" className="font-serif text-2xl text-[#18272c]">系列书目</h2>
-                <span className="font-mono text-sm text-[#5c7397]">{assignments.length} 本</span>
+                <span className="font-mono text-sm text-[#5c7397]">{selectedAssignments.length} 本</span>
               </div>
 
               {isLoadingBooks ? (
@@ -317,14 +387,14 @@ export function SeriesPage({ books, onBack, onOpenBook }: SeriesPageProps) {
                         ) : <p className="text-sm text-[#a54b45]">书籍已不在当前书架</p>}
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <label className="text-xs text-[#687571]" htmlFor={`volume-${assignment.book_id}`}>卷标</label>
-                          <input id={`volume-${assignment.book_id}`} value={volumeDrafts[assignment.book_id] ?? ''} onChange={(event) => setVolumeDrafts((current) => ({ ...current, [assignment.book_id]: event.target.value }))} onBlur={() => void handleSaveVolume(assignment)} placeholder="未设置" className="w-32 border-b border-[#b9c9c2] bg-transparent px-1 py-1 text-sm outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
+                          <input id={`volume-${assignment.book_id}`} value={volumeDrafts[assignment.book_id] ?? ''} onChange={(event) => setVolumeDrafts((current) => ({ ...current, [assignment.book_id]: event.target.value }))} onBlur={() => void handleSaveVolume(assignment)} disabled={isLoadingBooks || busyKey !== null} placeholder="未设置" className="w-32 border-b border-[#b9c9c2] bg-transparent px-1 py-1 text-sm outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
                           {busyKey === `volume-${assignment.book_id}` && <span className="text-[0.65rem] text-[#687571]">保存中…</span>}
                         </div>
                       </div>
                       <div className="flex items-center justify-end gap-3 text-xs">
                         <div className="flex gap-1" aria-label="调整系列顺序">
                           <button type="button" onClick={() => void handleMoveBook(index, -1)} disabled={index === 0 || busyKey !== null} className="grid h-9 w-9 place-items-center border border-[#d0d9d4] text-base text-[#687571] hover:border-[#2e6e67] hover:text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-30" aria-label="上移">↑</button>
-                          <button type="button" onClick={() => void handleMoveBook(index, 1)} disabled={index === assignments.length - 1 || busyKey !== null} className="grid h-9 w-9 place-items-center border border-[#d0d9d4] text-base text-[#687571] hover:border-[#2e6e67] hover:text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-30" aria-label="下移">↓</button>
+                          <button type="button" onClick={() => void handleMoveBook(index, 1)} disabled={index === selectedAssignments.length - 1 || busyKey !== null} className="grid h-9 w-9 place-items-center border border-[#d0d9d4] text-base text-[#687571] hover:border-[#2e6e67] hover:text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-30" aria-label="下移">↓</button>
                         </div>
                         <button type="button" onClick={() => void handleRemoveBook(assignment.book_id)} disabled={busyKey !== null} className="border-b border-transparent py-1 text-[#a54b45] hover:border-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-40">移出</button>
                       </div>
