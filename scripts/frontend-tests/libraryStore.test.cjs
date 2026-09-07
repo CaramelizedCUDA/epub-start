@@ -159,3 +159,31 @@ test('loading failure clears its slot and the next load recovers the shelf', asy
   assert.equal(useLibraryStore.getState().error, null);
   assert.equal(useLibraryStore.getState().isLoading, false);
 });
+
+test('partial import refreshes the shelf and preserves the import failure', async () => {
+  resetFixture();
+  const imported = makeBook('imported');
+  const sources = [
+    { source_locator: 'C:/books/imported.epub', source_kind: 'desktop_path' },
+    { source_locator: 'C:/books/failing.epub', source_kind: 'desktop_path' },
+  ];
+  let listCalls = 0;
+  setLibraryIpc({
+    selectEpubSources: async () => sources,
+    importBook: async ({ source }) => {
+      if (source === sources[1]) throw new Error('temporary import failure');
+      return imported;
+    },
+    listBooks: async () => {
+      listCalls += 1;
+      return [imported];
+    },
+  });
+
+  await useLibraryStore.getState().importFromDialog();
+
+  assert.equal(listCalls, 1);
+  assert.deepEqual(useLibraryStore.getState().books.map((book) => book.id), ['imported']);
+  assert.equal(useLibraryStore.getState().error, 'temporary import failure');
+  assert.equal(useLibraryStore.getState().isLoading, false);
+});

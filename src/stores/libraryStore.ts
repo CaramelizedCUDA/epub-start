@@ -20,7 +20,7 @@ interface LibraryState {
   clearError: () => void;
 }
 
-export const useLibraryStore = create<LibraryState>((set, get) => {
+export const useLibraryStore = create<LibraryState>((set) => {
   // Each operation owns one slot until its complete async chain finishes. A
   // refresh started by import/relocate therefore cannot clear the loading
   // state belonging to the outer operation.
@@ -49,28 +49,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     set({ error: userFacingError(error) });
   };
 
+  const refreshBooks = async (): Promise<{ operationId: number; succeeded: boolean }> => {
+    const operationId = beginOperation();
+    const requestId = ++latestListRequestId;
+    try {
+      const books = await listBooks();
+      // Only the newest list request may replace shelf data. Older requests
+      // can finish after a retry or a mutation-triggered refresh.
+      if (requestId === latestListRequestId) {
+        set({ books });
+      }
+      return { operationId, succeeded: true };
+    } catch (err) {
+      if (requestId === latestListRequestId) {
+        setOperationError(operationId, err);
+      }
+      return { operationId, succeeded: false };
+    } finally {
+      finishOperation();
+    }
+  };
+
   return {
     books: [],
     isLoading: false,
     error: null,
 
     loadBooks: async () => {
-      const operationId = beginOperation();
-      const requestId = ++latestListRequestId;
-      try {
-        const books = await listBooks();
-        // Only the newest list request may replace shelf data. Older requests
-        // can finish after a retry or a mutation-triggered refresh.
-        if (requestId === latestListRequestId) {
-          set({ books });
-        }
-      } catch (err) {
-        if (requestId === latestListRequestId) {
-          setOperationError(operationId, err);
-        }
-      } finally {
-        finishOperation();
-      }
+      await refreshBooks();
     },
 
     importFromDialog: async () => {
@@ -79,20 +85,27 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         const sources = await selectEpubSources();
         if (sources.length === 0) return; // user cancelled
 
+        let importError: unknown | null = null;
         for (const source of sources) {
           try {
             await importBook({ source });
           } catch (importErr) {
+            importError ??= importErr;
             const msg = importErr instanceof Error ? importErr.message : String(importErr);
             // A parse failure is persisted as an error-status book. Continue
             // through the selection so the shelf can show it and offer retry.
             if (msg.startsWith('BOOK_PARSE_FAILED:')) continue;
-            throw importErr;
+            // Preserve the existing stop-on-first-non-parse-error behavior,
+            // but still refresh so earlier successful imports become visible.
+            break;
           }
         }
-        // Refresh shelf after all imports. loadBooks owns its own request slot
-        // and keeps the outer import operation active until it finishes.
-        await get().loadBooks();
+        // Refresh even after a partial batch. Keep the refresh operation's
+        // generation so a newer operation or clearError can win the race.
+        const refresh = await refreshBooks();
+        if (importError !== null && refresh.succeeded) {
+          setOperationError(refresh.operationId, importError);
+        }
       } catch (err) {
         setOperationError(operationId, err);
       } finally {
@@ -106,7 +119,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         const sources = await selectEpubSources();
         if (sources.length === 0) return;
         await relocateBook({ bookId, source: sources[0] });
-        await get().loadBooks();
+        await refreshBooks();
       } catch (err) {
         setOperationError(operationId, err);
       } finally {
@@ -130,7 +143,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
         set((state) => ({
           books: state.books.filter((b) => b.id !== bookId),
         }));
-        await get().loadBooks();
+        await refreshBooks();
       } catch (err) {
         setOperationError(operationId, err);
       } finally {
