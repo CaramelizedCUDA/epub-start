@@ -10,8 +10,9 @@ import { ArchiveSearchPage } from './ArchiveSearchPage';
 import { NotesPage } from './NotesPage';
 import { FootprintPage, LibraryInsights } from './ReadingInsights';
 import { SeriesPage } from './SeriesPage';
+import { TagsPage } from './TagsPage';
 
-export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'footprint' | 'settings';
+export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'tags' | 'footprint' | 'settings';
 
 interface BookShelfProps {
   activeSection: LibrarySection;
@@ -253,6 +254,7 @@ export function BookShelf({
               />
             )}
             {activeSection === 'series' && <SeriesPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
+            {activeSection === 'tags' && <TagsPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
             {activeSection === 'search' && <ArchiveSearchPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
             {activeSection === 'notes' && <NotesPage books={books} onBack={() => changeSection('library')} onOpenBook={onOpenBook} />}
 
@@ -301,6 +303,7 @@ function BookCollection({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
           {([
             ['series', '系列'],
+            ['tags', '标签'],
             ['search', '搜索'],
             ['notes', '批注'],
           ] as const).map(([section, label]) => (
