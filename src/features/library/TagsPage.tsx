@@ -322,11 +322,9 @@ export function TagsPage({ books, onBack, onOpenBook }: TagsPageProps) {
     if (!bookId || !beginWrite(`save-book-tags-${bookId}`)) return;
     setBookTagsError(null);
     try {
-      const nextTags = await setBookTags({ bookId, tagIds: [...new Set(bookDirectTagIds)] });
-      if (selectedBookIdRef.current === bookId) {
-        setBookTagsState(nextTags);
-        setBookDirectTagIds(nextTags.filter((item) => !item.inherited_from_series).map((item) => item.tag.id));
-      }
+      await setBookTags({ bookId, tagIds: [...new Set(bookDirectTagIds)] });
+      await loadBookTags(bookId);
+      if (selectedFilterTagIds.length > 0) await applyTagFilter(selectedFilterTagIds);
     } catch (err) {
       setBookTagsError(errorMessage(err));
     } finally {
@@ -341,6 +339,8 @@ export function TagsPage({ books, onBack, onOpenBook }: TagsPageProps) {
     try {
       await setSeriesTags({ seriesId, tagIds: [...new Set(seriesDirectTagIds)] });
       await loadSeriesTags(seriesId);
+      await loadBookTags();
+      if (selectedFilterTagIds.length > 0) await applyTagFilter(selectedFilterTagIds);
     } catch (err) {
       setSeriesTagsError(errorMessage(err));
     } finally {
