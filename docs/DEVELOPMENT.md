@@ -26,6 +26,7 @@ npm run tauri dev
 | --- | --- |
 | 前端生产代码/样式变化 | `npm run build` |
 | libraryStore 并发/加载行为变化 | `npm run test:frontend -- --library library` |
+| readerStore 开关书会话隔离变化 | `npm run test:frontend -- --reader`；实际 Reader 受影响路径按验证策略执行 |
 | Rust 源码变化 | `cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo check --manifest-path src-tauri/Cargo.toml`，以及 `cargo test --manifest-path src-tauri/Cargo.toml <相关测试过滤器>` |
 | Rust 跨模块影响或后端阶段回归 | `cargo test --manifest-path src-tauri/Cargo.toml` |
 | Rust 源码或当前统计登记变化 | `npm run audit:unwrap`，核对并同步登记后 `npm run audit:check` |
@@ -40,11 +41,12 @@ npm run tauri dev
 ```powershell
 npm run test:frontend -- --list
 npm run test:frontend -- --library library
+npm run test:frontend -- --reader
 ```
 
-默认 `npm run test:frontend` 执行当前登记的全部前端自动测试；日常优先选择受影响子集。目前只有 `library`：编译实际 `src/stores/libraryStore.ts`，仅替换 IPC 边界，在隔离目录验证旧列表不覆盖新列表、删除刷新不被旧列表恢复、并发加载与失败后的恢复。成功输出场景数、源码摘要和退出码，失败返回非零；不需要启动应用或连接设备。
+默认 `npm run test:frontend` 执行当前登记的全部前端自动测试；日常优先选择受影响子集。`library` 编译实际 `src/stores/libraryStore.ts`，仅替换 IPC 边界，验证旧列表隔离、删除刷新及并发加载/失败恢复；`--reader` 编译实际 `readerStore.ts`，替换 EPUB.js、IPC 与 DOM 重排边界，验证开关书的旧进度/事件/设置/批注隔离与切书进度冲刷。成功输出场景数、源码摘要和退出码，失败返回非零；不需要启动应用或连接设备。
 
-新增/改变该组测试时运行一次自证（普通重跑不必）：
+新增/改变测试时需证明能发现目标故障，原源码失败后修复通过可作为证据，不需再注入。`library` 另提供隔离注入自证（普通重跑不必）；`--reader` 不提供 `--red-green` 注入模式：
 
 ```powershell
 npm run test:frontend -- --library library --red-green

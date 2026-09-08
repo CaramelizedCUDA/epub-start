@@ -66,6 +66,28 @@ function throttledSave(bookId: string, cfi: string, progression: number) {
   }, SAVE_THROTTLE_MS);
 }
 
+function flushPendingProgress(
+  bookId: string | null,
+  currentCfi: string | null,
+  currentPage: number,
+  totalPages: number,
+  errorLabel: string,
+): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (bookId && currentCfi) {
+      saveReadingProgress({
+        bookId,
+        locationCfi: currentCfi,
+        progression: totalPages > 0 ? currentPage / totalPages : 0,
+      }).catch((err: unknown) => {
+        console.error(errorLabel, err);
+      });
+    }
+  }
+}
+
 // ── EPUB.js request helpers ────────────────────────────────────
 
 const BOOK_OPEN_TIMEOUT_MS = 30_000;
@@ -148,8 +170,10 @@ function createRelocatedHandler(
   bookId: string,
   readToc: () => TocItem[],
   update: (location: ReaderLocationUpdate) => void,
+  isActive: () => boolean,
 ): (...args: unknown[]) => void {
   return (location: unknown) => {
+    if (!isActive()) return;
     const loc = location as {
       start: { cfi: string; href: string; displayed: { page: number; total: number } };
     };
@@ -164,6 +188,7 @@ function createRelocatedHandler(
       totalPages: total,
       currentChapterHref: resolveCurrentChapterHref(readToc(), loc.start.href),
     });
+    if (!isActive()) return;
     throttledSave(bookId, cfi, progression);
   };
 }
@@ -240,22 +265,67 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     settings: ReadingSettings,
   ) => {
     const sessionId = ++readerSession;
-    // Destroy any existing instance
     const prev = get();
-    if (prev.rendition) prev.rendition.destroy();
-    if (prev.book) prev.book.destroy();
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
+    flushPendingProgress(
+      prev.bookId,
+      prev.currentCfi,
+      prev.currentPage,
+      prev.totalPages,
+      'Failed to flush reading progress before opening a new book:',
+    );
+    if (prev.rendition && relocatedHandler) {
+      prev.rendition.off('relocated', relocatedHandler);
     }
     continuousScrollCleanup?.();
     continuousScrollCleanup = null;
     relocatedHandler = null;
+    if (prev.rendition) prev.rendition.destroy();
+    if (prev.book) prev.book.destroy();
+    settingsApplyQueue = Promise.resolve();
 
-    set({ isLoading: true, error: null, bookId, epubRootUrl, readingSettings: settings });
+    set({
+      isLoading: true,
+      error: null,
+      bookId,
+      epubRootUrl,
+      book: null,
+      rendition: null,
+      currentCfi: null,
+      currentPage: 0,
+      totalPages: 0,
+      toc: [],
+      currentChapterHref: null,
+      searchResults: [],
+      readingSettings: settings,
+      notes: [],
+      pendingSelection: null,
+      clickedNote: null,
+    });
 
     let book: Book | null = null;
     let rendition: Rendition | null = null;
+    let sessionRelocatedHandler: ((...args: unknown[]) => void) | null = null;
+    const isCurrentSession = () => (
+      sessionId === readerSession
+      && get().bookId === bookId
+      && (rendition === null || get().rendition === rendition)
+    );
+    const shouldDestroyBook = () => (
+      sessionId !== readerSession
+      || get().bookId !== bookId
+      || get().book !== book
+    );
+    const disposeSessionResources = (destroyBook = true) => {
+      if (rendition && sessionRelocatedHandler) {
+        rendition.off('relocated', sessionRelocatedHandler);
+      }
+      rendition?.destroy();
+      if (destroyBook) book?.destroy();
+      if (relocatedHandler === sessionRelocatedHandler) {
+        relocatedHandler = null;
+      }
+      sessionRelocatedHandler = null;
+    };
 
     try {
       book = ePub({
@@ -291,7 +361,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       ]);
 
       if (sessionId !== readerSession) {
-        book.destroy();
+        disposeSessionResources(shouldDestroyBook());
         return;
       }
 
@@ -301,32 +371,46 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       ]);
 
       if (sessionId !== readerSession) {
-        book.destroy();
+        disposeSessionResources(shouldDestroyBook());
         return;
       }
 
       rendition = createRendition(book, settings);
 
-      relocatedHandler = createRelocatedHandler(
+      sessionRelocatedHandler = createRelocatedHandler(
         bookId,
         () => get().toc,
         (location) => set(location),
+        isCurrentSession,
       );
+      relocatedHandler = sessionRelocatedHandler;
 
-      rendition.on('relocated', relocatedHandler);
+      rendition.on('relocated', sessionRelocatedHandler);
 
       set({ book, rendition });
       set({ toc: book.navigation?.toc ?? [] });
 
       // Always display content first, then restore saved position if available
       const saved = await getReadingProgress({ bookId }).catch(() => null);
+      if (!isCurrentSession()) {
+        disposeSessionResources(shouldDestroyBook());
+        return;
+      }
 
       try {
         if (saved?.location_cfi) {
           await rendition.display(saved.location_cfi);
+          if (!isCurrentSession()) {
+            disposeSessionResources(shouldDestroyBook());
+            return;
+          }
           set({ currentCfi: saved.location_cfi });
         } else {
           await rendition.display();
+          if (!isCurrentSession()) {
+            disposeSessionResources(shouldDestroyBook());
+            return;
+          }
         }
       } catch (err) {
         throw new Error(
@@ -338,25 +422,22 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
       await settleInitialPagination(rendition, settings);
 
-      if (sessionId !== readerSession) {
-        rendition.destroy();
-        book.destroy();
+      if (!isCurrentSession()) {
+        disposeSessionResources(shouldDestroyBook());
         return;
       }
 
       set({ isLoading: false });
     } catch (err) {
-      if (sessionId !== readerSession) {
-        rendition?.destroy();
-        book?.destroy();
+      if (!isCurrentSession()) {
+        disposeSessionResources(shouldDestroyBook());
         return;
       }
-      if (rendition && relocatedHandler) {
-        rendition.off('relocated', relocatedHandler);
+      disposeSessionResources();
+
+      if (get().book === book || get().rendition === rendition) {
+        set({ book: null, rendition: null });
       }
-      rendition?.destroy();
-      book?.destroy();
-      relocatedHandler = null;
 
       set({
         isLoading: false,
@@ -368,23 +449,17 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   close: () => {
     ++readerSession;
     const { rendition, book, bookId, currentCfi } = get();
+    const { currentPage, totalPages } = get();
+    settingsApplyQueue = Promise.resolve();
 
     // Flush pending progress save
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      saveTimer = null;
-      if (bookId && currentCfi) {
-        const total = get().totalPages;
-        const progression = total > 0 ? get().currentPage / total : 0;
-        saveReadingProgress({
-          bookId,
-          locationCfi: currentCfi,
-          progression,
-        }).catch((err: unknown) => {
-          console.error('Failed to flush reading progress on close:', err);
-        });
-      }
-    }
+    flushPendingProgress(
+      bookId,
+      currentCfi,
+      currentPage,
+      totalPages,
+      'Failed to flush reading progress on close:',
+    );
 
     // Remove event listener with saved reference
     if (rendition && relocatedHandler) {
@@ -494,9 +569,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   applyReadingSettings: (settings: ReadingSettings) => {
+    const sessionId = readerSession;
     const run = settingsApplyQueue
       .catch(() => undefined)
       .then(async () => {
+        if (sessionId !== readerSession) return;
         const {
           rendition,
           book,
@@ -506,8 +583,14 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           totalPages,
           readingSettings,
         } = get();
+        if (!rendition || sessionId !== readerSession) return;
+        const isCurrentTarget = () => (
+          sessionId === readerSession
+          && get().bookId === bookId
+          && get().rendition === rendition
+        );
+        if (!isCurrentTarget()) return;
         set({ readingSettings: settings });
-        if (!rendition) return;
 
         if (bookId && currentCfi) {
           await saveReadingProgress({
@@ -515,35 +598,73 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
             locationCfi: currentCfi,
             progression: totalPages > 0 ? currentPage / totalPages : 0,
           });
+          if (!isCurrentTarget()) return;
         }
 
         const previousFlow = readingSettings?.flow ?? 'paginated';
         if (book && previousFlow !== settings.flow) {
+          if (!isCurrentTarget()) return;
           const firstVisibleLine = captureFirstVisibleLine(rendition);
           clearFirstLineOffset(rendition);
           continuousScrollCleanup?.();
           continuousScrollCleanup = null;
           if (relocatedHandler) rendition.off('relocated', relocatedHandler);
+          relocatedHandler = null;
           rendition.destroy();
 
           const replacement = createRendition(book, settings);
-          relocatedHandler = createRelocatedHandler(
+          let replacementHandler: ((...args: unknown[]) => void) | null = null;
+          const isCurrentReplacement = () => (
+            sessionId === readerSession
+            && get().bookId === bookId
+            && get().rendition === replacement
+          );
+          const disposeReplacement = () => {
+            if (replacementHandler) replacement.off('relocated', replacementHandler);
+            replacement.destroy();
+            if (relocatedHandler === replacementHandler) relocatedHandler = null;
+            replacementHandler = null;
+          };
+          replacementHandler = createRelocatedHandler(
             bookId ?? '',
             () => get().toc,
             (location) => set(location),
+            isCurrentReplacement,
           );
-          replacement.on('relocated', relocatedHandler);
+          relocatedHandler = replacementHandler;
+          replacement.on('relocated', replacementHandler);
           set({ rendition: replacement });
           await replacement.display(firstVisibleLine?.cfi ?? currentCfi ?? undefined);
+          if (!isCurrentReplacement()) {
+            disposeReplacement();
+            return;
+          }
           await waitForRenditionReady(replacement);
+          if (!isCurrentReplacement()) {
+            disposeReplacement();
+            return;
+          }
           if (firstVisibleLine) {
             await waitForReaderLayout();
+            if (!isCurrentReplacement()) {
+              disposeReplacement();
+              return;
+            }
             restoreFirstVisibleLine(replacement, firstVisibleLine);
           }
           if (settings.flow === 'scrolled') {
+            if (!isCurrentReplacement()) {
+              disposeReplacement();
+              return;
+            }
             continuousScrollCleanup = installContinuousScrollStabilizer(replacement);
           }
+          if (!isCurrentReplacement()) {
+            disposeReplacement();
+            return;
+          }
           renderNotesIn(replacement, get().notes, settings.theme, (click) => set({ clickedNote: click }));
+          set({ isLoading: false });
           return;
         }
 
@@ -556,6 +677,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
             preserveTextAnchor: settings.flow === 'paginated',
           },
         );
+        if (!isCurrentTarget()) return;
         renderNotesIn(rendition, get().notes, settings.theme, (click) => set({ clickedNote: click }));
       });
     settingsApplyQueue = run;
@@ -589,12 +711,37 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   loadNotes: async () => {
+    const sessionId = readerSession;
     const { bookId, rendition } = get();
     if (!bookId) return;
-    const notes = await listNotes({ bookId });
+    let notes: Note[];
+    try {
+      notes = await listNotes({ bookId });
+    } catch (err) {
+      if (
+        sessionId !== readerSession
+        || get().bookId !== bookId
+        || get().rendition !== rendition
+      ) {
+        return;
+      }
+      throw err;
+    }
+    if (
+      sessionId !== readerSession
+      || get().bookId !== bookId
+      || get().rendition !== rendition
+    ) {
+      return;
+    }
     set({ notes });
     const theme = get().readingSettings?.theme ?? null;
-    if (rendition) {
+    if (
+      rendition
+      && sessionId === readerSession
+      && get().bookId === bookId
+      && get().rendition === rendition
+    ) {
       renderNotesIn(rendition, notes, theme, (click) => set({ clickedNote: click }));
     }
   },

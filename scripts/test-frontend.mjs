@@ -9,12 +9,15 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceStorePath = path.join(repoRoot, 'src', 'stores', 'libraryStore.ts');
+const sourceReaderStorePath = path.join(repoRoot, 'src', 'stores', 'readerStore.ts');
 const sourceModelsPath = path.join(repoRoot, 'src', 'types', 'models.ts');
 const targetBase = path.resolve(repoRoot, 'target');
 const targetRoot = path.join(repoRoot, 'target', 'frontend-tests');
 const redGreenRoot = path.join(repoRoot, 'target', 'frontend-tests-redgreen');
 const allowedTempRoots = new Set([path.resolve(targetRoot), path.resolve(redGreenRoot)]);
 const libraryTests = new Map([['library', ['libraryStore.test.cjs']]]);
+const readerTests = new Map([['reader', ['readerStore.test.cjs']]]);
+const testSuites = new Map([...libraryTests, ...readerTests]);
 
 const staleListGuardPattern = /if \(requestId === latestListRequestId\) \{\r?\n\s+set\(\{ books \}\);\r?\n\s+\}/g;
 const redGreenSpecs = [
@@ -98,8 +101,159 @@ export function deleteBook(args: { bookId: string }): Promise<string> {
 }
 `;
 
+const mockReaderTauriSource = `
+import type {
+  CreateNoteInput,
+  Note,
+  ReadingProgress,
+  UpdateNoteInput,
+} from '../types/models';
+
+type ProgressArgs = { bookId: string };
+type SaveProgressArgs = { bookId: string; locationCfi: string; progression: number };
+type ReaderIpc = {
+  getReadingProgress: (args: ProgressArgs) => Promise<ReadingProgress | null>;
+  saveReadingProgress: (args: SaveProgressArgs) => Promise<ReadingProgress>;
+  listNotes: (args: ProgressArgs) => Promise<Note[]>;
+  createNote: (args: { note: CreateNoteInput }) => Promise<Note>;
+  updateNote: (args: { note: UpdateNoteInput }) => Promise<Note>;
+  deleteNote: (noteId: string) => Promise<void>;
+};
+
+const defaults: ReaderIpc = {
+  getReadingProgress: async () => null,
+  saveReadingProgress: async ({ bookId, locationCfi, progression }) => ({
+    book_id: bookId,
+    location_cfi: locationCfi,
+    progression,
+    updated_at: 0,
+  }),
+  listNotes: async () => [],
+  createNote: async () => ({} as Note),
+  updateNote: async () => ({} as Note),
+  deleteNote: async () => undefined,
+};
+
+let handlers: ReaderIpc = { ...defaults };
+
+export function setReaderIpc(overrides: Partial<ReaderIpc>): void {
+  handlers = { ...handlers, ...overrides };
+}
+
+export function resetReaderIpc(): void {
+  handlers = { ...defaults };
+}
+
+export function getReadingProgress(args: ProgressArgs): Promise<ReadingProgress | null> {
+  return handlers.getReadingProgress(args);
+}
+
+export function saveReadingProgress(args: SaveProgressArgs): Promise<ReadingProgress> {
+  return handlers.saveReadingProgress(args);
+}
+
+export function listNotes(args: ProgressArgs): Promise<Note[]> {
+  return handlers.listNotes(args);
+}
+
+export function createNote(args: { note: CreateNoteInput }): Promise<Note> {
+  return handlers.createNote(args);
+}
+
+export function updateNote(args: { note: UpdateNoteInput }): Promise<Note> {
+  return handlers.updateNote(args);
+}
+
+export function deleteNote(noteId: string): Promise<void> {
+  return handlers.deleteNote(noteId);
+}
+`;
+
+const mockReaderEngineSource = `
+export function captureFirstVisibleLine(..._args: any[]): any { return null; }
+export function clearFirstLineOffset(..._args: any[]): void {}
+export function exitWindowFullscreen(..._args: any[]): Promise<boolean> { return Promise.resolve(false); }
+export function injectReadingTheme(..._args: any[]): void {}
+export function installContinuousScrollStabilizer(..._args: any[]): () => void { return () => {}; }
+export function preserveAndReflow(..._args: any[]): Promise<void> { return Promise.resolve(); }
+export function readerViewportGeometry(..._args: any[]): any { return null; }
+export function resizeToViewport(..._args: any[]): void {}
+export function restoreFirstVisibleLine(..._args: any[]): void {}
+export function settleInitialPagination(..._args: any[]): Promise<void> { return Promise.resolve(); }
+export function waitForRenditionReady(..._args: any[]): Promise<void> { return Promise.resolve(); }
+export function toggleWindowFullscreen(..._args: any[]): Promise<boolean> { return Promise.resolve(false); }
+`;
+
+const mockReaderHighlightsSource = `
+export type SelectionInfo = any;
+export type HighlightMarkClick = any;
+export function renderHighlight(
+  _rendition: any,
+  _note: any,
+  _theme: any,
+  _onMarkClick: (click: HighlightMarkClick) => void,
+): void {}
+export function removeHighlight(_rendition: any, _cfiRange: string): void {}
+export function installHighlightEngine(..._args: any[]): () => void { return () => {}; }
+export function clearActiveSelection(): void {}
+export const HIGHLIGHT_CLASS = 'reader-highlight';
+export const HIGHLIGHT_NOTE_ATTR = 'data-note-id';
+`;
+
+const mockEpubJsRuntime = `
+let factory = () => {
+  throw new Error('reader test did not configure the epubjs factory');
+};
+
+function ePub(options) {
+  return factory(options);
+}
+
+ePub.setFactory = (nextFactory) => {
+  factory = nextFactory;
+};
+
+module.exports = ePub;
+`;
+
+const mockEpubJsPackage = JSON.stringify({
+  name: 'epubjs-reader-test-double',
+  main: 'index.js',
+  types: 'index.d.ts',
+});
+
+const mockEpubJsTypes = `
+export interface TocItem {
+  href: string;
+  label: string;
+  subitems?: TocItem[];
+}
+
+export interface Rendition {
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+  off: (event: string, handler: (...args: unknown[]) => void) => void;
+  destroy: () => void;
+  display: (target?: string) => Promise<unknown>;
+  next: () => Promise<unknown> | void;
+  prev: () => Promise<unknown> | void;
+}
+
+export interface Book {
+  open: (root: string) => Promise<void>;
+  ready: Promise<void>;
+  navigation?: { toc: TocItem[] };
+  renderTo: (element: string, options: Record<string, unknown>) => Rendition;
+  destroy: () => void;
+}
+
+declare const ePub: (options?: unknown) => Book;
+export default ePub;
+`;
+
 function parseArguments(args) {
   let library = null;
+  let reader = false;
+  let explicitSuite = false;
   let redGreen = false;
   let list = false;
 
@@ -115,11 +269,18 @@ function parseArguments(args) {
     }
     if (arg === '--library') {
       library = args[index + 1];
+      explicitSuite = true;
       index += 1;
       continue;
     }
     if (arg.startsWith('--library=')) {
       library = arg.slice('--library='.length);
+      explicitSuite = true;
+      continue;
+    }
+    if (arg === '--reader') {
+      reader = true;
+      explicitSuite = true;
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
@@ -128,7 +289,11 @@ function parseArguments(args) {
   if (library !== null && !libraryTests.has(library)) {
     throw new Error(`Unknown library '${library}'. Available: ${[...libraryTests.keys()].join(', ')}`);
   }
-  return { libraries: library === null ? [...libraryTests.keys()] : [library], list, redGreen };
+  if (reader && library !== null) {
+    throw new Error('Choose one frontend test group: --library or --reader');
+  }
+  const suites = reader ? ['reader'] : library === null ? [...testSuites.keys()] : [library];
+  return { suites, explicitSuite, list, redGreen };
 }
 
 function commandFailure(error) {
@@ -173,7 +338,7 @@ function hasExecutedTests(result) {
   return Number.isInteger(count) && count > 0;
 }
 
-async function prepareBuild(buildRoot) {
+async function prepareBuild(buildRoot, suites) {
   assertSafeTempRoot(buildRoot);
   await rm(buildRoot, { recursive: true, force: true });
   const sourceRoot = path.join(buildRoot, 'source');
@@ -181,12 +346,48 @@ async function prepareBuild(buildRoot) {
   await mkdir(path.join(sourceRoot, 'lib'), { recursive: true });
   await mkdir(path.join(sourceRoot, 'types'), { recursive: true });
 
-  let storeSource = await readFile(sourceStorePath, 'utf8');
-  const sourceHash = createHash('sha256').update(storeSource).digest('hex');
+  const includesLibrary = suites.includes('library');
+  const includesReader = suites.includes('reader');
+  if (includesReader) {
+    await mkdir(path.join(sourceRoot, 'features', 'reader', 'engine'), { recursive: true });
+    await mkdir(path.join(buildRoot, 'node_modules', 'epubjs'), { recursive: true });
+  }
 
-  await writeFile(path.join(sourceRoot, 'stores', 'libraryStore.ts'), storeSource);
+  let sourceHashInput = '';
+  if (includesLibrary) {
+    const storeSource = await readFile(sourceStorePath, 'utf8');
+    sourceHashInput += storeSource;
+    await writeFile(path.join(sourceRoot, 'stores', 'libraryStore.ts'), storeSource);
+    await writeFile(path.join(sourceRoot, 'lib', 'tauri.ts'), mockTauriSource);
+  }
+  if (includesReader) {
+    const readerStoreSource = await readFile(sourceReaderStorePath, 'utf8');
+    sourceHashInput += readerStoreSource;
+    await writeFile(path.join(sourceRoot, 'stores', 'readerStore.ts'), readerStoreSource);
+    await writeFile(path.join(sourceRoot, 'lib', 'tauri.ts'), mockReaderTauriSource);
+    await writeFile(
+      path.join(sourceRoot, 'features', 'reader', 'engine', 'reflow.ts'),
+      mockReaderEngineSource,
+    );
+    await writeFile(
+      path.join(sourceRoot, 'features', 'reader', 'engine', 'highlights.ts'),
+      mockReaderHighlightsSource,
+    );
+    await writeFile(
+      path.join(buildRoot, 'node_modules', 'epubjs', 'package.json'),
+      mockEpubJsPackage,
+    );
+    await writeFile(
+      path.join(buildRoot, 'node_modules', 'epubjs', 'index.js'),
+      mockEpubJsRuntime,
+    );
+    await writeFile(
+      path.join(buildRoot, 'node_modules', 'epubjs', 'index.d.ts'),
+      mockEpubJsTypes,
+    );
+  }
+
   await cp(sourceModelsPath, path.join(sourceRoot, 'types', 'models.ts'));
-  await writeFile(path.join(sourceRoot, 'lib', 'tauri.ts'), mockTauriSource);
   await writeFile(
     path.join(buildRoot, 'package.json'),
     JSON.stringify({ type: 'commonjs' }, null, 2),
@@ -222,7 +423,7 @@ async function prepareBuild(buildRoot) {
   if (compile.code !== 0) {
     throw new Error(`frontend TypeScript compile failed\n${compactOutput(compile)}`);
   }
-  return { sourceHash };
+  return { sourceHash: createHash('sha256').update(sourceHashInput).digest('hex') };
 }
 
 function assertSafeTempRoot(buildRoot) {
@@ -258,9 +459,9 @@ function assertTargetedFailure(result, spec) {
   }
 }
 
-async function runSelectedTests(buildRoot, libraries, testNamePattern = null) {
-  const testPaths = libraries.flatMap((library) =>
-    libraryTests.get(library).map((file) => path.join(repoRoot, 'scripts', 'frontend-tests', file)),
+async function runSelectedTests(buildRoot, suites, testNamePattern = null) {
+  const testPaths = suites.flatMap((suite) =>
+    testSuites.get(suite).map((file) => path.join(repoRoot, 'scripts', 'frontend-tests', file)),
   );
   const testArgs = testNamePattern === null
     ? ['--test', '--test-reporter=tap', ...testPaths]
@@ -271,30 +472,36 @@ async function runSelectedTests(buildRoot, libraries, testNamePattern = null) {
   });
 }
 
-async function runNormal(libraries) {
-  const build = await prepareBuild(targetRoot);
-  const result = await runSelectedTests(targetRoot, libraries);
-  if (result.code !== 0) {
-    console.error(`frontend tests failed (library: ${libraries.join(', ')}, exit: ${result.code || 1})`);
-    console.error(compactOutput(result));
-    return result.code || 1;
-  }
-  if (!hasExecutedTests(result)) {
-    console.error('frontend tests failed (exit: 1)');
-    console.error('Node reported no executed tests');
-    return 1;
+async function runNormal(suites) {
+  let cases = 0;
+  let sourceHash = null;
+  for (const suite of suites) {
+    const build = await prepareBuild(targetRoot, [suite]);
+    const result = await runSelectedTests(targetRoot, [suite]);
+    if (result.code !== 0) {
+      console.error(`frontend tests failed (suite: ${suite}, exit: ${result.code || 1})`);
+      console.error(compactOutput(result));
+      return result.code || 1;
+    }
+    if (!hasExecutedTests(result)) {
+      console.error(`frontend tests failed (suite: ${suite}, exit: 1)`);
+      console.error('Node reported no executed tests');
+      return 1;
+    }
+    cases += Number(testCount(result));
+    sourceHash = build.sourceHash;
   }
   console.log(
-    `frontend tests passed (library: ${libraries.join(', ')}, cases: ${testCount(result)}, exit: 0, source: ${build.sourceHash.slice(0, 12)})`,
+    `frontend tests passed (suite: ${suites.join(', ')}, cases: ${cases}, exit: 0, source: ${sourceHash.slice(0, 12)})`,
   );
   return 0;
 }
 
-async function runRedGreen(libraries) {
+async function runRedGreen(suites) {
   let checks = 0;
   try {
     for (const spec of redGreenSpecs) {
-      await prepareBuild(redGreenRoot);
+      await prepareBuild(redGreenRoot, suites);
       const mutatedStore = injectStoreMutation(
         await readFile(path.join(redGreenRoot, 'source', 'stores', 'libraryStore.ts'), 'utf8'),
         spec,
@@ -308,13 +515,13 @@ async function runRedGreen(libraries) {
       if (compile.code !== 0) {
         throw new Error(`Red-green compile failed for ${spec.label}\n${compactOutput(compile)}`);
       }
-      const red = await runSelectedTests(redGreenRoot, libraries, spec.testName);
+      const red = await runSelectedTests(redGreenRoot, suites, spec.testName);
       assertTargetedFailure(red, spec);
       checks += 1;
     }
 
-    const greenBuild = await prepareBuild(targetRoot);
-    const green = await runSelectedTests(targetRoot, libraries);
+    const greenBuild = await prepareBuild(targetRoot, suites);
+    const green = await runSelectedTests(targetRoot, suites);
     if (green.code !== 0) {
       console.error('red-green failed: clean source did not recover');
       console.error(compactOutput(green));
@@ -340,15 +547,21 @@ async function main() {
     options = parseArguments(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    console.error('Usage: npm run test:frontend -- [--library <name>] [--list] [--red-green]');
+    console.error('Usage: npm run test:frontend -- [--library <name> | --reader] [--list] [--red-green]');
     return 2;
   }
 
   if (options.list) {
-    console.log([...libraryTests.keys()].join('\n'));
+    console.log([...testSuites.keys()].join('\n'));
     return 0;
   }
-  return options.redGreen ? runRedGreen(options.libraries) : runNormal(options.libraries);
+  if (options.redGreen && options.suites.includes('reader') && options.explicitSuite) {
+    console.error('The --red-green mode currently supports only the library suite');
+    return 2;
+  }
+  return options.redGreen
+    ? runRedGreen(options.explicitSuite ? options.suites : ['library'])
+    : runNormal(options.suites);
 }
 
 try {

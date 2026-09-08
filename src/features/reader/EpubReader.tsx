@@ -192,23 +192,27 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   useEffect(() => { settingsScopeRef.current = settingsScope; }, [settingsScope]);
 
   useEffect(() => {
+    let active = true;
     getReadingSettings({ bookId })
       .then((result) => {
+        if (!active) return;
         setSettingsResult(result);
         setSettingsDraft(result.effective);
         setSettingsScope(result.book_override ? 'book' : 'global');
-        if (!openedRef.current) {
+        if (active && !openedRef.current) {
           openedRef.current = true;
           return open(bookId, epubRootUrl, result.effective);
         }
         return undefined;
       })
       .catch((err: unknown) => {
+        if (!active) return;
         setSettingsResult(null);
         setSettingsDraft(null);
         setSettingsError(err instanceof Error ? err.message : String(err));
       });
     return () => {
+      active = false;
       close();
       openedRef.current = false;
     };
@@ -650,10 +654,15 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   // 打开完成后加载批注并恢复高亮标记。
   useEffect(() => {
     if (isLoading || !openedRef.current) return;
+    let active = true;
     loadNotes().catch((err: unknown) => {
+      if (!active) return;
       setNotesError(err instanceof Error ? err.message : String(err));
     });
-  }, [isLoading, loadNotes]);
+    return () => {
+      active = false;
+    };
+  }, [bookId, isLoading, loadNotes]);
 
   // 选区与高亮标记点击的引擎适配：selection → 浮动菜单，标记点击 → 批注菜单。
   useEffect(() => {
