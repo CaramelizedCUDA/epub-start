@@ -169,6 +169,7 @@ fn parse_opf(xml_bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
     let mut in_manifest = false;
     let mut current_tag: Option<String> = None;
     let mut cover_id_from_meta: Option<String> = None;
+    let mut cover_href_from_property: Option<String> = None;
     // Map: item id → href
     let mut manifest_items: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
@@ -217,6 +218,7 @@ fn parse_opf(xml_bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
                     if local == b"item" {
                         let mut item_id: Option<String> = None;
                         let mut item_href: Option<String> = None;
+                        let mut item_properties: Option<String> = None;
                         for attr in e.attributes().flatten() {
                             let key = String::from_utf8_lossy(attr.key.as_ref());
                             match key.as_ref() {
@@ -227,10 +229,17 @@ fn parse_opf(xml_bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
                                     item_href =
                                         Some(String::from_utf8_lossy(&attr.value).to_string())
                                 }
+                                "properties" => {
+                                    item_properties =
+                                        Some(String::from_utf8_lossy(&attr.value).to_string())
+                                }
                                 _ => {}
                             }
                         }
                         if let (Some(id), Some(href)) = (item_id, item_href) {
+                            if is_cover_image_property(item_properties.as_deref(), &href) {
+                                cover_href_from_property = Some(href.clone());
+                            }
                             manifest_items.insert(id, href);
                         }
                     }
@@ -272,6 +281,7 @@ fn parse_opf(xml_bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
                 } else if in_manifest && local == b"item" {
                     let mut item_id: Option<String> = None;
                     let mut item_href: Option<String> = None;
+                    let mut item_properties: Option<String> = None;
                     for attr in e.attributes().flatten() {
                         let key = String::from_utf8_lossy(attr.key.as_ref());
                         match key.as_ref() {
@@ -281,10 +291,17 @@ fn parse_opf(xml_bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
                             "href" => {
                                 item_href = Some(String::from_utf8_lossy(&attr.value).to_string())
                             }
+                            "properties" => {
+                                item_properties =
+                                    Some(String::from_utf8_lossy(&attr.value).to_string())
+                            }
                             _ => {}
                         }
                     }
                     if let (Some(id), Some(href)) = (item_id, item_href) {
+                        if is_cover_image_property(item_properties.as_deref(), &href) {
+                            cover_href_from_property = Some(href.clone());
+                        }
                         manifest_items.insert(id, href);
                     }
                 }
@@ -321,6 +338,14 @@ fn parse_opf(xml_bytes: &[u8]) -> Result<EpubMetadata, EpubError> {
     if let Some(ref cover_id) = cover_id_from_meta {
         if let Some(href) = manifest_items.get(cover_id) {
             meta.cover_entry_path = Some(resolve_opf_relative(href));
+        }
+    }
+
+    // EPUB 3 identifies the cover image with the manifest item's
+    // `cover-image` property; the id does not have to contain "cover".
+    if meta.cover_entry_path.is_none() {
+        if let Some(href) = cover_href_from_property {
+            meta.cover_entry_path = Some(resolve_opf_relative(&href));
         }
     }
 
@@ -374,6 +399,15 @@ fn is_image_path(path: &str) -> bool {
         || lower.ends_with(".gif")
         || lower.ends_with(".svg")
         || lower.ends_with(".webp")
+}
+
+fn is_cover_image_property(properties: Option<&str>, href: &str) -> bool {
+    is_image_path(href)
+        && properties.is_some_and(|value| {
+            value
+                .split_whitespace()
+                .any(|property| property.eq_ignore_ascii_case("cover-image"))
+        })
 }
 
 #[derive(Debug, Clone)]
@@ -940,6 +974,42 @@ mod tests {
         writer.finish().unwrap().into_inner()
     }
 
+    fn build_epub_with_epub3_cover_property() -> Result<Vec<u8>, String> {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        writer
+            .start_file("META-INF/container.xml", options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(
+                br#"<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+            )
+            .map_err(|error| error.to_string())?;
+        writer
+            .start_file("OEBPS/content.opf", options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(
+                br#"<package version="3.0"><metadata><dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Cover property</dc:title></metadata><manifest>
+                <item id="front" href="images/front.jpg" media-type="image/jpeg" properties="cover-image"/>
+                </manifest></package>"#,
+            )
+            .map_err(|error| error.to_string())?;
+        writer
+            .start_file("OEBPS/images/front.jpg", options)
+            .map_err(|error| error.to_string())?;
+        writer
+            .write_all(b"cover-bytes")
+            .map_err(|error| error.to_string())?;
+        writer
+            .finish()
+            .map(|writer| writer.into_inner())
+            .map_err(|error| error.to_string())
+    }
+
     fn build_search_epub() -> Vec<u8> {
         build_search_epub_with_second(b"<html><body>second chapter</body></html>")
     }
@@ -1038,6 +1108,27 @@ mod tests {
         assert_eq!(metadata.title, "Byte Book");
         assert_eq!(metadata.authors, vec!["Byte Author"]);
         assert_eq!(metadata.package_identifier.as_deref(), Some("byte-id"));
+    }
+
+    #[test]
+    fn parse_epub_reader_extracts_epub3_cover_image_property() -> Result<(), String> {
+        let cache_dir =
+            std::env::temp_dir().join(format!("epub-cover-property-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&cache_dir).map_err(|error| error.to_string())?;
+
+        let metadata = parse_epub_reader(
+            std::io::Cursor::new(build_epub_with_epub3_cover_property()?),
+            Some((&cache_dir, "book")),
+        )
+        .map_err(|error| error.to_string())?;
+        let cover_path = metadata
+            .cover_entry_path
+            .ok_or_else(|| "EPUB3 cover-image item was not extracted".to_string())?;
+        let cover_bytes = std::fs::read(&cover_path).map_err(|error| error.to_string())?;
+
+        assert_eq!(cover_bytes, b"cover-bytes");
+        std::fs::remove_dir_all(cache_dir).map_err(|error| error.to_string())?;
+        Ok(())
     }
 
     #[test]

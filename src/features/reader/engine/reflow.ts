@@ -24,6 +24,29 @@ interface RenditionContentHookHost {
   };
 }
 
+interface RenditionLayoutHost {
+  settings?: {
+    height?: number | string;
+    layout?: string | null;
+  };
+  manager?: {
+    layout?: {
+      height?: number;
+      name?: string;
+    };
+  };
+  book?: {
+    package?: {
+      metadata?: {
+        layout?: string;
+      };
+    };
+    displayOptions?: {
+      fixedLayout?: string | boolean;
+    };
+  };
+}
+
 export interface PreserveAndReflowOptions {
   restoreTheme: boolean;
   settings?: ReadingSettings | null;
@@ -353,7 +376,7 @@ export function injectReadingTheme(
     const hookHost = rendition as unknown as RenditionContentHookHost;
     hookHost.hooks.content.register((content: Content) => {
       const currentLayout = readerBodyLayouts.get(rendition);
-      if (currentLayout) applyReaderBodyLayoutToContent(content, currentLayout);
+      if (currentLayout) applyReaderBodyLayoutToContent(rendition, content, currentLayout);
     });
     readerBodyLayoutHooks.add(rendition);
   }
@@ -388,12 +411,6 @@ export function injectReadingTheme(
       margin: '0 !important',
       'padding-top': `${settings.margin_top_px}px !important`,
       'padding-bottom': `${settings.margin_bottom_px}px !important`,
-      // Keep the multicolumn body itself at the full page width. Applying
-      // side padding to the body shrinks every fragmentainer and makes the
-      // next column leak into the current viewport. The pixel gutters are
-      // applied to each direct body child below instead.
-      'padding-left': '0 !important',
-      'padding-right': '0 !important',
       '-webkit-text-size-adjust': '100% !important',
       'overflow-wrap': 'break-word !important',
       'word-wrap': 'break-word !important',
@@ -403,18 +420,8 @@ export function injectReadingTheme(
       'margin-bottom': `${settings.paragraph_spacing_multiplier}em !important`,
       'text-indent': `${settings.text_indent_em}em !important`,
     },
-    // EPUB.js sizes images against the full fragmentainer. Direct body
-    // children carry the reader gutters, so constrain visual content to the
-    // child content box as well; otherwise an image can cross into the next
-    // column and leave a strip behind after a page turn.
-    img: {
-      'max-width': '100% !important',
-      'box-sizing': 'border-box !important',
-    },
-    svg: {
-      'max-width': '100% !important',
-      'box-sizing': 'border-box !important',
-    },
+    // Reflow image sizing is applied after EPUB.js knows the page geometry.
+    // Fixed-layout content is left to its own dimensions.
     '*': { color: `${palette.color} !important` },
   });
   rendition.themes.select('reader-settings');
@@ -427,16 +434,18 @@ function applyReaderBodyLayout(
   layout: ReaderBodyLayout,
 ): void {
   for (const content of rendition.getContents()) {
-    applyReaderBodyLayoutToContent(content, layout);
+    applyReaderBodyLayoutToContent(rendition, content, layout);
   }
 }
 
 function applyReaderBodyLayoutToContent(
+  rendition: Rendition,
   content: Content,
   layout: ReaderBodyLayout,
 ): void {
   const body = content.document.body;
   if (!body) return;
+  if (isPrePaginatedRendition(rendition)) return;
   const columnWidth = readReaderColumnWidth(content, body);
   const leftGutter = `${READER_MIN_SIDE_GUTTER_PX + columnWidth * layout.leftPercent / 100}px`;
   const rightGutter = `${READER_MIN_SIDE_GUTTER_PX + columnWidth * layout.rightPercent / 100}px`;
@@ -449,6 +458,59 @@ function applyReaderBodyLayoutToContent(
     element.style.setProperty('padding-right', rightGutter, 'important');
   }
   body.style.setProperty('touch-action', 'pan-y', 'important');
+  applyReaderImageLayoutToContent(rendition, content, body);
+}
+
+function applyReaderImageLayoutToContent(
+  rendition: Rendition,
+  content: Content,
+  body: HTMLElement,
+): void {
+  if (isPrePaginatedRendition(rendition)) return;
+
+  const computed = content.window.getComputedStyle(body);
+  const verticalPadding = parseCssPx(computed.paddingTop) + parseCssPx(computed.paddingBottom);
+  const pageHeight = readReaderPageHeight(rendition, body);
+  const availableHeight = pageHeight - verticalPadding;
+  if (!Number.isFinite(availableHeight) || availableHeight <= 0) return;
+
+  const maxHeight = Math.max(1, availableHeight * 0.95);
+  for (const element of Array.from(body.querySelectorAll<HTMLElement>('img, svg'))) {
+    element.style.setProperty('display', 'block', 'important');
+    element.style.setProperty('height', 'auto', 'important');
+    element.style.setProperty('max-width', '100%', 'important');
+    element.style.setProperty('max-height', `${maxHeight}px`, 'important');
+    element.style.setProperty('object-fit', 'contain', 'important');
+    element.style.setProperty('page-break-inside', 'avoid', 'important');
+    element.style.setProperty('break-inside', 'avoid', 'important');
+    element.style.setProperty('box-sizing', 'border-box', 'important');
+  }
+}
+
+function parseCssPx(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readReaderPageHeight(rendition: Rendition, body: HTMLElement): number {
+  const host = rendition as unknown as RenditionLayoutHost;
+  const managerHeight = host.manager?.layout?.height;
+  if (typeof managerHeight === 'number' && Number.isFinite(managerHeight) && managerHeight > 0) {
+    return managerHeight;
+  }
+
+  const configuredHeight = parseCssPx(String(host.settings?.height ?? ''));
+  if (configuredHeight > 0) return configuredHeight;
+  return body.offsetHeight;
+}
+
+function isPrePaginatedRendition(rendition: Rendition): boolean {
+  const host = rendition as unknown as RenditionLayoutHost;
+  return host.settings?.layout === 'pre-paginated'
+    || host.manager?.layout?.name === 'pre-paginated'
+    || host.book?.package?.metadata?.layout === 'pre-paginated'
+    || host.book?.displayOptions?.fixedLayout === true
+    || host.book?.displayOptions?.fixedLayout === 'true';
 }
 
 function readReaderColumnWidth(content: Content, body: HTMLElement): number {
