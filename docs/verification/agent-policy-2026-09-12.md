@@ -32,3 +32,9 @@
 - 本机备份、skills、profile 和隔离样例不随项目仓库上传。项目结构化补充可独立使用，不依赖特定个人磁盘路径。
 
 设计依据为 OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) 中按能力调整约束、保留有效专业知识与通过行为验证改动的思路；本仓库的候选路由属于本地执行策略。
+
+## 同日补充：Luna 统一使用 max
+
+用户随后明确选择：需要使用 Luna 时统一采用 `max`。项目与全局路由、Luna CLI profile 已同步；是否委派、是否选择 Luna 仍按任务判断，结构化补充和共同门禁继续适用。此偏好不改变前述初始选型经过或历史验证结论。
+
+本次仅核对两处路由一致性、Luna profile 的 TOML、相关链接及文档差异；没有重新派工或重复应用/行为测试。本机另存本次前后版本与差异，原存档保留。
