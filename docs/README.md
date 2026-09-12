@@ -1,6 +1,6 @@
 # 文档索引与维护职责
 
-面向使用者的入口是 [README](../README.md)。当前任务只在 [TODO](../TODO.md) 排序；下面按职责查阅，避免在多个文件重复维护状态。
+面向使用者的入口是 [README](../README.md)。Agent 先读 [AGENTS](../AGENTS.md) 的任务路由；当前任务只在 [TODO](../TODO.md) 排序，下面按职责查阅，避免在多个文件重复维护状态。
 
 | 文档 | 唯一职责 |
 | --- | --- |
@@ -14,7 +14,9 @@
 | [IPC](../IPC.md) | 当前 Command、共享模型与错误语义 |
 | [CONTEXT](../CONTEXT.md) | 领域词汇；不预设表或接口 |
 | [SECURITY](../SECURITY.md) | 安全、隐私、资源防护和漏洞反馈 |
-| [AGENTS](../AGENTS.md) | Agent 工作入口与验证诚实规则，Luna 同样必须遵守 |
+| [AGENTS](../AGENTS.md) | Agent 任务入口、共同权限/验证规则与模型执行路由 |
+| [模型路由](agents/model-routing.md) | 模型/推理候选、委派边界与外部模型可用条件 |
+| [结构化执行补充](agents/structured-execution.md) | 所有非 Astra 或型号不明执行者的独立执行检查点 |
 | [ADR](adr/0001-reading-duration-history.md) | 已接受的重要设计决策及其理由 |
 
 ## 验收与历史

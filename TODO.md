@@ -1,6 +1,6 @@
 # 当前执行看板
 
-本文件是唯一执行顺序。首次项目入口按 [AGENTS](AGENTS.md) 阅读 [README](README.md)、[ARCHITECTURE](ARCHITECTURE.md)、[DATABASE](DATABASE.md)、[IPC](IPC.md)、[CONVENTIONS](CONVENTIONS.md)、[ROADMAP](ROADMAP.md) 与 [SECURITY](SECURITY.md)。同一上下文后续只复查相关变更章节。命令见 [开发指南](docs/DEVELOPMENT.md)，验证范围与停止条件见 [验证策略](docs/VERIFICATION.md)。
+本文件是唯一执行顺序。先读 [AGENTS](AGENTS.md) 的任务路由，再按当前任务使用 [文档索引](docs/README.md) 查阅相关章节；没有指定任务时才按本文件选择首个未完成且无外部阻塞的实现项。命令见 [开发指南](docs/DEVELOPMENT.md)，验证范围与停止条件见 [验证策略](docs/VERIFICATION.md)，模型与委派建议见 [模型路由](docs/agents/model-routing.md)，结构化执行模型另读 [结构化执行补充](docs/agents/structured-execution.md)。
 
 ## 当前状态与工作规则
 
