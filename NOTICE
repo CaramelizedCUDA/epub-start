@@ -1,0 +1,22 @@
+EpubStart
+Copyright (C) 2026 CaramelizedCUDA
+
+EpubStart is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License, version 3, as published by
+the Free Software Foundation (SPDX-License-Identifier: GPL-3.0-only).
+
+EpubStart is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+more details.
+
+You should have received a copy of the GNU General Public License along
+with EpubStart. If not, see https://www.gnu.org/licenses/.
+
+Project and corresponding source:
+https://github.com/CaramelizedCUDA/epub-start
+https://github.com/CaramelizedCUDA/epub-start/releases/tag/v0.1.0
+
+Third-party components retain their own copyright notices and licenses.
+See THIRD_PARTY_NOTICES.md and the notices/source archives accompanying
+the release. This project license does not replace third-party terms.

@@ -2,7 +2,7 @@
 
 一个本地 EPUB 阅读器，支持书架管理、正文阅读和进度保存。
 
-首版面向 **Windows x64** 与 **Android arm64**。当前验收候选已归入 main，正在准备 v0.1.0；许可证和正式签名尚未定稿，Release 尚未发布。进展见 [首版说明](docs/releases/v0.1.0.md)。
+首版 **v0.1.0** 面向 **Windows x64** 与 **Android arm64**，采用 **GPL-3.0** 开源协议。下载文件与已知限制见 [首版说明](docs/releases/v0.1.0.md)。
 
 ## 当前功能
 
@@ -23,7 +23,12 @@
 
 ## 下载与使用
 
-正式安装包将在 [Releases](https://github.com/CaramelizedCUDA/epub-start/releases) 提供。当前尚未发布首版，请勿将历史 debug/profile 测试包当作正式发行包。
+从 [v0.1.0 Release](https://github.com/CaramelizedCUDA/epub-start/releases/tag/v0.1.0) 下载：
+
+- **Windows x64**：解压 `EpubStart-0.1.0-windows-x64.zip`，运行其中的 `EpubStart.exe`。需要 WebView2 Runtime；应用数据保存在系统应用数据目录。EXE 未做 Authenticode 签名，Windows 可能显示发布者未知。
+- **Android arm64**：下载 `EpubStart-0.1.0-android-arm64.apk` 安装。使用专用正式签名；与早期 debug/profile 测试包的签名不同，安装冲突时请保留旧数据并联系维护者。
+
+下载页附有 SHA-256 校验值、完整许可证、第三方声明及对应源码。
 
 安装后导入自己的 EPUB，选择舒服的字号与阅读模式即可开始阅读。问题反馈请附版本、系统、操作步骤和预期结果；不要公开上传私有书籍、来源路径或阅读历史。
 
@@ -42,4 +47,6 @@ npm run tauri dev
 
 普通问题通过 [Issues](https://github.com/CaramelizedCUDA/epub-start/issues) 反馈；安全问题按 [安全策略](SECURITY.md) 私下报告。参与开发前请阅读 [文档索引](docs/README.md) 和 [实现规范](CONVENTIONS.md)。
 
-项目许可证尚待维护者选定，目前未提供 `LICENSE`。第三方依赖继续适用其各自许可证；项目许可不能替代第三方许可。
+EpubStart 采用 **GNU General Public License v3.0 only**（`GPL-3.0-only`）。完整条款见 [LICENSE](LICENSE)，项目声明见 [NOTICE](NOTICE)。允许按协议商用、修改和再分发；分发衍生版本时须履行 GPL 的源码与许可义务。
+
+第三方组件仍适用各自许可，见 [第三方声明](THIRD_PARTY_NOTICES.md)。构建与源码获取说明见 [从源码构建首版](docs/releases/BUILDING-v0.1.0.md)。

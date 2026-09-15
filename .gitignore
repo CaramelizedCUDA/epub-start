@@ -44,6 +44,13 @@ src-tauri/gen/schemas/mobile-schema.json
 .env
 .env.*
 !.env.example
+*.keystore
+*.jks
+*.p12
+*.pfx
+
+# Generated Android frontend assets (recreated by the Tauri build)
+src-tauri/gen/android/app/src/main/assets/
 
 # Editor and operating-system metadata
 .idea/

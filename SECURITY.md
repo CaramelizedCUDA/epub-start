@@ -125,8 +125,7 @@ V1、V2、V3、V4、V5 迁移分别在 `BEGIN IMMEDIATE ... COMMIT` 中完成，
 
 如果发现安全漏洞，请通过以下方式私下报告：
 
-- 在 GitHub 仓库创建安全咨询（Security Advisory）
-- 或发送邮件至项目维护者
+- 使用仓库的 [私密漏洞报告入口](https://github.com/CaramelizedCUDA/epub-start/security/advisories/new) 提交报告（GitHub Private Vulnerability Reporting）。
 
 请勿在公开 Issue 中披露安全漏洞细节。
 
