@@ -2,4 +2,4 @@
 
 验收候选 `20260916-dual-fix-2` 已归入本仓库 main，业务源码提交为 `1a9175728c1b478e831ddebf3bca0a0ea3098bc7`。继续工作直接使用本仓库，不再修改旧候选副本。
 
-当前见 [首版说明](../releases/v0.1.0.md) 和 [收束记录](first-release-closeout-2026-09-16.md)。原独立副本已归档至 `D:\epub-start-deliveries\archive\accepted-source-20260916`；历史验收制品仍在原交付目录。许可证待决定，仓库仍私有、首版尚未发布。
+当前见 [首版说明](../releases/v0.1.0.md) 和 [收束记录](first-release-closeout-2026-09-16.md)。原独立副本已归档至 `D:\epub-start-deliveries\archive\accepted-source-20260916`；整轮验收资料与旧制品已集中到同级 `acceptance-20260914-20260916`。当前首版需要的 Android 待签名文件另存于 `D:\epub-start-deliveries\release-preparation-20260916\artifacts\android`。许可证待决定，仓库仍私有、首版尚未发布。

@@ -19,6 +19,7 @@
 - `D:\epub_start`：唯一继续开发的 Git 仓库。
 - `D:\epub-start-deliveries`：本地交付、验收记录、备份与发布准备，整体不纳入 Git。
 - 其中 `archive/accepted-source-20260916` 保存旧验收工作副本；`archive/historical-backups` 保存原备份目录；`archive/test-extractions` 保存两个历史 EPUB 解包目录；`archive/local-work-records-20260916` 保存原仓库根目录 55 个日志/备份文件。
+- 后续整理将整轮验收资料（3,218 个文件）移入 `archive/acceptance-20260914-20260916`，前后文件数和总字节一致；当前发行所需 Android 待签名 APK/AAB 另存 `release-preparation-20260916/artifacts/android` 并核对 SHA-256 一致。外层只留统一 archive、当前首版准备和资料索引。
 - 未合入的 P3/P4 设计草稿保存于 `archive/unmerged-design-drafts`。旧工作区全部受版本管理文件及未跟踪文件另有 ZIP 副本和逐文件校验清单。
 
 归并前 Git bundle、工作区 ZIP、文件哈希与目录迁移清单保存在本地 `release-preparation-20260916`。原始未提交状态还保留为本地 stash `9d7b08ea59419e680a9f6b8e018c0fd65e2e2854`；恢复应提取所需文件或另建恢复目录，不向当前 main 整体覆盖旧工作区。不删除 stash，不推送它。
