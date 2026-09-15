@@ -1,5 +1,5 @@
 import type { Content, Location, Rendition } from 'epubjs';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { isCurrentWindowFullscreen, setCurrentWindowFullscreen } from '../../../lib/window';
 import type { ReadingSettings } from '../../../types/models';
 
 const REFLOW_EVENT_TIMEOUT_MS = 1_200;
@@ -58,6 +58,52 @@ export interface TextAnchor {
   viewportY: number;
 }
 
+const reflowAnchors = new WeakMap<Rendition, {
+  anchor: TextAnchor;
+  cfi: string | null;
+  left: number;
+  top: number;
+}>();
+const reflowAnchorObservers = new WeakSet<Rendition>();
+
+function readerScrollPosition(): { left: number; top: number } {
+  const scroller = document.getElementById('epub-reader-viewport')
+    ?.querySelector<HTMLElement>('.epub-container');
+  return { left: scroller?.scrollLeft ?? 0, top: scroller?.scrollTop ?? 0 };
+}
+
+export async function captureReflowAnchor(rendition: Rendition): Promise<TextAnchor | null> {
+  // Page alignment can reveal earlier text after a reflow. Re-capturing that
+  // line on the next setting change would drift backwards without navigation.
+  const retained = reflowAnchors.get(rendition);
+  const position = readerScrollPosition();
+  if (retained && retained.cfi === await readCurrentCfi(rendition)
+    && retained.left === position.left && retained.top === position.top) {
+    return retained.anchor;
+  }
+  return captureFirstVisibleLine(rendition);
+}
+
+export async function rememberReflowAnchor(rendition: Rendition, anchor: TextAnchor): Promise<void> {
+  await waitForViewportLayout();
+  reflowAnchors.set(rendition, { anchor, cfi: await readCurrentCfi(rendition), ...readerScrollPosition() });
+  if (reflowAnchorObservers.has(rendition)) return;
+  const scroller = document.getElementById('epub-reader-viewport')
+    ?.querySelector<HTMLElement>('.epub-container');
+  if (!scroller) return;
+  // Explicit navigation can target another character on the same page, so its
+  // relocated event invalidates even an unchanged page CFI. Reflow clears the
+  // cache before its own events and remembers the anchor only after settling.
+  rendition.on('relocated', () => reflowAnchors.delete(rendition));
+  scroller.addEventListener('scroll', () => {
+    const retained = reflowAnchors.get(rendition);
+    if (retained && (retained.left !== scroller.scrollLeft || retained.top !== scroller.scrollTop)) {
+      reflowAnchors.delete(rendition);
+    }
+  }, { passive: true });
+  reflowAnchorObservers.add(rendition);
+}
+
 export async function preserveAndReflow(
   rendition: Rendition,
   action: (savedCfi: string | null) => Promise<void> | void,
@@ -67,8 +113,11 @@ export async function preserveAndReflow(
   const current = previous.catch(() => undefined).then(async () => {
     const savedCfi = await readCurrentCfi(rendition);
     const textAnchor = options.preserveTextAnchor
-      ? captureFirstVisibleLine(rendition)
+      ? await captureReflowAnchor(rendition)
       : null;
+    // The captured anchor stays local through this reflow's own movements;
+    // rememberReflowAnchor records its final position once layout settles.
+    reflowAnchors.delete(rendition);
     clearFirstLineOffset(rendition);
     const actionRelocated = waitForRelocated(rendition);
 
@@ -90,6 +139,7 @@ export async function preserveAndReflow(
     if (textAnchor) {
       await waitForViewportLayout();
       restoreFirstVisibleLine(rendition, textAnchor);
+      await rememberReflowAnchor(rendition, textAnchor);
     }
 
   });
@@ -150,7 +200,8 @@ export function captureFirstVisibleLine(rendition: Rendition): TextAnchor | null
         const globalBottom = frameRect.top + rect.bottom;
         const globalLeft = frameRect.left + rect.left;
         const globalRight = frameRect.left + rect.right;
-        const isVisible = globalBottom > viewportRect.top + 0.5
+        const isVisible = globalTop >= viewportRect.top - 0.5
+          && globalBottom > viewportRect.top + 0.5
           && globalTop < viewportRect.bottom - 0.5
           && globalRight > viewportRect.left + 0.5
           && globalLeft < viewportRect.right - 0.5;
@@ -317,12 +368,11 @@ export async function toggleWindowFullscreen(
   rendition: Rendition,
   settings: ReadingSettings | null,
 ): Promise<boolean> {
-  const appWindow = getCurrentWindow();
-  const nextFullscreen = !(await appWindow.isFullscreen());
+  const nextFullscreen = !(await isCurrentWindowFullscreen());
   await preserveAndReflow(
     rendition,
     async () => {
-      await appWindow.setFullscreen(nextFullscreen);
+      await setCurrentWindowFullscreen(nextFullscreen);
       await waitForViewportLayout();
       resizeToViewport(rendition, settings);
     },
@@ -335,12 +385,11 @@ export async function exitWindowFullscreen(
   rendition: Rendition,
   settings: ReadingSettings | null,
 ): Promise<boolean> {
-  const appWindow = getCurrentWindow();
-  if (!(await appWindow.isFullscreen())) return false;
+  if (!(await isCurrentWindowFullscreen())) return false;
   await preserveAndReflow(
     rendition,
     async () => {
-      await appWindow.setFullscreen(false);
+      await setCurrentWindowFullscreen(false);
       await waitForViewportLayout();
       resizeToViewport(rendition, settings);
     },
@@ -449,8 +498,9 @@ function applyReaderBodyLayoutToContent(
   const columnWidth = readReaderColumnWidth(content, body);
   const leftGutter = `${READER_MIN_SIDE_GUTTER_PX + columnWidth * layout.leftPercent / 100}px`;
   const rightGutter = `${READER_MIN_SIDE_GUTTER_PX + columnWidth * layout.rightPercent / 100}px`;
-  body.style.setProperty('padding-left', '0px', 'important');
-  body.style.setProperty('padding-right', '0px', 'important');
+  // EPUB.js owns body padding: paginated columns reserve half the column gap
+  // on each side. Removing it lets CSS widen the columns, so their real pitch
+  // no longer matches the manager's page step and each turn drifts further.
   for (const child of Array.from(body.children)) {
     const element = child as HTMLElement;
     element.style.setProperty('box-sizing', 'border-box', 'important');
@@ -631,32 +681,39 @@ function rangeAtLineStart(
   const pointX = visibleLeft + Math.min(1, Math.max(0.1, lineRect.width / 2));
   const pointY = lineRect.top + Math.min(lineRect.height / 2, 2);
   const pointRange = caretRangeFromPoint?.(pointX, pointY);
-  if (pointRange) {
-    pointRange.collapse(true);
-    return pointRange;
+  const onLine = (rect: DOMRect) => rect.width > 0
+    && rect.top < lineRect.bottom - 0.5 && rect.bottom > lineRect.top + 0.5
+    && rect.right > visibleLeft + 0.1 && rect.left < lineRect.right - 0.1;
+  if (pointRange?.startContainer.nodeType === Node.TEXT_NODE) {
+    const node = pointRange.startContainer as Text;
+    const offset = pointRange.startOffset;
+    if (offset < node.length) {
+      // A caret at a wrap has rectangles on both sides of the line/column
+      // break. A real character range gives EPUB.js one unambiguous target.
+      pointRange.setEnd(node, offset + 1);
+      if (Array.from(pointRange.getClientRects()).some(onLine)) return pointRange;
+    }
   }
 
   const text = textNode.data;
   let low = 0;
-  let high = text.length;
-  let result = text.length;
-  while (low <= high) {
+  let high = text.length - 1;
+  while (low < high) {
     const mid = Math.floor((low + high) / 2);
     const probe = content.document.createRange();
-    probe.setStart(textNode, mid);
-    probe.setEnd(textNode, Math.min(text.length, mid + 1));
-    const rect = probe.getClientRects()[0];
-    if (rect && rect.top >= lineRect.top - 0.5) {
-      result = mid;
-      high = mid - 1;
+    probe.setStart(textNode, 0);
+    probe.setEnd(textNode, mid + 1);
+    // Prefix intersection stays monotonic even when page columns restart Y.
+    if (Array.from(probe.getClientRects()).some(onLine)) {
+      high = mid;
     } else {
       low = mid + 1;
     }
   }
   const range = content.document.createRange();
-  range.setStart(textNode, result);
-  range.collapse(true);
-  return range;
+  range.setStart(textNode, low);
+  range.setEnd(textNode, low + 1);
+  return Array.from(range.getClientRects()).some(onLine) ? range : null;
 }
 
 export function restoreFirstVisibleLine(

@@ -34,10 +34,6 @@ interface RenderedView {
   section?: RenderedSection;
 }
 
-interface RenditionViews {
-  all: () => RenderedView[];
-}
-
 const LONG_PRESS_MS = 550;
 const MOVE_TOLERANCE_PX = 12;
 const PAGE_TURN_EDGE_RATIO = 0.25;
@@ -54,6 +50,7 @@ export function installImageInteractions(
   handlers: ImageInteractionHandlers,
 ): () => void {
   const cleanups = new Map<Document, () => void>();
+  let disposed = false;
   let pageTurnLockedUntil = 0;
 
   const turnPage = (direction: 'previous' | 'next') => {
@@ -73,7 +70,7 @@ export function installImageInteractions(
     handlers.onPageTurnGestureCommit(direction, progress, distancePx);
   };
   const attach = (content: Content, sectionHref?: string) => {
-    if (cleanups.has(content.document)) return;
+    if (disposed || cleanups.has(content.document)) return;
     const href = sectionHref || sectionHrefFromDocument(content.document, epubRootUrl, bookId);
     cleanups.set(
       content.document,
@@ -89,10 +86,10 @@ export function installImageInteractions(
     );
   };
   const attachCurrentViews = () => {
-    const views = rendition.views() as RenditionViews;
-    for (const view of views.all()) {
-      if (view.contents) attach(view.contents, view.section?.href);
-    }
+    if (disposed) return;
+    // A newly constructed rendition has no manager yet; getContents() returns
+    // an empty list until display creates it. views() instead returns plain [].
+    for (const content of rendition.getContents()) attach(content);
   };
   const rendered = (...args: unknown[]) => {
     const section = args[0] as RenderedSection | undefined;
@@ -108,6 +105,7 @@ export function installImageInteractions(
   // 不依赖 relocated/rendered 事件时机——DOM 变化必然触发，rAF 去抖避免频繁 attach。
   let rafId: number | null = null;
   const debouncedAttach = () => {
+    if (disposed) return;
     if (rafId !== null) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       rafId = null;
@@ -148,6 +146,7 @@ export function installImageInteractions(
   attachCurrentViews();
 
   return () => {
+    disposed = true;
     observer?.disconnect();
     viewport?.removeEventListener('click', viewportClick);
     rendition.off('rendered', rendered);

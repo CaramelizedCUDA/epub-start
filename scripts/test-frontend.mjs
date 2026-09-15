@@ -16,7 +16,14 @@ const targetRoot = path.join(repoRoot, 'target', 'frontend-tests');
 const redGreenRoot = path.join(repoRoot, 'target', 'frontend-tests-redgreen');
 const allowedTempRoots = new Set([path.resolve(targetRoot), path.resolve(redGreenRoot)]);
 const libraryTests = new Map([['library', ['libraryStore.test.cjs']]]);
-const readerTests = new Map([['reader', ['readerStore.test.cjs']]]);
+const readerTests = new Map([['reader', [
+  'readerStore.test.cjs',
+  'reader-closeout.test.cjs',
+  'readingActivity-closeout.test.cjs',
+  'reader-helpers.test.cjs', 'seriesSearch-closeout.test.cjs',
+  'pageTurn.test.cjs',
+  'reflow-anchor.test.cjs',
+]]]);
 const testSuites = new Map([...libraryTests, ...readerTests]);
 
 const staleListGuardPattern = /if \(requestId === latestListRequestId\) \{\r?\n\s+set\(\{ books \}\);\r?\n\s+\}/g;
@@ -105,22 +112,44 @@ const mockReaderTauriSource = `
 import type {
   CreateNoteInput,
   Note,
+  BookSeries,
+  SearchTaskStatus,
+  SearchIndexStatus,
+  SearchResult,
   ReadingProgress,
+  ReadingActivityReceipt,
+  ReadingActivityState,
   UpdateNoteInput,
 } from '../types/models';
 
 type ProgressArgs = { bookId: string };
 type SaveProgressArgs = { bookId: string; locationCfi: string; progression: number };
+type BeginActivityArgs = { bookId: string; utcOffsetMinutes: number };
+type ObserveActivityArgs = {
+  sessionId: string; sequence: number; activityState: ReadingActivityState; utcOffsetMinutes: number;
+};
 type ReaderIpc = {
+  listSeriesBooks: (args: { seriesId: string }) => Promise<BookSeries[]>;
+  ensureSeriesSearchIndex: (args: { seriesId: string }) => Promise<SearchTaskStatus>;
+  getSearchIndexStatus: (args: { seriesId: string }) => Promise<SearchIndexStatus>;
+  searchSeries: (args: { seriesId: string; query: string; limit?: number }) => Promise<SearchResult[]>;
+  cancelSearchIndex: (args: { taskId: string }) => Promise<void>;
   getReadingProgress: (args: ProgressArgs) => Promise<ReadingProgress | null>;
   saveReadingProgress: (args: SaveProgressArgs) => Promise<ReadingProgress>;
   listNotes: (args: ProgressArgs) => Promise<Note[]>;
   createNote: (args: { note: CreateNoteInput }) => Promise<Note>;
   updateNote: (args: { note: UpdateNoteInput }) => Promise<Note>;
   deleteNote: (noteId: string) => Promise<void>;
+  beginReadingActivity: (args: BeginActivityArgs) => Promise<ReadingActivityReceipt>;
+  observeReadingActivity: (args: ObserveActivityArgs) => Promise<ReadingActivityReceipt>;
 };
 
 const defaults: ReaderIpc = {
+  listSeriesBooks: async () => [],
+  ensureSeriesSearchIndex: async () => ({} as SearchTaskStatus),
+  getSearchIndexStatus: async () => ({} as SearchIndexStatus),
+  searchSeries: async () => [],
+  cancelSearchIndex: async () => undefined,
   getReadingProgress: async () => null,
   saveReadingProgress: async ({ bookId, locationCfi, progression }) => ({
     book_id: bookId,
@@ -132,6 +161,12 @@ const defaults: ReaderIpc = {
   createNote: async () => ({} as Note),
   updateNote: async () => ({} as Note),
   deleteNote: async () => undefined,
+  beginReadingActivity: async () => ({
+    session_id: 'activity-A', sequence: 0, state: 'visible', accepted_at: 0,
+  }),
+  observeReadingActivity: async ({ sessionId, sequence, activityState }) => ({
+    session_id: sessionId, sequence, state: activityState, accepted_at: 0,
+  }),
 };
 
 let handlers: ReaderIpc = { ...defaults };
@@ -139,6 +174,12 @@ let handlers: ReaderIpc = { ...defaults };
 export function setReaderIpc(overrides: Partial<ReaderIpc>): void {
   handlers = { ...handlers, ...overrides };
 }
+
+export function listSeriesBooks(args: { seriesId: string }): Promise<BookSeries[]> { return handlers.listSeriesBooks(args); }
+export function ensureSeriesSearchIndex(args: { seriesId: string }): Promise<SearchTaskStatus> { return handlers.ensureSeriesSearchIndex(args); }
+export function getSearchIndexStatus(args: { seriesId: string }): Promise<SearchIndexStatus> { return handlers.getSearchIndexStatus(args); }
+export function searchSeries(args: { seriesId: string; query: string; limit?: number }): Promise<SearchResult[]> { return handlers.searchSeries(args); }
+export function cancelSearchIndex(args: { taskId: string }): Promise<void> { return handlers.cancelSearchIndex(args); }
 
 export function resetReaderIpc(): void {
   handlers = { ...defaults };
@@ -167,10 +208,20 @@ export function updateNote(args: { note: UpdateNoteInput }): Promise<Note> {
 export function deleteNote(noteId: string): Promise<void> {
   return handlers.deleteNote(noteId);
 }
+
+export function beginReadingActivity(args: BeginActivityArgs): Promise<ReadingActivityReceipt> {
+  return handlers.beginReadingActivity(args);
+}
+
+export function observeReadingActivity(args: ObserveActivityArgs): Promise<ReadingActivityReceipt> {
+  return handlers.observeReadingActivity(args);
+}
 `;
 
 const mockReaderEngineSource = `
 export function captureFirstVisibleLine(..._args: any[]): any { return null; }
+export async function captureReflowAnchor(..._args: any[]): Promise<any> { return null; }
+export async function rememberReflowAnchor(..._args: any[]): Promise<void> {}
 export function clearFirstLineOffset(..._args: any[]): void {}
 export function exitWindowFullscreen(..._args: any[]): Promise<boolean> { return Promise.resolve(false); }
 export function injectReadingTheme(..._args: any[]): void {}
@@ -363,6 +414,7 @@ async function prepareBuild(buildRoot, suites) {
   if (includesReader) {
     const readerStoreSource = await readFile(sourceReaderStorePath, 'utf8');
     sourceHashInput += readerStoreSource;
+    sourceHashInput += await readFile(path.join(repoRoot, 'src/features/reader/engine/reflow.ts'), 'utf8');
     await writeFile(path.join(sourceRoot, 'stores', 'readerStore.ts'), readerStoreSource);
     await writeFile(path.join(sourceRoot, 'lib', 'tauri.ts'), mockReaderTauriSource);
     await writeFile(
@@ -385,6 +437,34 @@ async function prepareBuild(buildRoot, suites) {
       path.join(buildRoot, 'node_modules', 'epubjs', 'index.d.ts'),
       mockEpubJsTypes,
     );
+    // Exercise production adapters and the effect body, not copies of their logic.
+    const readerSources = [
+      'features/reader/engine/lifecycle.ts',
+      'features/reader/engine/search.ts',
+      'features/reader/engine/navigation.ts',
+      'features/reader/engine/keyboard.ts',
+      'features/reader/engine/pageTurn.ts',
+      'features/reader/settingsPersistence.ts',
+      'features/reader/useReadingActivity.ts',
+      'features/library/seriesSearch.ts',
+    ];
+    for (const relative of readerSources) {
+      const source = await readFile(path.join(repoRoot, 'src', relative), 'utf8');
+      sourceHashInput += relative + source;
+      await mkdir(path.dirname(path.join(sourceRoot, relative)), { recursive: true });
+      await writeFile(path.join(sourceRoot, relative), source);
+    }
+    // Only capture an effect setup/cleanup; this is not a React/WebView renderer.
+    const reactRoot = path.join(buildRoot, 'node_modules', 'react');
+    await mkdir(reactRoot, { recursive: true });
+    await writeFile(path.join(reactRoot, 'package.json'), JSON.stringify({
+      name: 'reader-effect-test-double', main: 'index.js', types: 'index.d.ts',
+    }));
+    await writeFile(path.join(reactRoot, 'index.js'),
+      'let cleanup;exports.useEffect=effect=>{cleanup=effect()};'
+      + 'exports.takeEffectCleanup=()=>{const old=cleanup;cleanup=undefined;return old};');
+    await writeFile(path.join(reactRoot, 'index.d.ts'),
+      'export function useEffect(effect:()=>void|(()=>void),deps?:unknown[]):void;');
   }
 
   await cp(sourceModelsPath, path.join(sourceRoot, 'types', 'models.ts'));

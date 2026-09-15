@@ -58,9 +58,10 @@ export function installHighlightEngine(
   callbacks: HighlightEngineCallbacks,
 ): () => void {
   const cleanups = new Map<Document, () => void>();
+  let disposed = false;
 
   const attach = (content: Content) => {
-    if (cleanups.has(content.document)) return;
+    if (disposed || cleanups.has(content.document)) return;
     const { document, window: contentWindow } = content;
     const onSelectionChange = () => {
       const selection = contentWindow.getSelection();
@@ -82,12 +83,12 @@ export function installHighlightEngine(
   };
 
   const attachCurrentViews = () => {
-    for (const view of rendition.views().all()) {
-      if (view.contents) attach(view.contents);
-    }
+    if (disposed) return;
+    for (const content of rendition.getContents()) attach(content);
   };
 
   const onSelected = (...args: unknown[]) => {
+    if (disposed) return;
     const cfiRange = args[0];
     const contents = args[1] as Content | undefined;
     if (typeof cfiRange !== 'string' || !contents) return;
@@ -123,6 +124,7 @@ export function installHighlightEngine(
   // 用 MutationObserver 覆盖 spread 右 View 的懒初始化。
   let rafId: number | null = null;
   const debouncedAttach = () => {
+    if (disposed) return;
     if (rafId !== null) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       rafId = null;
@@ -143,6 +145,7 @@ export function installHighlightEngine(
   attachCurrentViews();
 
   return () => {
+    disposed = true;
     observer?.disconnect();
     if (rafId !== null) cancelAnimationFrame(rafId);
     rendition.off('selected', onSelected);

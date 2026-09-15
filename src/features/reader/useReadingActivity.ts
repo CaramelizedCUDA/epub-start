@@ -23,6 +23,9 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
 
     let disposed = false;
     let starting = false;
+    let pageHidden = false;
+    let requestRevision = 0;
+    const isForeground = () => !pageHidden && isReaderForeground();
     let session: ReadingActivityReceipt | null = null;
     let requestedState: ReadingActivityState | null = null;
     let startTimer: number | null = null;
@@ -40,10 +43,15 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
       if (!session || session.state === 'ended') return;
       if (!force && requestedState === activityState) return;
       requestedState = activityState;
+      const revision = ++requestRevision;
+      const expectedSessionId = session.session_id;
 
       commandQueue = commandQueue.then(async () => {
         const activeSession = session;
-        if (!activeSession || activeSession.state === 'ended') return;
+        if (!activeSession || activeSession.state === 'ended'
+          || activeSession.session_id !== expectedSessionId) return;
+        // A queued heartbeat is not proof that the reader is still visible.
+        if (activityState === 'visible' && (disposed || !isForeground())) return;
         try {
           session = await observeReadingActivity({
             sessionId: activeSession.session_id,
@@ -51,16 +59,27 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
             activityState,
             utcOffsetMinutes: utcOffsetMinutes(),
           });
-          requestedState = session.state;
+          // Do not overwrite the intention of a later queued pause/resume/end.
+          if (revision === requestRevision) requestedState = session.state;
         } catch (error) {
-          requestedState = session?.state ?? null;
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.startsWith('READING_ACTIVITY_NOT_FOUND:')
+            || message.startsWith('READING_ACTIVITY_CONFLICT:')) {
+            // Discard the handle. A later foreground observation may start a
+            // fresh activity; never replay an unconfirmed historical interval.
+            session = null;
+            requestedState = null;
+            ++requestRevision;
+          } else if (revision === requestRevision) {
+            requestedState = session?.state ?? null;
+          }
           reportError('observation', error);
         }
       });
     };
 
     const beginIfForeground = () => {
-      if (disposed || starting || session || !isReaderForeground()) return;
+      if (disposed || starting || session || !isForeground()) return;
       starting = true;
       beginReadingActivity({ bookId, utcOffsetMinutes: utcOffsetMinutes() })
         .then((receipt) => {
@@ -68,7 +87,7 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
           requestedState = receipt.state;
           if (disposed) {
             enqueueObservation('ended');
-          } else if (!isReaderForeground()) {
+          } else if (!isForeground()) {
             enqueueObservation('paused');
           }
         })
@@ -79,7 +98,7 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
     };
 
     const syncForegroundState = () => {
-      if (isReaderForeground()) {
+      if (isForeground()) {
         if (session) enqueueObservation('visible');
         else beginIfForeground();
       } else if (session) {
@@ -87,12 +106,20 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
       }
     };
 
-    const pauseForPageHide = () => enqueueObservation('paused');
+    const pauseForPageHide = () => {
+      pageHidden = true;
+      enqueueObservation('paused');
+    };
+    const resumeForPageShow = () => {
+      pageHidden = false;
+      syncForegroundState();
+    };
 
     document.addEventListener('visibilitychange', syncForegroundState);
     window.addEventListener('focus', syncForegroundState);
     window.addEventListener('blur', syncForegroundState);
     window.addEventListener('pagehide', pauseForPageHide);
+    window.addEventListener('pageshow', resumeForPageShow);
 
     // Deferring the first begin avoids a development-only zero-duration session
     // when React StrictMode immediately replays effect setup and cleanup.
@@ -101,7 +128,7 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
       syncForegroundState();
     }, 0);
     heartbeatTimer = window.setInterval(() => {
-      if (!isReaderForeground()) return;
+      if (!isForeground()) return;
       if (session) enqueueObservation('visible', true);
       else beginIfForeground();
     }, READING_ACTIVITY_HEARTBEAT_MS);
@@ -112,6 +139,7 @@ export function useReadingActivity({ bookId, isReady }: UseReadingActivityOption
       window.removeEventListener('focus', syncForegroundState);
       window.removeEventListener('blur', syncForegroundState);
       window.removeEventListener('pagehide', pauseForPageHide);
+      window.removeEventListener('pageshow', resumeForPageShow);
       if (startTimer !== null) window.clearTimeout(startTimer);
       if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
       if (session) enqueueObservation('ended');

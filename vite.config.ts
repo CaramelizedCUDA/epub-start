@@ -1,10 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [react()],
+  resolve: {
+    // Reader already requires native DOMParser/XMLSerializer in its WebView.
+    // EPUB.js never needs the Node/IE XML fallback on our supported targets.
+    alias: [{
+      find: /^@xmldom\/xmldom$/,
+      replacement: fileURLToPath(new URL("./src/features/reader/engine/browserXml.ts", import.meta.url)),
+    }],
+  },
   clearScreen: false,
   build: {
     // Android 老设备（如 Android 9 出厂 WebView 79）不支持可选链等 ES2020 语法，

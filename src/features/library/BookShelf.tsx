@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { isCurrentWindowFullscreen, onMainWindowResized, setCurrentWindowFullscreen } from '../../lib/window';
 import { useLibraryStore } from '../../stores/libraryStore';
 import { getGlobalReadingSettings, saveGlobalReadingSettings } from '../../lib/tauri';
+import { queueSettingsWrite } from '../reader/settingsPersistence';
 import type { BookSummary, ReadingOverviewPeriod, ReadingSettings } from '../../types/models';
 import { B2CloseoutPanel } from '../closeout/B2CloseoutPanel';
 import { B3PrivateDataPanel } from '../closeout/B3PrivateDataPanel';
@@ -17,7 +18,7 @@ export type LibrarySection = 'library' | 'series' | 'search' | 'notes' | 'tags' 
 interface BookShelfProps {
   activeSection: LibrarySection;
   onSectionChange: (section: LibrarySection) => void;
-  onOpenBook: (book: BookSummary) => void;
+  onOpenBook: (book: BookSummary, initialHref?: string) => void;
   readerError: string | null;
   onDismissReaderError: () => void;
 }
@@ -101,7 +102,7 @@ export function BookShelf({
     if (activeSection !== 'settings' || settings) return;
     let disposed = false;
     setSettingsError(null);
-    void getGlobalReadingSettings()
+    void queueSettingsWrite(() => getGlobalReadingSettings())
       .then((value) => { if (!disposed) setSettings(value); })
       .catch((err: unknown) => { if (!disposed) setSettingsError(err instanceof Error ? err.message : String(err)); });
     return () => { disposed = true; };
@@ -117,13 +118,12 @@ export function BookShelf({
 
   useEffect(() => {
     let disposed = false;
-    const appWindow = getCurrentWindow();
-    void appWindow.isFullscreen()
+    void isCurrentWindowFullscreen()
       .then((value) => { if (!disposed) setIsFullscreen(value); })
       .catch(() => undefined);
     let unlisten: (() => void) | undefined;
-    void appWindow.onResized(() => {
-      void appWindow.isFullscreen()
+    void onMainWindowResized(() => {
+      void isCurrentWindowFullscreen()
         .then((value) => { if (!disposed) setIsFullscreen(value); })
         .catch(() => undefined);
     }).then((cleanup) => { unlisten = cleanup; }).catch(() => undefined);
@@ -133,10 +133,9 @@ export function BookShelf({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      const appWindow = getCurrentWindow();
-      void appWindow.isFullscreen().then(async (fullscreen) => {
+      void isCurrentWindowFullscreen().then(async (fullscreen) => {
         if (!fullscreen) return;
-        await appWindow.setFullscreen(false);
+        await setCurrentWindowFullscreen(false);
         setIsFullscreen(false);
       }).catch((err: unknown) => {
         setFullscreenError(err instanceof Error ? err.message : String(err));
@@ -152,7 +151,7 @@ export function BookShelf({
     setSettingsError(null);
     try {
       const { updated_at: _updatedAt, ...input } = settings;
-      setSettings(await saveGlobalReadingSettings(input));
+      setSettings(await queueSettingsWrite(() => saveGlobalReadingSettings(input)));
     } catch (err) {
       setSettingsError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -163,9 +162,8 @@ export function BookShelf({
   const toggleFullscreen = async () => {
     setFullscreenError(null);
     try {
-      const appWindow = getCurrentWindow();
-      const next = !(await appWindow.isFullscreen());
-      await appWindow.setFullscreen(next);
+      const next = !(await isCurrentWindowFullscreen());
+      await setCurrentWindowFullscreen(next);
       setIsFullscreen(next);
     } catch (err) {
       setFullscreenError(err instanceof Error ? err.message : String(err));

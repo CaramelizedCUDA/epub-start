@@ -2,18 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import {
   cancelSearchIndex,
-  ensureSeriesSearchIndex,
   getSearchIndexStatus,
   listSeries,
-  listSeriesBooks,
-  searchSeries,
 } from '../../lib/tauri';
-import type { BookSummary, SearchIndexStatus, SearchResult, SearchTaskStatus, Series } from '../../types/models';
+import type { BookSummary, SearchIndexStatus, SearchResult, Series } from '../../types/models';
+import { cancelOwnedSearchTask, searchSeriesChapters } from './seriesSearch';
 
 interface ArchiveSearchPageProps {
   books: BookSummary[];
   onBack: () => void;
-  onOpenBook: (book: BookSummary) => void;
+  onOpenBook: (book: BookSummary, initialHref?: string) => void;
 }
 
 type SearchScope = 'library' | 'series';
@@ -30,6 +28,19 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
   const [error, setError] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const searchRunRef = useRef(0);
+  const ownedTaskRef = useRef<string | null>(null);
+  const retireSearch = () => {
+    ++searchRunRef.current;
+    const owned = ownedTaskRef.current;
+    ownedTaskRef.current = null;
+    if (owned) cancelOwnedSearchTask(owned);
+  };
+  useEffect(() => () => {
+    ++searchRunRef.current;
+    const owned = ownedTaskRef.current;
+    ownedTaskRef.current = null;
+    if (owned) cancelOwnedSearchTask(owned);
+  }, []);
 
   const bookById = useMemo(() => new Map(books.map((book) => [book.id, book])), [books]);
   const metadataResults = useMemo(() => {
@@ -59,18 +70,22 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
       return;
     }
     let disposed = false;
+    const runId = searchRunRef.current;
     setIndexStatus(null);
     void getSearchIndexStatus({ seriesId: selectedSeriesId })
-      .then((status) => { if (!disposed) setIndexStatus(status); })
-      .catch((err: unknown) => { if (!disposed) setError(err instanceof Error ? err.message : String(err)); });
+      .then((status) => { if (!disposed && runId === searchRunRef.current) setIndexStatus(status); })
+      .catch((err: unknown) => { if (!disposed && runId === searchRunRef.current) setError(err instanceof Error ? err.message : String(err)); });
     return () => { disposed = true; };
   }, [selectedSeriesId]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedQuery = query.trim();
-    if (!trimmedQuery) {
-      setError('请输入要搜索的内容。');
+    retireSearch();
+    setIsSearching(false);
+    setTaskId(null);
+    if (!trimmedQuery || [...trimmedQuery].length > 200) {
+      setError('请输入 1–200 个字符的搜索内容。');
       return;
     }
     setError(null);
@@ -86,46 +101,58 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
     searchRunRef.current = runId;
     setIsSearching(true);
     setTaskId(null);
+    let lastStatus: SearchIndexStatus | null = null;
     try {
-      const seriesBooks = await listSeriesBooks({ seriesId: selectedSeriesId });
-      if (seriesBooks.length === 0) throw new Error(`系列“${selectedSeries?.name ?? '当前系列'}”还没有书，暂时没有可搜索的正文。`);
-      const task = await ensureSeriesSearchIndex({ seriesId: selectedSeriesId });
-      if (runId !== searchRunRef.current) return;
-      setTaskId(task.task_id);
-      const readyStatus = await waitForIndex(selectedSeriesId, task, (status) => {
-        if (runId === searchRunRef.current) setIndexStatus(status);
+      const results = await searchSeriesChapters(selectedSeriesId, trimmedQuery, {
+        isCurrent: () => runId === searchRunRef.current,
+        onTask: (owned) => { ownedTaskRef.current = owned; setTaskId(owned); },
+        onStatus: (status) => { lastStatus = status; setIndexStatus(status); },
       });
-      if (runId !== searchRunRef.current) return;
-      setIndexStatus(readyStatus);
-      setContentResults(await searchSeries({ seriesId: selectedSeriesId, query: trimmedQuery, limit: 50 }));
+      if (runId === searchRunRef.current && results !== null) setContentResults(results);
     } catch (err) {
       if (runId === searchRunRef.current) setError(err instanceof Error ? err.message : String(err));
     } finally {
       if (runId === searchRunRef.current) {
+        // A timed-out or temporarily unavailable poll does not abandon its known task.
+        const finished = lastStatus as SearchIndexStatus | null;
+        if (finished?.status === 'ready' || finished?.status === 'error') ownedTaskRef.current = null;
         setIsSearching(false);
-        setTaskId(null);
+        setTaskId(ownedTaskRef.current);
       }
     }
   };
 
   const handleCancel = async () => {
     if (!taskId) return;
-    searchRunRef.current += 1;
+    const cancelledTask = taskId;
+    const runId = ++searchRunRef.current;
+    ownedTaskRef.current = null;
     setIsSearching(false);
+    setTaskId(null);
     setError(null);
     try {
-      await cancelSearchIndex({ taskId });
-      setIndexStatus((current) => current ? { ...current, status: 'pending', error_detail: '索引建立已取消，可以稍后再次搜索。' } : current);
+      await cancelSearchIndex({ taskId: cancelledTask });
+      if (runId !== searchRunRef.current) return;
+      const status = await getSearchIndexStatus({ seriesId: selectedSeriesId });
+      if (runId === searchRunRef.current) setIndexStatus(status);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setTaskId(null);
+      if (runId === searchRunRef.current) setError(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const changeSeries = (seriesId: string) => {
+    retireSearch();
+    setSelectedSeriesId(seriesId);
+    setSearchedQuery('');
+    setContentResults([]);
+    setError(null);
+    setIsSearching(false);
+    setTaskId(null);
   };
 
   const switchScope = (nextScope: SearchScope) => {
     if (scope === nextScope) return;
-    searchRunRef.current += 1;
+    retireSearch();
     setScope(nextScope);
     setSearchedQuery('');
     setContentResults([]);
@@ -157,19 +184,22 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
         <form onSubmit={(event) => void handleSubmit(event)} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label htmlFor="archive-search-query" className="min-w-0 flex-1">
             <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">{scope === 'library' ? '书名 / 作者' : '系列内正文'}</span>
-            <input id="archive-search-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={scope === 'library' ? '输入书名或作者' : '输入章节中的词语'} className="mt-1 w-full border-b border-[#9fb4ac] bg-transparent px-1 py-2 font-serif text-xl text-[#18272c] outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
+            <input id="archive-search-query" maxLength={200} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={scope === 'library' ? '输入书名或作者' : '输入章节中的词语'} className="mt-1 w-full border-b border-[#9fb4ac] bg-transparent px-1 py-2 font-serif text-xl text-[#18272c] outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
           </label>
-          {scope === 'series' && <label className="sm:w-56"><span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">搜索范围</span><select value={selectedSeriesId} onChange={(event) => setSelectedSeriesId(event.target.value)} className="mt-1 w-full border border-[#d0d9d4] bg-[#edf1ee] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#c5a76b]"><option value="">选择系列</option>{series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+          {scope === 'series' && <label className="sm:w-56"><span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">搜索范围</span><select value={selectedSeriesId} onChange={(event) => changeSeries(event.target.value)} className="mt-1 w-full border border-[#d0d9d4] bg-[#edf1ee] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#c5a76b]"><option value="">选择系列</option>{series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
           <button type="submit" disabled={isSearching} className="min-h-10 border border-[#18272c] bg-[#18272c] px-5 py-2 text-sm text-[#f9fbf7] transition hover:bg-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">{isSearching ? '索引中…' : '搜索'}</button>
         </form>
         {scope === 'series' && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#d0d9d4] pt-3 text-xs text-[#687571]">
             <span>{selectedSeries ? `“${selectedSeries.name}”的正文索引` : '选择系列后建立正文索引'}</span>
-            {indexStatus && <IndexStatus status={indexStatus} isSearching={isSearching} onCancel={() => void handleCancel()} />}
+            {indexStatus && <IndexStatus status={indexStatus} isSearching={Boolean(taskId)} onCancel={() => void handleCancel()} />}
           </div>
         )}
       </div>
 
+      {scope === 'series' && contentResults.length >= 50 && (
+        <p className="mt-4 text-sm text-[#687571]" role="status">最多显示 50 条命中，请缩小关键词范围。</p>
+      )}
       <section className="mt-8" aria-live="polite">
         {scope === 'library' ? (
           <SearchResultHeader count={metadataResults.length} label={searchedQuery ? `藏书信息 · “${searchedQuery}”` : '输入关键词开始查找'}>
@@ -183,25 +213,6 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
       </section>
     </section>
   );
-}
-
-async function waitForIndex(seriesId: string, task: SearchTaskStatus, onStatus: (status: SearchIndexStatus) => void): Promise<SearchIndexStatus> {
-  let status = await getSearchIndexStatus({ seriesId });
-  onStatus(status);
-  if (status.status === 'ready') return status;
-  if (status.status === 'error') throw new Error(status.error_detail ?? '系列正文索引建立失败。');
-  for (let attempt = 0; attempt < 240; attempt += 1) {
-    await delay(500);
-    status = await getSearchIndexStatus({ seriesId });
-    onStatus(status);
-    if (status.status === 'ready') return status;
-    if (status.status === 'error') throw new Error(status.error_detail ?? '系列正文索引建立失败。');
-  }
-  throw new Error(`系列正文索引仍在建立（任务 ${task.task_id}），可以稍后继续搜索。`);
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function IndexStatus({ status, isSearching, onCancel }: { status: SearchIndexStatus; isSearching: boolean; onCancel: () => void }) {
@@ -234,11 +245,11 @@ function MetadataResult({ book, onOpen }: { book: BookSummary; onOpen: () => voi
   );
 }
 
-function ContentResult({ result, book, onOpen }: { result: SearchResult; book: BookSummary | null; onOpen: (book: BookSummary) => void }) {
+function ContentResult({ result, book, onOpen }: { result: SearchResult; book: BookSummary | null; onOpen: (book: BookSummary, initialHref?: string) => void }) {
   return (
     <article className="grid gap-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <div className="min-w-0"><p className="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[#2e6e67]">{book?.title ?? '书籍已不在书架'} · {result.title || result.href}</p><p className="mt-2 text-sm leading-relaxed text-[#18272c]">{result.snippet}</p><p className="mt-2 truncate text-xs text-[#687571]">章节来源：{result.href} · 精确位置由阅读器处理</p></div>
-      {book ? <button type="button" onClick={() => onOpen(book)} className="justify-self-start border-b border-[#2e6e67] py-1 text-xs text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] sm:justify-self-end">打开这本书 →</button> : <span className="text-xs text-[#a54b45]">无法打开</span>}
+      <div className="min-w-0"><p className="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[#2e6e67]">{book?.title ?? '书籍已不在书架'} · {result.title || result.href}</p><p className="mt-2 text-sm leading-relaxed text-[#18272c]">{result.snippet}</p><p className="mt-2 truncate text-xs text-[#687571]">章节来源：{result.href} · 跳转精度：章节级（非精确 CFI）</p></div>
+      {book ? <button type="button" onClick={() => onOpen(book, result.href)} className="justify-self-start border-b border-[#2e6e67] py-1 text-xs text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] sm:justify-self-end">打开命中章节 →</button> : <span className="text-xs text-[#a54b45]">无法打开</span>}
     </article>
   );
 }

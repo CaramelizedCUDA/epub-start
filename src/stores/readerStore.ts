@@ -1,5 +1,14 @@
+import { createRelocatedHandler } from '../features/reader/engine/navigation';
+import { searchBookChapters } from '../features/reader/engine/search';
+import {
+  createEpubBook,
+  createRendition,
+  destroyEpubBook,
+  destroyRendition,
+  withBookTimeout,
+  installProgressLifecycle,
+} from '../features/reader/engine/lifecycle';
 import { create } from 'zustand';
-import ePub from 'epubjs';
 import type { Book, Rendition, TocItem } from 'epubjs';
 import {
   createNote as createNoteIpc,
@@ -22,13 +31,12 @@ import {
   type SelectionInfo,
 } from '../features/reader/engine/highlights';
 import {
-  captureFirstVisibleLine,
+  captureReflowAnchor,
+  rememberReflowAnchor,
   clearFirstLineOffset,
   exitWindowFullscreen,
-  injectReadingTheme,
   installContinuousScrollStabilizer,
   preserveAndReflow,
-  readerViewportGeometry,
   resizeToViewport,
   restoreFirstVisibleLine,
   settleInitialPagination,
@@ -46,16 +54,32 @@ let relocatedHandler: ((...args: unknown[]) => void) | null = null;
 let continuousScrollCleanup: (() => void) | null = null;
 let readerSession = 0;
 let settingsApplyQueue: Promise<void> = Promise.resolve();
+let initialDisplay: { sessionId: number; ready: Promise<void>; finish: () => void; retire: () => void } | null = null;
+let searchRequest = 0;
+let notesRequest = 0;
+let notesRevision = 0;
+let progressLifecycleCleanup: (() => void) | null = null;
+const progressWrites = new Map<string, Promise<void>>();
 
-type ReaderLocationUpdate = Pick<
-  ReaderState,
-  'currentCfi' | 'currentPage' | 'totalPages' | 'currentChapterHref'
->;
+function queuedSaveReadingProgress(args: Parameters<typeof saveReadingProgress>[0]): Promise<void> {
+  const previous = progressWrites.get(args.bookId);
+  // Start an idle book's write immediately. Only writes to that book are serialized.
+  const write = previous
+    ? previous.catch(() => undefined).then(() => saveReadingProgress(args))
+    : saveReadingProgress(args);
+  const pending = write.then(() => undefined);
+  progressWrites.set(args.bookId, pending);
+  const release = () => {
+    if (progressWrites.get(args.bookId) === pending) progressWrites.delete(args.bookId);
+  };
+  void pending.then(release, release);
+  return pending;
+}
 
 function throttledSave(bookId: string, cfi: string, progression: number) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    saveReadingProgress({
+    queuedSaveReadingProgress({
       bookId,
       locationCfi: cfi,
       progression,
@@ -77,7 +101,7 @@ function flushPendingProgress(
     clearTimeout(saveTimer);
     saveTimer = null;
     if (bookId && currentCfi) {
-      saveReadingProgress({
+      queuedSaveReadingProgress({
         bookId,
         locationCfi: currentCfi,
         progression: totalPages > 0 ? currentPage / totalPages : 0,
@@ -86,115 +110,6 @@ function flushPendingProgress(
       });
     }
   }
-}
-
-// ── EPUB.js request helpers ────────────────────────────────────
-
-const BOOK_OPEN_TIMEOUT_MS = 30_000;
-
-function normalizeEpubRequestUrl(url: string, epubRootUrl: string): string {
-  const httpEpubOrigin = /^https?:\/\/epub\.localhost\//.test(epubRootUrl)
-    ? epubRootUrl.match(/^https?:\/\/epub\.localhost/)?.[0] ?? null
-    : null;
-
-  if (httpEpubOrigin) {
-    const nativeEpubPath = url.match(/^epub:\/{2,3}localhost(\/.*)$/);
-    if (nativeEpubPath) {
-      return `${httpEpubOrigin}${nativeEpubPath[1]}`;
-    }
-    if (url.startsWith('null/')) {
-      return `${httpEpubOrigin}/${url.slice('null/'.length)}`;
-    }
-  }
-
-  if (url.startsWith('epub://') || url.startsWith('http://epub.localhost/')) {
-    return url;
-  }
-  if (url.startsWith('null/')) {
-    const rootOrigin = epubRootUrl.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/)?.[0];
-    if (rootOrigin) return `${rootOrigin}/${url.slice('null/'.length)}`;
-  }
-
-  return `${epubRootUrl}${url}`;
-}
-
-function loadTimeout(label: string): Promise<never> {
-  return new Promise((_, reject) => {
-    window.setTimeout(() => {
-      reject(new Error(`BOOK_LOAD_TIMEOUT: ${label} exceeded 30 seconds`));
-    }, BOOK_OPEN_TIMEOUT_MS);
-  });
-}
-
-function parseEpubResponse(
-  body: string,
-  type: string,
-  contentType: string,
-): Document | string {
-  if (type === 'xhtml') {
-    return new DOMParser().parseFromString(body, 'application/xhtml+xml');
-  }
-
-  if (
-    type === 'xml' ||
-    type === 'opf' ||
-    type === 'ncx' ||
-    contentType.includes('xml')
-  ) {
-    return new DOMParser().parseFromString(body, 'application/xml');
-  }
-
-  if (type === 'html' || type === 'htm') {
-    return new DOMParser().parseFromString(body, 'text/html');
-  }
-
-  return body;
-}
-
-function createRendition(book: Book, settings: ReadingSettings | null): Rendition {
-  const scrolled = settings?.flow === 'scrolled';
-  const geometry = readerViewportGeometry(settings);
-  const rendition = book.renderTo('epub-reader-viewport', {
-    width: geometry?.width ?? '100%',
-    height: geometry?.height ?? '100%',
-    manager: scrolled ? 'continuous' : 'default',
-    flow: scrolled ? 'scrolled' : 'paginated',
-    spread: scrolled ? 'none' : geometry?.spread ?? normalizeSpread(settings?.spread ?? 'auto'),
-    gap: scrolled ? 0 : geometry?.gap,
-  });
-  if (settings) injectReadingTheme(rendition, settings);
-  return rendition;
-}
-
-function createRelocatedHandler(
-  bookId: string,
-  readToc: () => TocItem[],
-  update: (location: ReaderLocationUpdate) => void,
-  isActive: () => boolean,
-): (...args: unknown[]) => void {
-  return (location: unknown) => {
-    if (!isActive()) return;
-    const loc = location as {
-      start: { cfi: string; href: string; displayed: { page: number; total: number } };
-    };
-    const cfi = loc.start.cfi;
-    const page = loc.start.displayed.page;
-    const total = loc.start.displayed.total;
-    const progression = total > 0 ? page / total : 0;
-
-    update({
-      currentCfi: cfi,
-      currentPage: page,
-      totalPages: total,
-      currentChapterHref: resolveCurrentChapterHref(readToc(), loc.start.href),
-    });
-    if (!isActive()) return;
-    throttledSave(bookId, cfi, progression);
-  };
-}
-
-function normalizeSpread(spread: ReadingSettings['spread']): 'none' | 'auto' | 'both' {
-  return spread === 'always' ? 'both' : spread;
 }
 
 // ── Store ──────────────────────────────────────────────────────
@@ -210,6 +125,10 @@ interface ReaderState {
   toc: TocItem[];
   currentChapterHref: string | null;
   searchResults: Array<{ href: string; excerpt: string }>;
+  isSearching: boolean;
+  hasSearched: boolean;
+  searchError: string | null;
+  searchLimited: boolean;
   isLoading: boolean;
   error: string | null;
   readingSettings: ReadingSettings | null;
@@ -221,8 +140,10 @@ interface ReaderState {
     bookId: string,
     epubRootUrl: string,
     settings: ReadingSettings,
+    initialHref?: string,
   ) => Promise<void>;
   close: () => void;
+  flushProgress: () => Promise<void>;
   nextPage: () => void;
   prevPage: () => void;
   goToCfi: (cfi: string) => void;
@@ -252,6 +173,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   toc: [],
   currentChapterHref: null,
   searchResults: [],
+  isSearching: false,
+  hasSearched: false,
+  searchError: null,
+  searchLimited: false,
   isLoading: false,
   error: null,
   readingSettings: null,
@@ -263,8 +188,24 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     bookId: string,
     epubRootUrl: string,
     settings: ReadingSettings,
+    initialHref?: string,
   ) => {
     const sessionId = ++readerSession;
+    initialDisplay?.retire();
+    initialDisplay?.finish();
+    let finishInitialDisplay = () => {};
+    const opening = {
+      sessionId,
+      ready: new Promise<void>((resolve) => { finishInitialDisplay = resolve; }),
+      finish: () => finishInitialDisplay(),
+      retire: () => {},
+    };
+    initialDisplay = opening;
+    ++searchRequest;
+    ++notesRequest;
+    ++notesRevision;
+    progressLifecycleCleanup?.();
+    progressLifecycleCleanup = null;
     const prev = get();
     flushPendingProgress(
       prev.bookId,
@@ -279,8 +220,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     continuousScrollCleanup?.();
     continuousScrollCleanup = null;
     relocatedHandler = null;
-    if (prev.rendition) prev.rendition.destroy();
-    if (prev.book) prev.book.destroy();
+    destroyRendition(prev.rendition);
+    destroyEpubBook(prev.book);
     settingsApplyQueue = Promise.resolve();
 
     set({
@@ -296,6 +237,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       toc: [],
       currentChapterHref: null,
       searchResults: [],
+      isSearching: false,
+      hasSearched: false,
+      searchError: null,
+      searchLimited: false,
       readingSettings: settings,
       notes: [],
       pendingSelection: null,
@@ -319,8 +264,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       if (rendition && sessionRelocatedHandler) {
         rendition.off('relocated', sessionRelocatedHandler);
       }
-      rendition?.destroy();
-      if (destroyBook) book?.destroy();
+      destroyRendition(rendition);
+      if (destroyBook) destroyEpubBook(book);
       if (relocatedHandler === sessionRelocatedHandler) {
         relocatedHandler = null;
       }
@@ -328,47 +273,17 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     };
 
     try {
-      book = ePub({
-        requestMethod: async (url: string, type: string) => {
-          // EPUB.js can lose the origin for non-standard schemes and hand
-          // back `null/...`, `epub://localhost/...`, or
-          // `epub:///localhost/...`. On Android/Windows Tauri maps this
-          // protocol through the HTTP localhost origin, so normalize those
-          // forms before Fetch sees them.
-          const finalUrl = normalizeEpubRequestUrl(url, epubRootUrl);
+      book = createEpubBook(epubRootUrl);
+      opening.retire = () => destroyEpubBook(book);
 
-          const response = await fetch(finalUrl);
-          const mime = response.headers.get('content-type') ?? '';
-
-          if (!response.ok) {
-            throw new Error(
-              `BOOK_RESOURCE_FAILED: url=${finalUrl}; status=${response.status}; mime=${mime}`,
-            );
-          }
-
-          if (type === 'binary' || type === 'blob') {
-            return response.arrayBuffer();
-          }
-
-          const body = await response.text();
-          return parseEpubResponse(body, type, mime);
-        },
-      });
-
-      await Promise.race([
-        book.open(epubRootUrl),
-        loadTimeout(`Opening ${epubRootUrl}`),
-      ]);
+      await withBookTimeout(book.open(epubRootUrl), `Opening ${epubRootUrl}`);
 
       if (sessionId !== readerSession) {
         disposeSessionResources(shouldDestroyBook());
         return;
       }
 
-      await Promise.race([
-        book.ready,
-        loadTimeout(`Parsing ${epubRootUrl}`),
-      ]);
+      await withBookTimeout(book.ready, `Parsing ${epubRootUrl}`);
 
       if (sessionId !== readerSession) {
         disposeSessionResources(shouldDestroyBook());
@@ -378,10 +293,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       rendition = createRendition(book, settings);
 
       sessionRelocatedHandler = createRelocatedHandler(
-        bookId,
         () => get().toc,
         (location) => set(location),
         isCurrentSession,
+        (cfi, progression) => throttledSave(bookId, cfi, progression),
       );
       relocatedHandler = sessionRelocatedHandler;
 
@@ -390,21 +305,29 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       set({ book, rendition });
       set({ toc: book.navigation?.toc ?? [] });
 
-      // Always display content first, then restore saved position if available
-      const saved = await getReadingProgress({ bookId }).catch(() => null);
+      // A -> B -> A must not read SQLite before A's exit write finishes.
+      // A failed read is not "no saved progress": do not display/save a default page.
+      await withBookTimeout(
+        progressWrites.get(bookId) ?? Promise.resolve(),
+        'Saving prior reading progress',
+      );
+      if (!isCurrentSession()) {
+        disposeSessionResources(shouldDestroyBook());
+        return;
+      }
+      const saved = await withBookTimeout(getReadingProgress({ bookId }), 'Reading saved progress');
       if (!isCurrentSession()) {
         disposeSessionResources(shouldDestroyBook());
         return;
       }
 
       try {
-        if (saved?.location_cfi) {
-          await rendition.display(saved.location_cfi);
+        if (initialHref || saved?.location_cfi) {
+          await rendition.display(initialHref || saved?.location_cfi || undefined);
           if (!isCurrentSession()) {
             disposeSessionResources(shouldDestroyBook());
             return;
           }
-          set({ currentCfi: saved.location_cfi });
         } else {
           await rendition.display();
           if (!isCurrentSession()) {
@@ -427,6 +350,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         return;
       }
 
+      if (settings.flow === 'scrolled') {
+        continuousScrollCleanup = installContinuousScrollStabilizer(rendition);
+      }
+      progressLifecycleCleanup = installProgressLifecycle(
+        () => get().flushProgress(),
+        () => sessionId === readerSession && get().bookId === bookId,
+      );
       set({ isLoading: false });
     } catch (err) {
       if (!isCurrentSession()) {
@@ -443,11 +373,22 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         isLoading: false,
         error: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      opening.finish();
+      if (initialDisplay === opening) initialDisplay = null;
     }
   },
 
   close: () => {
     ++readerSession;
+    initialDisplay?.retire();
+    initialDisplay?.finish();
+    initialDisplay = null;
+    ++searchRequest;
+    ++notesRequest;
+    ++notesRevision;
+    progressLifecycleCleanup?.();
+    progressLifecycleCleanup = null;
     const { rendition, book, bookId, currentCfi } = get();
     const { currentPage, totalPages } = get();
     settingsApplyQueue = Promise.resolve();
@@ -469,8 +410,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     continuousScrollCleanup = null;
     relocatedHandler = null;
 
-    if (rendition) rendition.destroy();
-    if (book) book.destroy();
+    destroyRendition(rendition);
+    destroyEpubBook(book);
 
     set({
       bookId: null,
@@ -483,6 +424,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       toc: [],
       currentChapterHref: null,
       searchResults: [],
+      isSearching: false,
+      hasSearched: false,
+      searchError: null,
+      searchLimited: false,
       isLoading: false,
       error: null,
       readingSettings: null,
@@ -490,6 +435,18 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       pendingSelection: null,
       clickedNote: null,
     });
+  },
+
+  flushProgress: async () => {
+    const state = get();
+    flushPendingProgress(
+      state.bookId,
+      state.currentCfi,
+      state.currentPage,
+      state.totalPages,
+      'Failed to flush reading progress on suspend:',
+    );
+    if (state.bookId) await progressWrites.get(state.bookId);
   },
 
   nextPage: () => {
@@ -527,45 +484,34 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   searchCurrentBook: async (query: string) => {
-    const { book } = get();
+    const requestId = ++searchRequest;
+    const sessionId = readerSession;
+    const { book, bookId } = get();
     const needle = query.trim();
-    if (!book || needle.length < 2) {
-      set({ searchResults: [] });
-      return;
-    }
-
-    type SearchSection = {
-      href: string;
-      load: () => Promise<{ textContent?: string } | null>;
-    };
-    const spine = (book as Book & {
-      spine?: { each: (callback: (section: SearchSection) => void) => void };
-    }).spine;
-    const sections: SearchSection[] = [];
-    spine?.each((section) => sections.push(section));
-
-    const lowerNeedle = needle.toLocaleLowerCase();
-    const results = await Promise.all(
-      sections.map(async (section) => {
-        try {
-          const contents = await section.load();
-          const text = contents?.textContent ?? '';
-          const index = text.toLocaleLowerCase().indexOf(lowerNeedle);
-          if (index < 0) return null;
-          return {
-            href: section.href,
-            excerpt: text.slice(Math.max(0, index - 60), index + needle.length + 120),
-          };
-        } catch (error) {
-          console.warn('Failed to load section for search:', section.href, error);
-          return null;
-        }
-      }),
+    const isActive = () => (
+      requestId === searchRequest
+      && sessionId === readerSession
+      && get().bookId === bookId
+      && get().book === book
     );
-
-    set({
-      searchResults: results.filter((result): result is { href: string; excerpt: string } => result !== null).slice(0, 50),
-    });
+    set({ searchResults: [], searchError: null, searchLimited: false, isSearching: false, hasSearched: false });
+    if (!book || needle.length < 2) return;
+    set({ isSearching: true, hasSearched: true });
+    try {
+      const result = await searchBookChapters(book, needle, isActive);
+      if (!isActive()) return;
+      set({
+        searchResults: result.hits,
+        searchLimited: result.limited,
+        searchError: result.failedChapters > 0
+          ? `${result.failedChapters} 个章节读取失败；仅显示已读取章节的结果，可重试。`
+          : null,
+      });
+    } catch (err) {
+      if (isActive()) set({ searchError: err instanceof Error ? err.message : String(err) });
+    } finally {
+      if (isActive()) set({ isSearching: false });
+    }
   },
 
   applyReadingSettings: (settings: ReadingSettings) => {
@@ -573,6 +519,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const run = settingsApplyQueue
       .catch(() => undefined)
       .then(async () => {
+        if (sessionId !== readerSession) return;
+        // Rebuilding while the saved CFI is still loading would retire the
+        // only rendition the opening operation can restore into.
+        if (initialDisplay?.sessionId === sessionId) await initialDisplay.ready;
         if (sessionId !== readerSession) return;
         const {
           rendition,
@@ -593,7 +543,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         set({ readingSettings: settings });
 
         if (bookId && currentCfi) {
-          await saveReadingProgress({
+          await queuedSaveReadingProgress({
             bookId,
             locationCfi: currentCfi,
             progression: totalPages > 0 ? currentPage / totalPages : 0,
@@ -604,13 +554,14 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         const previousFlow = readingSettings?.flow ?? 'paginated';
         if (book && previousFlow !== settings.flow) {
           if (!isCurrentTarget()) return;
-          const firstVisibleLine = captureFirstVisibleLine(rendition);
+          const firstVisibleLine = await captureReflowAnchor(rendition);
+          if (!isCurrentTarget()) return;
           clearFirstLineOffset(rendition);
           continuousScrollCleanup?.();
           continuousScrollCleanup = null;
           if (relocatedHandler) rendition.off('relocated', relocatedHandler);
           relocatedHandler = null;
-          rendition.destroy();
+          destroyRendition(rendition);
 
           const replacement = createRendition(book, settings);
           let replacementHandler: ((...args: unknown[]) => void) | null = null;
@@ -621,50 +572,61 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           );
           const disposeReplacement = () => {
             if (replacementHandler) replacement.off('relocated', replacementHandler);
-            replacement.destroy();
+            destroyRendition(replacement);
             if (relocatedHandler === replacementHandler) relocatedHandler = null;
             replacementHandler = null;
           };
           replacementHandler = createRelocatedHandler(
-            bookId ?? '',
             () => get().toc,
             (location) => set(location),
             isCurrentReplacement,
+            (cfi, progression) => throttledSave(bookId ?? '', cfi, progression),
           );
           relocatedHandler = replacementHandler;
           replacement.on('relocated', replacementHandler);
-          set({ rendition: replacement });
-          await replacement.display(firstVisibleLine?.cfi ?? currentCfi ?? undefined);
-          if (!isCurrentReplacement()) {
-            disposeReplacement();
-            return;
-          }
-          await waitForRenditionReady(replacement);
-          if (!isCurrentReplacement()) {
-            disposeReplacement();
-            return;
-          }
-          if (firstVisibleLine) {
-            await waitForReaderLayout();
+          // React must not attach ready-only interactions while EPUB.js is
+          // still creating the replacement manager and its first iframe.
+          set({ rendition: replacement, isLoading: true });
+          try {
+            await replacement.display(firstVisibleLine?.cfi ?? currentCfi ?? undefined);
             if (!isCurrentReplacement()) {
               disposeReplacement();
               return;
             }
-            restoreFirstVisibleLine(replacement, firstVisibleLine);
-          }
-          if (settings.flow === 'scrolled') {
+            await waitForRenditionReady(replacement);
             if (!isCurrentReplacement()) {
               disposeReplacement();
               return;
             }
-            continuousScrollCleanup = installContinuousScrollStabilizer(replacement);
+            if (firstVisibleLine) {
+              await waitForReaderLayout();
+              if (!isCurrentReplacement()) {
+                disposeReplacement();
+                return;
+              }
+              restoreFirstVisibleLine(replacement, firstVisibleLine);
+              await rememberReflowAnchor(replacement, firstVisibleLine);
+            }
+            if (settings.flow === 'scrolled') {
+              if (!isCurrentReplacement()) {
+                disposeReplacement();
+                return;
+              }
+              continuousScrollCleanup = installContinuousScrollStabilizer(replacement);
+            }
+            if (!isCurrentReplacement()) {
+              disposeReplacement();
+              return;
+            }
+            renderNotesIn(replacement, get().notes, settings.theme, (click) => {
+              if (isCurrentReplacement()) set({ clickedNote: click });
+            });
+          } catch (err) {
+            if (isCurrentReplacement()) set({ error: err instanceof Error ? err.message : String(err) });
+            throw err;
+          } finally {
+            if (isCurrentReplacement()) set({ isLoading: false });
           }
-          if (!isCurrentReplacement()) {
-            disposeReplacement();
-            return;
-          }
-          renderNotesIn(replacement, get().notes, settings.theme, (click) => set({ clickedNote: click }));
-          set({ isLoading: false });
           return;
         }
 
@@ -674,11 +636,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           {
             restoreTheme: true,
             settings,
-            preserveTextAnchor: settings.flow === 'paginated',
+            preserveTextAnchor: true,
           },
         );
         if (!isCurrentTarget()) return;
-        renderNotesIn(rendition, get().notes, settings.theme, (click) => set({ clickedNote: click }));
+        renderNotesIn(rendition, get().notes, settings.theme, (click) => {
+          if (isCurrentTarget()) set({ clickedNote: click });
+        });
       });
     settingsApplyQueue = run;
     return run;
@@ -693,7 +657,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       {
         restoreTheme: true,
         settings: readingSettings,
-        preserveTextAnchor: readingSettings?.flow === 'paginated',
+        preserveTextAnchor: true,
       },
     );
   },
@@ -711,8 +675,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   loadNotes: async () => {
+    const requestId = ++notesRequest;
+    const revision = notesRevision;
     const sessionId = readerSession;
-    const { bookId, rendition } = get();
+    const { bookId } = get();
     if (!bookId) return;
     let notes: Note[];
     try {
@@ -720,8 +686,9 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     } catch (err) {
       if (
         sessionId !== readerSession
+        || requestId !== notesRequest
+        || revision !== notesRevision
         || get().bookId !== bookId
-        || get().rendition !== rendition
       ) {
         return;
       }
@@ -729,12 +696,14 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     }
     if (
       sessionId !== readerSession
+      || requestId !== notesRequest
+      || revision !== notesRevision
       || get().bookId !== bookId
-      || get().rendition !== rendition
     ) {
       return;
     }
     set({ notes });
+    const rendition = get().rendition;
     const theme = get().readingSettings?.theme ?? null;
     if (
       rendition
@@ -742,7 +711,9 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       && get().bookId === bookId
       && get().rendition === rendition
     ) {
-      renderNotesIn(rendition, notes, theme, (click) => set({ clickedNote: click }));
+      renderNotesIn(rendition, notes, theme, (click) => {
+        if (sessionId === readerSession && get().rendition === rendition) set({ clickedNote: click });
+      });
     }
   },
 
@@ -751,44 +722,54 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   setClickedNote: (click) => set({ clickedNote: click }),
 
   addNote: async (input) => {
+    const sessionId = readerSession;
     const note = await createNoteIpc({ note: input });
-    set((state) => ({ notes: [...state.notes, note] }));
+    if (sessionId !== readerSession || get().bookId !== note.book_id) return note;
+    ++notesRevision;
+    set((state) => ({ notes: [...state.notes.filter((item) => item.id !== note.id), note] }));
     const rendition = get().rendition;
     if (rendition) {
-      renderHighlight(
-        rendition,
-        note,
-        get().readingSettings?.theme ?? null,
-        (click) => set({ clickedNote: click }),
-      );
+      renderHighlight(rendition, note, get().readingSettings?.theme ?? null, (click) => {
+        if (sessionId === readerSession && get().rendition === rendition) set({ clickedNote: click });
+      });
     }
     return note;
   },
 
   editNote: async (input) => {
+    const sessionId = readerSession;
+    const previous = get().notes.find((note) => note.id === input.id);
     const note = await updateNoteIpc({ note: input });
+    if (sessionId !== readerSession || get().bookId !== note.book_id) return note;
+    ++notesRevision;
     set((state) => ({
       notes: state.notes.map((existing) => (existing.id === note.id ? note : existing)),
     }));
     const rendition = get().rendition;
     if (rendition) {
-      renderHighlight(
-        rendition,
-        note,
-        get().readingSettings?.theme ?? null,
-        (click) => set({ clickedNote: click }),
-      );
+      if (previous?.cfi_range && previous.cfi_range !== note.cfi_range) {
+        removeHighlight(rendition, previous.cfi_range);
+      }
+      renderHighlight(rendition, note, get().readingSettings?.theme ?? null, (click) => {
+        if (sessionId === readerSession && get().rendition === rendition) set({ clickedNote: click });
+      });
     }
     return note;
   },
 
   removeNote: async (noteId) => {
-    const existing = get().notes.find((note) => note.id === noteId);
+    const sessionId = readerSession;
+    const { bookId, notes } = get();
+    const existing = notes.find((note) => note.id === noteId);
     await deleteNoteIpc(noteId);
-    if (existing?.cfi_range && get().rendition) {
-      removeHighlight(get().rendition as Rendition, existing.cfi_range);
-    }
-    set((state) => ({ notes: state.notes.filter((note) => note.id !== noteId) }));
+    if (sessionId !== readerSession || get().bookId !== bookId) return;
+    ++notesRevision;
+    const rendition = get().rendition;
+    if (existing?.cfi_range && rendition) removeHighlight(rendition, existing.cfi_range);
+    set((state) => ({
+      notes: state.notes.filter((note) => note.id !== noteId),
+      clickedNote: state.clickedNote?.noteId === noteId ? null : state.clickedNote,
+    }));
   },
 
   jumpToNote: (noteId) => {
@@ -802,25 +783,12 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 }));
 
-function normalizeHref(href: string): string {
-  const withoutFragment = href.split('#', 1)[0];
-  try {
-    return decodeURIComponent(withoutFragment).replace(/^\.\//, '');
-  } catch {
-    return withoutFragment.replace(/^\.\//, '');
-  }
-}
-
 function waitForReaderLayout(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => resolve());
     });
   });
-}
-
-function flattenToc(items: TocItem[]): TocItem[] {
-  return items.flatMap((item) => [item, ...flattenToc(item.subitems ?? [])]);
 }
 
 /** 把当前批注列表渲染到指定 Rendition；单个标记失败不影响其余批注。 */
@@ -837,15 +805,4 @@ function renderNotesIn(
       console.error('Failed to render highlight for note:', note.id, err);
     }
   }
-}
-
-function resolveCurrentChapterHref(toc: TocItem[], locationHref: string): string | null {
-  const locationPath = normalizeHref(locationHref);
-  const matches = flattenToc(toc).filter((item) => {
-    const itemPath = normalizeHref(item.href);
-    return itemPath === locationPath
-      || locationPath.endsWith(`/${itemPath}`)
-      || itemPath.endsWith(`/${locationPath}`);
-  });
-  return matches.length > 0 ? matches[matches.length - 1].href : null;
 }

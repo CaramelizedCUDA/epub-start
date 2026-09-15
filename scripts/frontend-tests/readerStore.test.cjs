@@ -291,7 +291,7 @@ test('a settings operation started for an old book cannot replace the new book r
   assert.equal(bookA.renditions.length, 1);
 });
 
-test('a same-session rendition replacement completes an in-flight open', async () => {
+test('a settings change waits for the saved progress before replacing the opening rendition', async () => {
   const bookA = new FakeBook('A');
   configureBooks(bookA);
   const progressA = deferred();
@@ -310,10 +310,14 @@ test('a same-session rendition replacement completes an in-flight open', async (
     ...makeSettings(),
     flow: 'scrolled',
   });
-  await applyA;
-
-  progressA.resolve(null);
-  await openA;
+  await new Promise((resolve) => setImmediate(resolve));
+  try {
+    assert.equal(bookA.renditions.length, 1);
+  } finally {
+    progressA.resolve(makeProgress('A', 'opaque-saved-position'));
+    await Promise.all([openA, applyA]);
+  }
+  assert.deepEqual(bookA.renditions[0].displayCalls, ['opaque-saved-position']);
 
   assert.equal(useReaderStore.getState().rendition, bookA.renditions[1]);
   assert.equal(useReaderStore.getState().isLoading, false);

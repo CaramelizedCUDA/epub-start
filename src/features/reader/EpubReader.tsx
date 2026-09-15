@@ -11,6 +11,7 @@ import {
 import type { Note, ReadingSettings, ReadingSettingsResult } from '../../types/models';
 import type { TocItem } from 'epubjs';
 import { readingBackground } from './engine/reflow';
+import { createPageTurnController, type PageTurnDirection } from './engine/pageTurn';
 import {
   installImageInteractions,
   type ReaderImageMenuRequest,
@@ -26,6 +27,8 @@ import { ImageViewer } from './ImageViewer';
 import { NotesPanel } from './NotesPanel';
 import { NoteEditorModal, NoteMenu, SelectionMenu } from './AnnotationMenu';
 import { useReadingActivity } from './useReadingActivity';
+import { queueSettingsWrite } from './settingsPersistence';
+import { ignoreReaderShortcut, installReaderKeyboard, isReaderPageKey } from './engine/keyboard';
 
 const RESIZE_DEBOUNCE_MS = 300;
 const SETTINGS_SAVE_DEBOUNCE_MS = 300;
@@ -36,6 +39,7 @@ const PAGE_TURN_GESTURE_RELEASE_MS = 260;
 interface EpubReaderProps {
   bookId: string;
   epubRootUrl: string;
+  initialHref?: string;
   onClose: () => void;
 }
 
@@ -44,7 +48,6 @@ type EditorDraft =
   | { kind: 'edit'; note: Note };
 
 type ReaderPanel = 'toc' | 'search' | 'notes' | 'settings';
-type PageTurnDirection = 'previous' | 'next';
 type PageTurnEffectPhase = 'playing' | 'dragging' | 'settling' | 'canceling';
 interface PageTurnEffect {
   contentDriven: boolean;
@@ -54,69 +57,7 @@ interface PageTurnEffect {
   progress: number;
 }
 
-interface PageTurnSurface {
-  container: HTMLElement;
-  direction: PageTurnDirection;
-  originScrollLeft: number;
-  pageDistance: number;
-  targetScrollLeft: number;
-  directionSign: number;
-}
-
-interface RenditionPageTurnLayout {
-  manager?: {
-    layout?: { delta?: number };
-    settings?: { axis?: string };
-  };
-}
-
-function createPageTurnSurface(
-  rendition: unknown,
-  direction: PageTurnDirection,
-): PageTurnSurface | null {
-  const viewport = document.getElementById('epub-reader-viewport');
-  const container = viewport?.querySelector<HTMLElement>('.epub-container');
-  if (!container || container.scrollWidth <= container.clientWidth + 1) return null;
-
-  const layoutHost = rendition as RenditionPageTurnLayout | null;
-  if (layoutHost?.manager?.settings?.axis === 'vertical') return null;
-
-  // EPUB.js paginated layout exposes the exact distance used by next()/prev().
-  // Fall back to the container width for older or private manager shapes.
-  const configuredDistance = layoutHost?.manager?.layout?.delta;
-  const pageDistance = typeof configuredDistance === 'number'
-    && Number.isFinite(configuredDistance)
-    && configuredDistance > 0
-    ? configuredDistance
-    : container.clientWidth;
-  const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
-  const originScrollLeft = container.scrollLeft;
-  const isRtl = getComputedStyle(container).direction === 'rtl';
-
-  // Chromium has multiple RTL scrollLeft models. Keep the content-driven path
-  // deterministic for the common LTR EPUB case and let the edge fallback
-  // handle RTL books until a model-independent scroll adapter is needed.
-  if (isRtl) return null;
-
-  const directionSign = direction === 'next' ? 1 : -1;
-  const targetScrollLeft = originScrollLeft + directionSign * pageDistance;
-  if (targetScrollLeft < 0 || targetScrollLeft > maxScrollLeft) return null;
-
-  return {
-    container,
-    direction,
-    originScrollLeft,
-    pageDistance,
-    targetScrollLeft,
-    directionSign,
-  };
-}
-
-function easeOutCubic(progress: number): number {
-  return 1 - ((1 - progress) ** 3);
-}
-
-export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
+export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubReaderProps) {
   const {
     open,
     close,
@@ -130,6 +71,10 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     currentChapterHref,
     rendition,
     searchResults,
+    isSearching,
+    hasSearched,
+    searchError,
+    searchLimited,
     goToHref,
     searchCurrentBook,
     applyReadingSettings,
@@ -169,12 +114,21 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const settingsScopeRef = useRef<'global' | 'book'>('global');
   const saveTimerRef = useRef<number | null>(null);
   const saveGenerationRef = useRef(0);
+  const readerEpochRef = useRef(0);
+  const pendingSettingsSaveRef = useRef<(() => void) | null>(null);
   const pageTurnEffectIdRef = useRef(0);
   const pageTurnEffectTimerRef = useRef<number | null>(null);
   const pageTurnEffectRef = useRef<PageTurnEffect | null>(null);
   const pageTurnEffectElementRef = useRef<HTMLDivElement | null>(null);
-  const pageTurnSurfaceRef = useRef<PageTurnSurface | null>(null);
-  const pageTurnSurfaceFrameRef = useRef<number | null>(null);
+  const pageTurnControllerRef = useRef<ReturnType<typeof createPageTurnController> | null>(null);
+  useEffect(() => {
+    const controller = createPageTurnController(rendition);
+    pageTurnControllerRef.current = controller;
+    return () => {
+      controller.dispose();
+      if (pageTurnControllerRef.current === controller) pageTurnControllerRef.current = null;
+    };
+  }, [rendition]);
   const [pageTurnEffect, setPageTurnEffect] = useState<PageTurnEffect | null>(null);
 
   const togglePanel = (panel: ReaderPanel) => {
@@ -193,7 +147,8 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
 
   useEffect(() => {
     let active = true;
-    getReadingSettings({ bookId })
+    ++readerEpochRef.current;
+    queueSettingsWrite(() => getReadingSettings({ bookId }))
       .then((result) => {
         if (!active) return;
         setSettingsResult(result);
@@ -201,7 +156,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
         setSettingsScope(result.book_override ? 'book' : 'global');
         if (active && !openedRef.current) {
           openedRef.current = true;
-          return open(bookId, epubRootUrl, result.effective);
+          return open(bookId, epubRootUrl, result.effective, initialHref);
         }
         return undefined;
       })
@@ -213,16 +168,21 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       });
     return () => {
       active = false;
+      ++readerEpochRef.current;
       close();
       openedRef.current = false;
     };
-  }, [bookId, epubRootUrl, open, close]);
+  }, [bookId, epubRootUrl, initialHref, open, close]);
 
   const changeSettingsScope = (scope: 'global' | 'book') => {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
+    const pending = pendingSettingsSaveRef.current;
+    pendingSettingsSaveRef.current = null;
+    pending?.();
+    settingsScopeRef.current = scope;
     setSettingsScope(scope);
     if (scope === 'global' && settingsResult) {
       setSettingsDraft(settingsResult.global);
@@ -236,62 +196,71 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   const persistSettings = useCallback(async (
     draft: ReadingSettings,
     scope: 'global' | 'book',
+    readerEpoch: number,
   ) => {
     const generation = ++saveGenerationRef.current;
-    setIsSavingSettings(true);
-    setSettingsError(null);
+    const isCurrent = () => readerEpoch === readerEpochRef.current
+      && generation === saveGenerationRef.current;
+    if (isCurrent()) {
+      setIsSavingSettings(true);
+      setSettingsError(null);
+    }
     const saveOnce = async () => {
       if (scope === 'global') {
-        const global = await saveGlobalReadingSettings(stripUpdatedAt(draft));
-        const currentResult = settingsResultRef.current;
-        const effective = currentResult?.book_override
-          ? mergeReadingSettings(global, currentResult.book_override)
-          : global;
-        if (generation === saveGenerationRef.current) {
-          const next = { effective, global, book_override: currentResult?.book_override ?? null };
-          settingsResultRef.current = next;
-          setSettingsResult(next);
-        }
+        await saveGlobalReadingSettings(stripUpdatedAt(draft));
       } else {
-        const override = await saveBookReadingSettings({
+        await saveBookReadingSettings({
           settings: { book_id: bookId, ...stripUpdatedAt(draft) },
         });
-        const global = settingsResultRef.current?.global ?? draft;
-        const effective = mergeReadingSettings(global, override);
-        if (generation === saveGenerationRef.current) {
-          const next = { effective, global, book_override: override };
-          settingsResultRef.current = next;
-          setSettingsResult(next);
-        }
+      }
+      // Read the authoritative merged settings inside the same queue. An older
+      // cross-scope response must not leave the next save using a stale global.
+      const next = await getReadingSettings({ bookId });
+      if (isCurrent()) {
+        settingsResultRef.current = next;
+        setSettingsResult(next);
       }
     };
     try {
-      try {
-        await saveOnce();
-      } catch {
-        await saveOnce();
-      }
+      await queueSettingsWrite(async () => {
+        try {
+          await saveOnce();
+        } catch {
+          await saveOnce();
+        }
+      });
     } catch (err) {
-      setSettingsError(err instanceof Error ? err.message : String(err));
+      if (isCurrent()) setSettingsError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (generation === saveGenerationRef.current) setIsSavingSettings(false);
+      if (isCurrent()) setIsSavingSettings(false);
     }
   }, [bookId]);
 
   const previewSettings = useCallback((draft: ReadingSettings) => {
     settingsDraftRef.current = draft;
     setSettingsDraft(draft);
-    applyReadingSettings(draft).catch((err: unknown) => {
-      setSettingsError(err instanceof Error ? err.message : String(err));
+    const readerEpoch = readerEpochRef.current;
+    const override = settingsResultRef.current?.book_override;
+    const preview = settingsScopeRef.current === 'global' && override
+      ? mergeReadingSettings(draft, override)
+      : draft;
+    applyReadingSettings(preview).catch((err: unknown) => {
+      if (readerEpoch === readerEpochRef.current) {
+        setSettingsError(err instanceof Error ? err.message : String(err));
+      }
     });
   }, [applyReadingSettings]);
 
   const scheduleSettingsSave = useCallback((draft: ReadingSettings) => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
     const scope = settingsScopeRef.current;
+    const readerEpoch = readerEpochRef.current;
+    const save = () => { void persistSettings(draft, scope, readerEpoch); };
+    pendingSettingsSaveRef.current = save;
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null;
-      void persistSettings(draft, scope);
+      pendingSettingsSaveRef.current = null;
+      save();
     }, SETTINGS_SAVE_DEBOUNCE_MS);
   }, [persistSettings]);
 
@@ -309,23 +278,39 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
 
   useEffect(() => () => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
-  }, []);
+    saveTimerRef.current = null;
+    const pending = pendingSettingsSaveRef.current;
+    pendingSettingsSaveRef.current = null;
+    pending?.();
+  }, [bookId]);
 
   const clearBookOverride = async () => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    pendingSettingsSaveRef.current = null;
+    const readerEpoch = readerEpochRef.current;
+    const generation = ++saveGenerationRef.current;
+    const isCurrent = () => readerEpoch === readerEpochRef.current
+      && generation === saveGenerationRef.current;
     setIsSavingSettings(true);
     setSettingsError(null);
     try {
-      await clearBookReadingSettings({ bookId });
-      const global = settingsResult?.global;
-      if (global) {
-        setSettingsResult({ effective: global, global, book_override: null });
-        setSettingsDraft(global);
-        setSettingsScope('global');
-      }
+      const result = await queueSettingsWrite(async () => {
+        await clearBookReadingSettings({ bookId });
+        return getReadingSettings({ bookId });
+      });
+      if (!isCurrent()) return;
+      settingsResultRef.current = result;
+      settingsDraftRef.current = result.effective;
+      settingsScopeRef.current = 'global';
+      setSettingsResult(result);
+      setSettingsDraft(result.effective);
+      setSettingsScope('global');
+      await applyReadingSettings(result.effective);
     } catch (err) {
-      setSettingsError(err instanceof Error ? err.message : String(err));
+      if (isCurrent()) setSettingsError(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsSavingSettings(false);
+      if (isCurrent()) setIsSavingSettings(false);
     }
   };
 
@@ -352,82 +337,9 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     }, PAGE_TURN_EFFECT_MS);
   }, []);
 
-  const stopPageTurnSurfaceAnimation = useCallback(() => {
-    if (pageTurnSurfaceFrameRef.current !== null) {
-      window.cancelAnimationFrame(pageTurnSurfaceFrameRef.current);
-      pageTurnSurfaceFrameRef.current = null;
-    }
-  }, []);
-
   const restorePageTurnSurfaceImmediately = useCallback(() => {
-    stopPageTurnSurfaceAnimation();
-    const surface = pageTurnSurfaceRef.current;
-    if (surface?.container.isConnected) {
-      surface.container.scrollLeft = surface.originScrollLeft;
-    }
-    pageTurnSurfaceRef.current = null;
-  }, [stopPageTurnSurfaceAnimation]);
-
-  const animatePageTurnSurface = useCallback((
-    surface: PageTurnSurface,
-    targetScrollLeft: number,
-    durationMs: number,
-    onComplete: () => void,
-  ) => {
-    stopPageTurnSurfaceAnimation();
-    if (!surface.container.isConnected) {
-      onComplete();
-      return;
-    }
-    const startScrollLeft = surface.container.scrollLeft;
-    const distance = targetScrollLeft - startScrollLeft;
-    if (Math.abs(distance) < 0.5) {
-      surface.container.scrollLeft = targetScrollLeft;
-      onComplete();
-      return;
-    }
-    const startedAt = performance.now();
-    const frame = (now: number) => {
-      if (!surface.container.isConnected) {
-        pageTurnSurfaceFrameRef.current = null;
-        onComplete();
-        return;
-      }
-      const progress = Math.min(1, Math.max(0, (now - startedAt) / durationMs));
-      surface.container.scrollLeft = startScrollLeft + distance * easeOutCubic(progress);
-      if (progress < 1) {
-        pageTurnSurfaceFrameRef.current = window.requestAnimationFrame(frame);
-      } else {
-        pageTurnSurfaceFrameRef.current = null;
-        onComplete();
-      }
-    };
-    pageTurnSurfaceFrameRef.current = window.requestAnimationFrame(frame);
-  }, [stopPageTurnSurfaceAnimation]);
-
-  const updatePageTurnSurface = useCallback((
-    direction: PageTurnDirection,
-    distancePx: number,
-  ): boolean => {
-    const current = pageTurnSurfaceRef.current;
-    if (!current || current.direction !== direction) {
-      restorePageTurnSurfaceImmediately();
-      const next = createPageTurnSurface(rendition, direction);
-      if (!next) return false;
-      pageTurnSurfaceRef.current = next;
-    }
-    const surface = pageTurnSurfaceRef.current;
-    if (!surface?.container.isConnected) {
-      pageTurnSurfaceRef.current = null;
-      return false;
-    }
-    const boundedDistance = Math.min(
-      surface.pageDistance,
-      Math.max(0, Number.isFinite(distancePx) ? distancePx : 0),
-    );
-    surface.container.scrollLeft = surface.originScrollLeft + surface.directionSign * boundedDistance;
-    return true;
-  }, [rendition, restorePageTurnSurfaceImmediately]);
+    pageTurnControllerRef.current?.reset();
+  }, []);
 
   const updatePageTurnGesture = useCallback((
     direction: PageTurnDirection,
@@ -435,7 +347,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     distancePx: number,
   ) => {
     const boundedProgress = Math.max(0, Math.min(1, progress));
-    const contentDriven = updatePageTurnSurface(direction, distancePx);
+    const contentDriven = pageTurnControllerRef.current?.update(direction, distancePx) ?? false;
     const current = pageTurnEffectRef.current;
     if (!current || current.phase !== 'dragging' || current.direction !== direction) {
       if (pageTurnEffectTimerRef.current !== null) {
@@ -460,7 +372,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       '--reader-page-turn-edge-position',
       `${(direction === 'next' ? 1 - boundedProgress : boundedProgress) * 100}%`,
     );
-  }, [updatePageTurnSurface]);
+  }, []);
 
   const cancelPageTurnGesture = useCallback(() => {
     const current = pageTurnEffectRef.current;
@@ -471,12 +383,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     const effect: PageTurnEffect = { ...current, phase: 'canceling' };
     pageTurnEffectRef.current = effect;
     setPageTurnEffect(effect);
-    const surface = pageTurnSurfaceRef.current;
-    if (surface) {
-      animatePageTurnSurface(surface, surface.originScrollLeft, PAGE_TURN_GESTURE_CANCEL_MS, () => {
-        if (pageTurnSurfaceRef.current === surface) pageTurnSurfaceRef.current = null;
-      });
-    }
+    pageTurnControllerRef.current?.cancel(PAGE_TURN_GESTURE_CANCEL_MS);
     const effectId = effect.id;
     pageTurnEffectTimerRef.current = window.setTimeout(() => {
       if (pageTurnEffectRef.current?.id !== effectId) return;
@@ -484,7 +391,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       pageTurnEffectRef.current = null;
       setPageTurnEffect(null);
     }, PAGE_TURN_GESTURE_CANCEL_MS);
-  }, [animatePageTurnSurface]);
+  }, []);
 
   const commitPageTurnGesture = useCallback((
     direction: PageTurnDirection,
@@ -511,19 +418,8 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     pageTurnEffectRef.current = effect;
     setPageTurnEffect(effect);
 
-    const surface = pageTurnSurfaceRef.current;
-    if (surface?.direction === direction && surface.container.isConnected) {
-      // The EPUB.js surface has already moved with the finger. Finish that
-      // same motion to the next page instead of replacing it with a separate
-      // overlay animation. The new location becomes visible immediately and
-      // the remaining distance is only a non-blocking settle.
-      animatePageTurnSurface(surface, surface.targetScrollLeft, PAGE_TURN_GESTURE_RELEASE_MS, () => {
-        if (pageTurnSurfaceRef.current === surface) pageTurnSurfaceRef.current = null;
-      });
-    } else {
-      // Chapter edges, RTL books, and non-scrollable views use the existing
-      // EPUB.js page operation with the lightweight edge fallback.
-      pageTurnSurfaceRef.current = null;
+    if (!pageTurnControllerRef.current?.commit(direction, PAGE_TURN_GESTURE_RELEASE_MS)) {
+      // Chapter edges, RTL, and continuous flow use EPUB.js navigation.
       if (direction === 'previous') prevPage();
       else nextPage();
     }
@@ -535,7 +431,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       pageTurnEffectRef.current = null;
       setPageTurnEffect(null);
     }, PAGE_TURN_GESTURE_RELEASE_MS);
-  }, [animatePageTurnSurface, nextPage, prevPage]);
+  }, [nextPage, prevPage]);
 
   const handlePreviousPage = useCallback(() => {
     restorePageTurnSurfaceImmediately();
@@ -561,8 +457,14 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
   // Keyboard navigation
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (ignoreReaderShortcut(e)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
+        if (imageMenu || imageTarget) {
+          setImageMenu(null);
+          setImageTarget(null);
+          return;
+        }
         if (editorDraft) {
           setEditorDraft(null);
           clearActiveSelection();
@@ -583,8 +485,8 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
           .catch((err: unknown) => setSettingsError(err instanceof Error ? err.message : String(err)));
         return;
       }
-      const target = e.target as HTMLElement | null;
-      if (target?.matches('input, select, textarea, button')) return;
+      if (!isReaderPageKey(e, Boolean(isLoading || error || activePanel || editorDraft
+        || imageTarget || imageMenu || pendingSelection || clickedNote))) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
         handleNextPage();
@@ -594,8 +496,13 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
       }
     };
     window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [handleNextPage, handlePreviousPage, exitFullscreen, editorDraft, pendingSelection, clickedNote, activePanel, setPendingSelection, setClickedNote]);
+    // Keyboard events inside EPUB iframes do not bubble to the parent window.
+    const cleanupKeyboard = rendition ? installReaderKeyboard(rendition, handleKey) : undefined;
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      cleanupKeyboard?.();
+    };
+  }, [handleNextPage, handlePreviousPage, exitFullscreen, editorDraft, pendingSelection, clickedNote, activePanel, setPendingSelection, setClickedNote, rendition, imageTarget, imageMenu, isLoading, error]);
 
   useEffect(() => {
     if (!rendition || isLoading) return;
@@ -718,6 +625,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
     if (!editorDraft) return;
     setNotesError(null);
     setIsSavingNote(true);
+    const readerEpoch = readerEpochRef.current;
     const run =
       editorDraft.kind === 'new'
         ? addNote({
@@ -740,6 +648,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
           });
     run
       .then(() => {
+        if (readerEpoch !== readerEpochRef.current) return;
         clearActiveSelection();
         setEditorDraft(null);
       })
@@ -936,12 +845,29 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
                   <div className="flex gap-2">
                     <input
                       value={query}
-                      onChange={(event) => setQuery(event.target.value)}
+                      onChange={(event) => {
+                        setQuery(event.target.value);
+                        void searchCurrentBook('');
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                          event.preventDefault();
+                          void searchCurrentBook(query);
+                        }
+                      }}
+                      maxLength={200}
                       aria-label="搜索当前书籍"
                       className="min-w-0 flex-1 rounded bg-gray-700 px-3 py-2 text-base"
                       placeholder="输入关键词"
                     />
-                    <button type="button" onClick={() => searchCurrentBook(query)} className="reader-control">查找</button>
+                    <button type="button" disabled={isSearching} onClick={() => void searchCurrentBook(query)} className="reader-control">{isSearching ? '查找中…' : '查找'}</button>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-400">至少输入 2 个字符。每章显示首处摘要，点击跳转到章节，不是字词级 CFI 定位。</p>
+                  <div role="status" aria-live="polite" className="mt-2 text-xs text-gray-300">
+                    {isSearching && '正在逐章查找…'}
+                    {searchError && <p>{searchError}</p>}
+                    {searchLimited && <p>已达到 50 个命中章节的上限；后续章节尚未扫描。</p>}
+                    {hasSearched && !isSearching && !searchError && searchResults.length === 0 && '没有匹配的章节。'}
                   </div>
                   <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
                     {searchResults.map((result, index) => (
@@ -1004,10 +930,10 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
         <nav
           data-reader-navigation
           aria-label="阅读工具"
-          className="reader-navigation pointer-events-none absolute bottom-3 left-3 right-3 z-40 flex justify-center sm:left-1/2 sm:right-auto sm:w-auto sm:-translate-x-1/2"
+          className="reader-navigation pointer-events-none absolute bottom-3 left-3 right-3 z-40 flex justify-center"
         >
-          <div className="pointer-events-auto flex max-w-full flex-col gap-1 rounded-2xl border border-white/10 bg-[#17212b]/95 p-2 shadow-2xl backdrop-blur sm:flex-row sm:items-center">
-            <div className="flex items-center gap-1">
+          <div className="pointer-events-auto flex max-w-full flex-col gap-1 rounded-2xl border border-white/10 bg-[#17212b]/95 p-2 shadow-2xl backdrop-blur sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center justify-center gap-1">
               <button
                 type="button"
                 data-reader-back
@@ -1024,7 +950,7 @@ export function EpubReader({ bookId, epubRootUrl, onClose }: EpubReaderProps) {
               <button type="button" onClick={handlePreviousPage} className="reader-nav-button reader-nav-page" aria-label="上一页" title="上一页">‹</button>
               <button type="button" onClick={handleNextPage} className="reader-nav-button reader-nav-page" aria-label="下一页" title="下一页">›</button>
             </div>
-            <div className="flex max-w-full items-center gap-1 overflow-x-auto scrollbar-none sm:overflow-visible">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center justify-center gap-1">
               <button type="button" data-reader-tool="toc" onClick={() => togglePanel('toc')} className={`reader-nav-button ${activePanel === 'toc' ? 'reader-nav-active' : ''}`}>目录</button>
               <button type="button" data-reader-tool="search" onClick={() => togglePanel('search')} className={`reader-nav-button ${activePanel === 'search' ? 'reader-nav-active' : ''}`}>搜索</button>
               <button type="button" data-reader-tool="notes" onClick={() => togglePanel('notes')} className={`reader-nav-button ${activePanel === 'notes' ? 'reader-nav-active' : ''}`}>批注</button>
