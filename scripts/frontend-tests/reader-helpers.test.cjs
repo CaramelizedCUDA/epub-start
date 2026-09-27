@@ -6,6 +6,7 @@ if (!root) throw new Error('Run through scripts/test-frontend.mjs --reader');
 const compiled = path.join(root, 'compiled/features/reader');
 const { queueSettingsWrite } = require(path.join(compiled, 'settingsPersistence.js'));
 const { isReaderPageKey, ignoreReaderShortcut, installReaderKeyboard } = require(path.join(compiled, 'engine/keyboard.js'));
+const { installImageInteractions } = require(path.join(compiled, 'engine/imageInteractions.js'));
 const { withBookTimeout, installProgressLifecycle } = require(path.join(compiled, 'engine/lifecycle.js'));
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const gate = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
@@ -126,4 +127,71 @@ test('retired iframe documents and late rendition events cannot turn the new rea
   newDocument.press();
   assert.equal(turns, 1, 'cleanup must prevent old events from rebinding');
   assert.equal(rendition.handlers.size, 0);
+});
+
+test('image viewer URL encodes reserved filename characters while keeping the entry path decoded', () => {
+  const rootUrl = 'http://epub.localhost/book/book-1/';
+  const oldWindow = global.window;
+  const listeners = new Map();
+  let imageHref = '';
+  let opened = null;
+
+  // This document dispatch reaches the production image click handler and URL builder.
+  const document = {
+    baseURI: `${rootUrl}OEBPS/Text/chapter.xhtml`,
+    images: [],
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener: (name, handler) => listeners.set(name, handler),
+    removeEventListener: (name, handler) => {
+      if (listeners.get(name) === handler) listeners.delete(name);
+    },
+  };
+  const image = {
+    tagName: 'IMG',
+    ownerDocument: document,
+    style: {},
+    alt: 'fixture image',
+    getAttribute: (name) => name === 'src' ? imageHref : null,
+    setAttribute: () => {},
+  };
+  document.images.push(image);
+  const rendition = {
+    getContents: () => [{ document, window: {} }],
+    on: () => {},
+    off: () => {},
+  };
+  const handlers = {
+    onOpen: (target) => { opened = target; },
+    onContextMenu: () => {},
+    onError: (message) => { throw new Error(message); },
+    onPreviousPage: () => {},
+    onNextPage: () => {},
+    onPageTurnGestureMove: () => {},
+    onPageTurnGestureCancel: () => {},
+    onPageTurnGestureCommit: () => {},
+    onToggleNavigation: () => {},
+    isPaginated: () => false,
+  };
+
+  global.window = { document: { getElementById: () => null } };
+  let cleanup;
+  try {
+    cleanup = installImageInteractions(rendition, rootUrl, 'book-1', handlers);
+    for (const [href, entryPath, displayUrl] of [
+      ['../Images/100%25.png', 'OEBPS/Images/100%.png', `${rootUrl}OEBPS/Images/100%25.png`],
+      ['../Images/a%23b.png', 'OEBPS/Images/a#b.png', `${rootUrl}OEBPS/Images/a%23b.png`],
+      ['../Images/a%3Fb.png', 'OEBPS/Images/a?b.png', `${rootUrl}OEBPS/Images/a%3Fb.png`],
+      ['../Images/literal%2520.png', 'OEBPS/Images/literal%20.png', `${rootUrl}OEBPS/Images/literal%2520.png`],
+    ]) {
+      imageHref = href;
+      opened = null;
+      listeners.get('click')({ target: image, preventDefault() {}, stopPropagation() {} });
+      assert.equal(opened?.entryPath, entryPath, `decoded ZIP path for ${href}`);
+      assert.equal(opened?.url, displayUrl, `viewer URL for ${href}`);
+    }
+  } finally {
+    cleanup?.();
+    global.window = oldWindow;
+  }
 });

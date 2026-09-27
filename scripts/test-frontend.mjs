@@ -247,6 +247,7 @@ export function renderHighlight(
 export function removeHighlight(_rendition: any, _cfiRange: string): void {}
 export function installHighlightEngine(..._args: any[]): () => void { return () => {}; }
 export function clearActiveSelection(): void {}
+export function isPointOnHighlightMark(..._args: any[]): boolean { return false; }
 export const HIGHLIGHT_CLASS = 'reader-highlight';
 export const HIGHLIGHT_NOTE_ATTR = 'data-note-id';
 `;
@@ -283,10 +284,16 @@ export interface TocItem {
 export interface Rendition {
   on: (event: string, handler: (...args: unknown[]) => void) => void;
   off: (event: string, handler: (...args: unknown[]) => void) => void;
+  getContents: () => Content[];
   destroy: () => void;
   display: (target?: string) => Promise<unknown>;
   next: () => Promise<unknown> | void;
   prev: () => Promise<unknown> | void;
+}
+
+export interface Content {
+  document: Document;
+  window: Window;
 }
 
 export interface Book {
@@ -443,6 +450,7 @@ async function prepareBuild(buildRoot, suites) {
       'features/reader/engine/search.ts',
       'features/reader/engine/navigation.ts',
       'features/reader/engine/keyboard.ts',
+      'features/reader/engine/imageInteractions.ts',
       'features/reader/engine/pageTurn.ts',
       'features/reader/settingsPersistence.ts',
       'features/reader/useReadingActivity.ts',

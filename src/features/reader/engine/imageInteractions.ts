@@ -476,7 +476,10 @@ function resolveImageTarget(
   // http://epub.localhost/...；其他桌面平台保留 epub://localhost/...），
   // 确保外层 React <img> 能被 webview 正确加载。硬编码 epub:// 在 Windows
   // WebView2 和 Android WebView 对资源加载都有 edge case。
-  const displayUrl = `${epubRootUrl}${entryPath}`;
+  // entryPath 已解码，供图片导出按 ZIP 条目名查找；显示 URL 需要重新编码每段路径。
+  // 保留目录分隔符，避免文件名里的 %、#、? 被浏览器当作 URL 语法。
+  const encodedEntryPath = entryPath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  const displayUrl = `${epubRootUrl}${encodedEntryPath}`;
 
   return {
     url: displayUrl,
