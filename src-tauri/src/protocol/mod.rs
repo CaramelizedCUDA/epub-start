@@ -10,8 +10,20 @@ pub fn epub_protocol<R: Runtime>(
     ctx: UriSchemeContext<'_, R>,
     request: tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<Vec<u8>> {
-    let path = request.uri().path().trim_start_matches('/');
-    let result = serve_entry(ctx.app_handle(), path);
+    let raw_path = request.uri().path().trim_start_matches('/');
+    let path = match decode_uri_path(raw_path) {
+        Ok(path) => path,
+        Err(message) => {
+            let cors_origin = allowed_cors_origin(&request);
+            return protocol_response(
+                StatusCode::BAD_REQUEST,
+                "text/plain; charset=utf-8",
+                message.into_bytes(),
+                cors_origin.as_deref(),
+            );
+        }
+    };
+    let result = serve_entry(ctx.app_handle(), &path);
     let cors_origin = allowed_cors_origin(&request);
 
     match result {
@@ -119,6 +131,44 @@ fn range_not_satisfiable(length: u64, cors_origin: Option<&str>) -> Response<Vec
     builder
         .body(Vec::new())
         .unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
+/// Decodes percent-encoded characters in the raw request path.
+///
+/// Browsers always percent-encode spaces and non-ASCII characters in URL
+/// paths, and wry hands the raw (still encoded) URI to this handler, so the
+/// entry name must be decoded before it is matched against the archive.
+/// Decoding runs before `normalize_entry_path` so traversal checks apply to
+/// the decoded path, mirroring the Tauri asset protocol.
+fn decode_uri_path(path: &str) -> Result<String, String> {
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return Err("VALIDATION_ERROR: invalid percent encoding in resource URI".into());
+            }
+            let high = decode_hex_digit(bytes[index + 1])?;
+            let low = decode_hex_digit(bytes[index + 2])?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded)
+        .map_err(|_| "VALIDATION_ERROR: invalid percent encoding in resource URI".into())
+}
+
+fn decode_hex_digit(value: u8) -> Result<u8, String> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        b'A'..=b'F' => Ok(value - b'A' + 10),
+        _ => Err("VALIDATION_ERROR: invalid percent encoding in resource URI".into()),
+    }
 }
 
 fn serve_entry(
@@ -325,6 +375,43 @@ mod tests {
             crate::services::normalize_entry_path("item/./chapter.xhtml").unwrap(),
             "item/chapter.xhtml"
         );
+    }
+
+    #[test]
+    fn uri_path_decodes_percent_encoded_entries() {
+        assert_eq!(
+            decode_uri_path("item/chapter.xhtml").unwrap(),
+            "item/chapter.xhtml"
+        );
+        assert_eq!(
+            decode_uri_path("item/cover%20v2.png").unwrap(),
+            "item/cover v2.png"
+        );
+        assert_eq!(
+            decode_uri_path("item/%E5%9B%BE%E7%89%87/%E5%B0%81%E9%9D%A2.png").unwrap(),
+            "item/图片/封面.png"
+        );
+        assert_eq!(
+            decode_uri_path("item/%E5%9B%BE%E7%89%87/cover.png").unwrap(),
+            "item/图片/cover.png"
+        );
+    }
+
+    #[test]
+    fn uri_path_rejects_invalid_percent_encoding() {
+        assert!(decode_uri_path("item/100%.png").is_err());
+        assert!(decode_uri_path("item/%zz.png").is_err());
+        assert!(decode_uri_path("item/%E5").is_err());
+        assert!(decode_uri_path("item/%FF").is_err());
+    }
+
+    #[test]
+    fn percent_encoded_traversal_is_decoded_then_rejected() {
+        let decoded = decode_uri_path("%2E%2E/secret").unwrap();
+        assert_eq!(decoded, "../secret");
+        assert!(crate::services::normalize_entry_path(&decoded).is_err());
+        let decoded = decode_uri_path("item/..%2Fsecret").unwrap();
+        assert!(crate::services::normalize_entry_path(&decoded).is_err());
     }
 
     fn body_of(response: &Response<Vec<u8>>) -> &[u8] {
