@@ -2,25 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /* Paper and ink are application materials, not a separate theme per page. */
+  :root {
+    --paper: 247 246 242;
+    --surface: 255 253 250;
+    --subtle: 240 237 229;
+    --ink: 36 36 31;
+    --muted: 113 110 101;
+    --line: 221 219 212;
+    --accent: 47 116 106;
+    --accent-soft: 227 237 231;
+    --danger: 163 63 50;
+  }
+
+  body {
+    @apply m-0 bg-paper font-sans text-ink antialiased;
+  }
+
+  button, input, select, textarea, summary {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper;
+  }
+
+  button:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+}
+
 @layer components {
   .reader-control {
-    @apply rounded bg-gray-700 px-3 py-1 text-sm text-gray-100 transition hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400;
+    @apply min-h-11 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:bg-subtle;
   }
 
   .reader-nav-button {
-    @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm text-gray-200 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-300;
+    @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm text-ink transition hover:bg-subtle;
   }
 
   .reader-nav-primary {
-    @apply bg-white/10 font-medium text-white;
+    @apply bg-accent-soft font-medium text-accent;
   }
 
   .reader-nav-page {
-    @apply w-9 px-0 text-xl leading-none;
+    @apply w-11 px-0 text-xl leading-none;
   }
 
   .reader-nav-active {
-    @apply bg-teal-700/70 text-white;
+    @apply bg-accent-soft font-semibold text-accent;
   }
 
   .reader-page-turn-effect {
@@ -214,29 +241,19 @@
   }
 
   /* Chrome 79, used by some Android 9 WebViews, does not implement
-     aspect-ratio. The pseudo-element creates a 3:4 box without putting
+     aspect-ratio. The pseudo-element creates a 2:3 box without putting
      padding into the absolute-positioned cover content's containing block. */
   .library-shelf-cover::before {
     content: '';
     display: block;
-    padding-top: 133.333333%;
+    padding-top: 150%;
   }
 }
 
 /* Some Android WebViews expose a physical-width CSS viewport. Touch devices
    still need the one-handed bottom navigation even when `md` matches. */
 @media (hover: none) and (pointer: coarse) {
-  .reader-shell {
-    padding-top: 1.5rem;
-    padding-top: max(1.5rem, env(safe-area-inset-top));
-    padding-bottom: 1.25rem;
-    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
-  }
-
-  .reader-navigation {
-    bottom: max(0.75rem, env(safe-area-inset-bottom));
-  }
-
+  /* ReaderChrome and its viewport share the same explicit safe-area geometry. */
   .desktop-fullscreen-control,
   .desktop-fullscreen-error {
     display: none !important;
@@ -246,7 +263,7 @@
     position: fixed !important;
     inset: auto 0 0 !important;
     width: auto !important;
-    height: calc(4rem + env(safe-area-inset-bottom)) !important;
+    height: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
     flex-direction: row !important;
     align-items: flex-start !important;
     justify-content: initial !important;
@@ -260,7 +277,7 @@
   .mobile-nav-list {
     display: flex !important;
     width: 100% !important;
-    height: 4rem !important;
+    height: 74px !important;
     align-items: stretch !important;
     justify-content: space-around !important;
     gap: 0.25rem !important;
@@ -268,10 +285,11 @@
   }
 
   .mobile-main-content {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .mobile-nav-active {
+    display: none !important;
     top: 0 !important;
     right: 0.5rem !important;
     bottom: auto !important;
@@ -280,71 +298,8 @@
     height: 3px !important;
   }
 
-  /* Android WebViews can report a desktop-sized CSS viewport. Keep the
-     insight cards in the intended one-handed order on touch devices. */
-  .library-insights-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .library-duration-layout {
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) !important;
-    grid-template-rows: auto !important;
-  }
-
-  .library-duration-wheel {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-    min-height: 8rem !important;
-  }
-
-  .library-duration-wheel-circle {
-    height: 7rem !important;
-    width: 7rem !important;
-    padding: 0.55rem !important;
-  }
-
-  .library-continue-widget {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-  }
-
-  .library-recommendation-panel {
-    border-left-width: 0 !important;
-    border-top: 1px solid #d0d9d4;
-    padding-left: 0 !important;
-    padding-top: 2rem;
-  }
-
-  /* Keep the mobile collection dense enough to scan without turning each
-     cover into a full-screen card. */
+  /* Match the two-column phone design even on WebViews reporting a wide viewport. */
   .library-book-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    column-gap: 0.5rem !important;
-    row-gap: 1.5rem !important;
-  }
-
-  .library-book-card {
-    border-top-width: 2px !important;
-    padding: 0.5rem !important;
-  }
-
-  .library-shelf-cover-content {
-    padding: 0.45rem !important;
-  }
-
-  .library-book-card-title {
-    font-size: 0.78rem !important;
-    line-height: 1.25 !important;
-  }
-
-  .library-book-card-author {
-    margin-top: 0.2rem !important;
-    font-size: 0.58rem !important;
-  }
-
-  .library-book-card-actions {
-    margin-top: 0.6rem !important;
-    min-height: 1.15rem !important;
-    font-size: 0.58rem !important;
+    @apply grid-cols-2 gap-x-4 gap-y-6;
   }
 }

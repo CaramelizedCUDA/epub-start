@@ -18,7 +18,7 @@ actual._compile(ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText, sourcePath);
 const { captureFirstVisibleLine } = actual.exports;
-const { captureReflowAnchor, rememberReflowAnchor, preserveAndReflow } = actual.exports;
+const { captureReflowAnchor, rememberReflowAnchor, preserveAndReflow, settleInitialPagination } = actual.exports;
 
 // Fixed character geometry isolates anchoring from browser layout. The original
 // PC/Android scenarios still verify real CFI and WebView column behavior.
@@ -72,9 +72,10 @@ async function inReflowSession(run) {
   const saved = { document: global.document, window: global.window };
   const scroller = new EventTarget();
   scroller.scrollLeft = 0; scroller.scrollTop = 0;
+  scroller.style = { removeProperty() {} };
   const viewport = {
     querySelector: () => scroller,
-    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 200 }),
+    getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 200, width: 100, height: 200 }),
   };
   global.document = { getElementById: () => viewport };
   global.window = { requestAnimationFrame: callback => queueMicrotask(callback), setTimeout, clearTimeout };
@@ -142,5 +143,66 @@ test('reflow keeps its captured anchor through its own intermediate location and
       restoreTheme: false, preserveTextAnchor: true,
     });
     assert.equal(await captureReflowAnchor(rendition), anchor);
+  });
+});
+
+for (const initialTarget of ['saved-chapter-tail-cfi', 'explicit-chapter.xhtml']) {
+  test(`initial pagination restores ${initialTarget} after themes and geometry settle`, async () => {
+    await inReflowSession(async ({ rendition, relocate }) => {
+      const events = [];
+      rendition.themes = {
+        register() { events.push('theme-register'); },
+        select() { events.push('theme-select'); },
+      };
+      rendition.hooks = { content: { register() {} } };
+      rendition.spread = () => {};
+      rendition.resize = () => { events.push('resize'); relocate('temporary-chapter-start'); };
+      rendition.display = async target => { events.push(`display:${target}`); relocate(target); };
+      // Initial EPUB.js display has already landed at an interim chapter start.
+      // Test the actual settling code; these tokens are not real DOM CFIs.
+      relocate('temporary-chapter-start');
+      await settleInitialPagination(rendition, {
+        flow: 'paginated', spread: 'none', max_column_width_px: 600,
+        theme: 'light', font_family: 'publisher', margin_left_percent: 0, margin_right_percent: 0,
+      }, initialTarget);
+      assert.equal(rendition.currentLocation().start.cfi, initialTarget,
+        'temporary first-display location must not replace the initial target');
+      assert.equal(events.at(-1), `display:${initialTarget}`);
+      assert.ok(events.indexOf('resize') < events.lastIndexOf(`display:${initialTarget}`));
+      assert.ok(events.indexOf('theme-select') < events.lastIndexOf(`display:${initialTarget}`));
+    });
+  });
+}
+
+test('concurrent reflow captures the restored initial target after the whole settling transaction', async () => {
+  await inReflowSession(async ({ rendition, relocate }) => {
+    let concurrentReflow;
+    let concurrentCapture;
+    rendition.themes = { register() {}, select() {} };
+    rendition.hooks = { content: { register() {} } };
+    rendition.spread = () => {};
+    rendition.resize = () => relocate('temporary-chapter-start');
+    rendition.display = async target => {
+      relocate(target);
+      if (!concurrentReflow) {
+        // A fullscreen/resize request arrives during initial restoration.
+        // Its capture must wait for the opening target, not an interim page.
+        concurrentReflow = preserveAndReflow(rendition, savedCfi => {
+          concurrentCapture = savedCfi;
+          relocate('fullscreen-layout');
+        }, { restoreTheme: false, preserveTextAnchor: false });
+      }
+    };
+    relocate('temporary-chapter-start');
+    await settleInitialPagination(rendition, {
+      flow: 'paginated', spread: 'none', max_column_width_px: 600,
+      theme: 'light', font_family: 'publisher', margin_left_percent: 0, margin_right_percent: 0,
+    }, 'saved-chapter-tail-cfi');
+    assert.ok(concurrentReflow, 'the concurrent request must reach the real queue');
+    await concurrentReflow;
+    assert.equal(concurrentCapture, 'saved-chapter-tail-cfi',
+      'queued reflow must not capture a temporary chapter start');
+    assert.equal(rendition.currentLocation().start.cfi, 'saved-chapter-tail-cfi',
+      'later reflow must not restore a temporary page over the opening target');
   });
 });

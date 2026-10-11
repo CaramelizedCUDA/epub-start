@@ -7,7 +7,7 @@ import { useLibraryStore } from './stores/libraryStore';
 
 type View =
   | { kind: 'shelf'; section: LibrarySection }
-  | { kind: 'reader'; bookId: string; epubRootUrl: string; initialHref?: string; returnSection: LibrarySection };
+  | { kind: 'reader'; bookId: string; bookTitle: string; epubRootUrl: string; initialHref?: string; returnSection: LibrarySection };
 
 function App() {
   const [view, setView] = useState<View>({ kind: 'shelf', section: 'library' });
@@ -34,6 +34,9 @@ function App() {
       setView({
         kind: 'reader',
         bookId: result.book.id,
+        // Visible book metadata belongs to the shell; EPUB locations stay in
+        // the reader adapter so future formats need not imitate CFI.
+        bookTitle: result.book.title,
         epubRootUrl: result.epub_root_url,
         returnSection,
         initialHref,
@@ -63,6 +66,7 @@ function App() {
       <EpubReader
         key={view.bookId}
         bookId={view.bookId}
+        bookTitle={view.bookTitle}
         epubRootUrl={view.epubRootUrl}
         initialHref={view.initialHref}
         onClose={handleCloseReader}

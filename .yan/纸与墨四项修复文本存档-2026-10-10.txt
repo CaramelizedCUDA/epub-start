@@ -1,0 +1,91 @@
+EpubStart 纸与墨四项定点修复：文本存档
+存档日期：2026-10-10（Asia/Shanghai）
+仓库：D:\epub_start
+
+一、本轮任务和结论
+
+用户要求按顺序阅读“账本”“纸与墨修复交接”“安卓模拟器验收交接”，修复四项已确认问题，并按交接中的最小条件复验。
+四项修复已实施，所测最小路径通过；不代表 E5/E9/E10/E11 或整体验收完成。
+本次存档只整理已有结果，没有再次修改产品源码、构建、安装或运行模拟器。
+
+二、四项实际修复
+
+PI-01：正文翻页后，章内页码少一页。
+修前真实采样：页宽412CSSpx，滚动位置411.809509px，正文与CFI已到第二页，但EPUB.js的floor读数仍是第一页。
+修复：只在default/reflowable/横向/LTR/单页/非fullsize、匹配章节、距下一边界不超过1CSSpx且恰少一页时纠正读数。不改CFI或manager，保存仍是章级page/total。
+源码入口：src/features/reader/engine/navigation.ts；src/stores/readerStore.ts两处只读实例参数。
+原生结果：第二页2/5；首章末标记可见且5/5；进入第二章1/5；返回首章仍5/5。
+
+PI-02：继续阅读把章级进度显示成全书百分比。
+修复：删除百分比和进度条，有非空CFI显示“已保存阅读位置”，否则“尚无保存位置”；无障碍名称同步，恢复入口保留。没有迁移历史数据或修改推荐算法。
+源码入口：src/features/library/ReadingInsights.tsx。
+原生结果：首章末返回书架不再显示100%；继续阅读恢复同一CFI /4/26/1:0及章末标记。
+无保存位置边界：现有Edge夹具中显示“尚无保存位置”。这是生产React与模拟IPC的展示检查，不是伪造原生持久化结果。
+
+PI-03：安静页脚命中区侵入系统手势区。
+修复：既有原生WindowInsets转换为实际覆盖WebView的四边CSS安全区，与CSS env取max；正文和工具共享安全区，44px命中区保持。仅安全区变化触发原有串行重排。
+源码入口：ReaderChrome.tsx、EpubReader.tsx及MainActivity.kt。
+原生结果：竖屏quiet约y652.1488–696.1488，横屏约y332.1667–376.1667，高均44CSSpx，完整避开约32CSSpx系统预留区。稳定状态下工具显隐、设置开关不改变正文几何和当时CFI。
+
+PI-04：柔和深色下系统栏仍用暗图标。
+修复：MainActivity通过既有WebView生命周期、合并限频的绘制事件读取顶层实际阅读主题，切换系统栏图标。没有新增IPC、JavascriptInterface、权限或依赖，没有替换Wry Client。
+原生结果：dark为亮图标；light/sepia及书架为暗图标；旋转与profile进程冷启后仍匹配实际材料。
+
+三、验证及制品
+
+前端构建：TypeScript/Vite通过，199 modules。
+Reader回归：新增页码断言修前expected2/actual1，78/79；修后79/79，源码摘要bee7d5f01265。
+独立增量审阅：Astra/xhigh、code-review，只读审阅无可行动发现。
+Android：offline x86_64 release Rust/custom-protocol及Gradle profile构建通过；没有b3-diagnostics。
+制品核对：4/4 assets与本次dist一致，包名、ABI、现有debug签名、SO和源码输入核对通过；保留数据安装后的APK哈希一致。
+
+新APK：
+D:\epub_start\target\ui-paper-ink-native\fix-20261009\build\EpubStart-paper-ink-fixed-x86_64-profile-20261009.apk
+SHA256：AF781F3B7A1FA74E297C0D16D08F49D6CAEE11A5E3610CD6A2B3EFA62FE56345
+大小：27,104,135字节。
+包：com.epubstart.reader.profile；仅x86_64；现有debug签名，非正式发布制品。
+56项列明输入摘要：C66FC8CD59C18A7696FCEE040213FCFBBCA35393388451C8813B487DC048A64A。
+摘要准确范围和算法以build/source-manifest.json为准，包含MainActivity和列明的Android配置；不能称为仓库全文件摘要。
+
+六份schema按本轮开始字节恢复，ACL保持：
+D3EACE193B1E453756736EAF27BB156DF62C7A41B2FE101403EE92EF93E69699
+旧APK及旧证据未覆盖；原AVD所列保护对象、原书及旧备份哈希核对一致，不冒充全目录审计。
+
+四、观察限制和未完成范围
+
+旋转早期曾采到about:blank iframe及新旧位置读数混合；后续以真实正文、位置一致和连续1.5秒稳定后再做显隐对照。这个门槛不等于直接确认内部队列清空。
+profile进程冷启PID3593→4111，但实际由横屏732×412回到竖屏412×732；同第11段仍完整可见，设置保留。
+CFI由 /4/22/1:86 到 /4/20/1:0属于不同几何比较。同几何横屏精确保位未验；脚本中这一假设的失败记录保留，不把原始helper统一改写成退出0。
+仍未覆盖：Windows最终原生候选、Linux、真机/OEM/旧WebView、固定版式/RTL/双页真实运行、其他导航或切口、全部精确保位/触控竞态、SAF撤权/异常存储、性能/耗电、正式签发及用户原样本issue #3。
+早期触控未响应的归因缺口未关闭。本轮没有扩大为第五项修复或全量矩阵。
+
+五、上轮收尾状态（快照，不代表未来实时状态）
+
+已退出Reader，副本旋转恢复accelerometer_rotation=1、user_rotation=0，停止副本并移除9223转发。
+六本书保留。合成书最后位于首章4/5，CFI /4/20/1:0；全局dark/18px，真实6.epub单书dark/22px覆盖保留。
+原AVD、正式应用/书库、书原文件及全部已有未提交改动保留；没有清数据、提交、推送或发布。
+上轮最终核对：Vite127.0.0.1:1420/PID14588及ADB server保留。本次存档未重新查询运行态。
+
+六、权威记录和证据位置
+
+权威集中记录：
+D:\epub_start\docs\verification\ui-paper-ink-2026-10-09.md
+最新节：2026-10-10 四项定点修复与最小复验。
+
+持续账本及原交接：
+D:\epub_start\.yan\账本.md
+D:\epub_start\.yan\纸与墨修复交接.md
+D:\epub_start\.yan\安卓模拟器验收交接.md
+
+本轮制品、日志、真实动作、截图和保护核对：
+D:\epub_start\target\ui-paper-ink-native\fix-20261009\
+主要文件：build/candidate-summary.json、build/source-manifest.json、reader-red-green.log、agent-runtime-models.json、protected-data-recheck.json、closeout.json。
+原生观察：acceptance/page-check.json、chrome-check.json、chrome-check-continued.json、cold-result.json、cold-actual-portrait.json、final-shelf.json和window/screens材料。
+非覆盖备份：acceptance/profile-before/及profile-preinstall/，含旧APK、完整data.tar和数据库。
+旧修前材料：target/ui-paper-ink-native/android-final-build/和android-acceptance-20261009/。
+target目录被忽略，普通Git提交不会保留这些证据。本存档不包含APK、原始日志或数据备份的副本。
+
+七、当前停止点
+
+四项定点修复工作已收尾。本次仅文本存档并留下一对话交接。
+下一步由用户安排，不自动继续其他TODO、不重跑已通过项、不扩大验收或执行Git写操作。

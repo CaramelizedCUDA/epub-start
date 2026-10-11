@@ -323,6 +323,39 @@ test('a settings change waits for the saved progress before replacing the openin
   assert.equal(useReaderStore.getState().isLoading, false);
 });
 
+test('queued settings previews replaced by a newer value are skipped', async () => {
+  const bookA = new FakeBook('A');
+  configureBooks(bookA);
+  const saveGate = deferred();
+  const saves = [];
+  setReaderIpc({
+    saveReadingProgress: (args) => {
+      saves.push(args);
+      return saveGate.promise;
+    },
+  });
+
+  await useReaderStore.getState().open('A', 'epub://A/', makeSettings());
+  useReaderStore.setState({ currentCfi: 'A-cfi', currentPage: 1, totalPages: 4 });
+
+  // The first apply is running; the next three queue behind it like slider steps.
+  const first = useReaderStore.getState().applyReadingSettings({ ...makeSettings('scrolled'), font_size_px: 19 });
+  await waitFor(() => saves.length === 1, 'first settings progress save');
+  const superseded = [
+    useReaderStore.getState().applyReadingSettings({ ...makeSettings('paginated'), font_size_px: 20 }),
+    useReaderStore.getState().applyReadingSettings({ ...makeSettings('scrolled'), font_size_px: 21 }),
+  ];
+  const latest = useReaderStore.getState().applyReadingSettings({ ...makeSettings('paginated'), font_size_px: 22 });
+  saveGate.resolve(makeProgress('A', 'A-cfi'));
+  await Promise.all([first, ...superseded, latest]);
+
+  // Opening, the running scrolled rebuild, and only the newest paginated rebuild.
+  assert.equal(bookA.renditions.length, 3);
+  assert.equal(useReaderStore.getState().rendition, bookA.renditions[2]);
+  assert.equal(useReaderStore.getState().readingSettings.font_size_px, 22);
+  assert.equal(useReaderStore.getState().readingSettings.flow, 'paginated');
+});
+
 test('delayed notes for an old book cannot overwrite the current book notes', async () => {
   const bookA = new FakeBook('A');
   const bookB = new FakeBook('B');

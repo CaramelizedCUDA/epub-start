@@ -1,5 +1,6 @@
 import { createRelocatedHandler } from '../features/reader/engine/navigation';
 import { searchBookChapters } from '../features/reader/engine/search';
+import { disposePaginationGuard, installPaginationGuard } from '../features/reader/engine/pagination';
 import {
   createEpubBook,
   createRendition,
@@ -54,6 +55,7 @@ let relocatedHandler: ((...args: unknown[]) => void) | null = null;
 let continuousScrollCleanup: (() => void) | null = null;
 let readerSession = 0;
 let settingsApplyQueue: Promise<void> = Promise.resolve();
+let settingsApplyGeneration = 0;
 let initialDisplay: { sessionId: number; ready: Promise<void>; finish: () => void; retire: () => void } | null = null;
 let searchRequest = 0;
 let notesRequest = 0;
@@ -220,6 +222,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     continuousScrollCleanup?.();
     continuousScrollCleanup = null;
     relocatedHandler = null;
+    disposePaginationGuard(prev.rendition);
     destroyRendition(prev.rendition);
     destroyEpubBook(prev.book);
     settingsApplyQueue = Promise.resolve();
@@ -264,6 +267,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       if (rendition && sessionRelocatedHandler) {
         rendition.off('relocated', sessionRelocatedHandler);
       }
+      disposePaginationGuard(rendition);
       destroyRendition(rendition);
       if (destroyBook) destroyEpubBook(book);
       if (relocatedHandler === sessionRelocatedHandler) {
@@ -291,12 +295,16 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       }
 
       rendition = createRendition(book, settings);
+      // Keep button, keyboard and gesture commits on the same queued path.
+      installPaginationGuard(rendition);
 
       sessionRelocatedHandler = createRelocatedHandler(
         () => get().toc,
         (location) => set(location),
         isCurrentSession,
         (cfi, progression) => throttledSave(bookId, cfi, progression),
+        // Read this session's measured page geometry without changing its CFI.
+        () => rendition,
       );
       relocatedHandler = sessionRelocatedHandler;
 
@@ -321,9 +329,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         return;
       }
 
+      // Keep the requested location through the initial theme/geometry settle.
+      const initialTarget = initialHref || saved?.location_cfi || undefined;
       try {
-        if (initialHref || saved?.location_cfi) {
-          await rendition.display(initialHref || saved?.location_cfi || undefined);
+        if (initialTarget) {
+          await rendition.display(initialTarget);
           if (!isCurrentSession()) {
             disposeSessionResources(shouldDestroyBook());
             return;
@@ -343,7 +353,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         );
       }
 
-      await settleInitialPagination(rendition, settings);
+      await settleInitialPagination(rendition, settings, initialTarget);
 
       if (!isCurrentSession()) {
         disposeSessionResources(shouldDestroyBook());
@@ -410,6 +420,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     continuousScrollCleanup = null;
     relocatedHandler = null;
 
+    disposePaginationGuard(rendition);
     destroyRendition(rendition);
     destroyEpubBook(book);
 
@@ -516,14 +527,18 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
   applyReadingSettings: (settings: ReadingSettings) => {
     const sessionId = readerSession;
+    const generation = ++settingsApplyGeneration;
+    // Settings are full snapshots: a queued preview already replaced by a newer
+    // one (e.g. each slider step) is skipped instead of reflowing once per value.
+    const isSuperseded = () => generation !== settingsApplyGeneration;
     const run = settingsApplyQueue
       .catch(() => undefined)
       .then(async () => {
-        if (sessionId !== readerSession) return;
+        if (sessionId !== readerSession || isSuperseded()) return;
         // Rebuilding while the saved CFI is still loading would retire the
         // only rendition the opening operation can restore into.
         if (initialDisplay?.sessionId === sessionId) await initialDisplay.ready;
-        if (sessionId !== readerSession) return;
+        if (sessionId !== readerSession || isSuperseded()) return;
         const {
           rendition,
           book,
@@ -561,9 +576,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           continuousScrollCleanup = null;
           if (relocatedHandler) rendition.off('relocated', relocatedHandler);
           relocatedHandler = null;
+          disposePaginationGuard(rendition);
           destroyRendition(rendition);
 
           const replacement = createRendition(book, settings);
+          installPaginationGuard(replacement);
           let replacementHandler: ((...args: unknown[]) => void) | null = null;
           const isCurrentReplacement = () => (
             sessionId === readerSession
@@ -572,6 +589,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
           );
           const disposeReplacement = () => {
             if (replacementHandler) replacement.off('relocated', replacementHandler);
+            disposePaginationGuard(replacement);
             destroyRendition(replacement);
             if (relocatedHandler === replacementHandler) relocatedHandler = null;
             replacementHandler = null;
@@ -581,6 +599,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
             (location) => set(location),
             isCurrentReplacement,
             (cfi, progression) => throttledSave(bookId ?? '', cfi, progression),
+            // Rebuilt layouts must use their own geometry, never the old manager.
+            () => replacement,
           );
           relocatedHandler = replacementHandler;
           replacement.on('relocated', replacementHandler);

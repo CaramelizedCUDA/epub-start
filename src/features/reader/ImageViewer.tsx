@@ -1,3 +1,4 @@
+// 图片手势与来源导出边界保持原样；工具栏继承 Reader 的纸墨主题。
 import { useEffect, useRef, useState } from 'react';
 import type { ReaderImageTarget } from './engine/imageInteractions';
 
@@ -126,16 +127,16 @@ export function ImageViewer({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex flex-col bg-black/95 text-white"
+      className="fixed inset-0 z-[60] flex flex-col bg-subtle text-ink"
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onContextMenu={(event) => event.preventDefault()}
       role="dialog"
       aria-modal="true"
       aria-label="EPUB 图片查看器"
     >
-      <div className="relative z-10 flex shrink-0 items-center gap-2 border-b border-white/10 bg-gray-900/90 px-4 py-2">
+      <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-paper px-3 py-2">
         <button type="button" onClick={onClose} className="reader-control">← 返回正文</button>
-        <span className="mr-auto min-w-0 truncate text-sm text-gray-300">{target.alt}</span>
+        <span className="mr-auto min-w-0 truncate text-sm text-muted">{target.alt}</span>
         <button type="button" onClick={() => void onSave()} className="reader-control">另存为</button>
         <button type="button" onClick={onOpenSettings} className="reader-control">设置</button>
         <button type="button" onClick={onToggleFullscreen} className="reader-control">
@@ -144,7 +145,7 @@ export function ImageViewer({
       </div>
 
       <div
-        className="relative flex flex-1 touch-none items-center justify-center overflow-hidden"
+        className="relative flex flex-1 touch-none items-center justify-center overflow-hidden bg-black/90"
         onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       >
         <img
@@ -178,7 +179,7 @@ export function ImageViewer({
           }}
         />
         {showInteractionHint && (
-          <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded bg-black/60 px-3 py-1 text-xs text-gray-300">
+          <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[90%] rounded-xl bg-black/60 px-3 py-2 text-xs text-white">
             滚轮或双指缩放；放大后拖动；单击空白或图片返回正文
           </p>
         )}
@@ -186,17 +187,17 @@ export function ImageViewer({
 
       {menuPoint && (
         <div
-          className="fixed z-50 min-w-44 rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
+          className="fixed z-50 min-w-44 rounded border border-line bg-surface p-1 shadow-xl"
           style={{
             left: Math.max(8, Math.min(menuPoint.x, window.innerWidth - 190)),
             top: Math.max(8, Math.min(menuPoint.y, window.innerHeight - 110)),
           }}
           onClick={(event) => event.stopPropagation()}
         >
-          <p className="px-3 py-1 text-xs text-gray-400">更多工具</p>
+          <p className="px-3 py-1 text-xs text-muted">更多工具</p>
           <button
             type="button"
-            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-700"
+            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-subtle"
             onClick={() => {
               setMenuPoint(null);
               setScale((current) => (current === 1 ? 2 : 1));
@@ -207,7 +208,7 @@ export function ImageViewer({
           </button>
           <button
             type="button"
-            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-700"
+            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-subtle"
             onClick={() => { setMenuPoint(null); void onSave(); }}
           >
             另存为…

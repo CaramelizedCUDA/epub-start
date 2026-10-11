@@ -1,4 +1,5 @@
 // 高亮/批注的浮动菜单与编辑器：选区菜单、已有高亮菜单、批注正文编辑器。
+// 展示随 Reader 主题继承纸墨变量；事件与选区生命周期保持原逻辑。
 // 内容一律按纯文本渲染（React 默认转义），不解析任何富文本。
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -31,14 +32,14 @@ export function ColorSwatches({ value, onChange }: ColorSwatchesProps) {
           type="button"
           aria-label={`高亮颜色 ${color}`}
           className={`h-6 w-6 rounded-full border-2 transition ${
-            value === color ? 'border-white' : 'border-transparent hover:border-gray-400'
+            value === color ? 'border-ink' : 'border-transparent hover:border-muted'
           }`}
           style={{ backgroundColor: color }}
           onClick={() => onChange(color)}
         />
       ))}
       <label
-        className="relative h-6 w-6 cursor-pointer rounded-full border-2 border-dashed border-gray-400"
+        className="relative h-6 w-6 cursor-pointer rounded-full border-2 border-dashed border-muted"
         title="自定义颜色"
       >
         <input
@@ -65,10 +66,10 @@ export function SelectionMenu({ selection, onHighlight, onAddNote, onClose }: Se
   const [color, setColor] = useState<string>(NOTE_COLORS[0]);
   return (
     <div
-      className="fixed z-50 rounded-lg border border-gray-600 bg-gray-800 p-3 text-white shadow-xl"
+      className="fixed z-50 rounded-2xl border border-line bg-surface p-3 text-ink shadow-xl"
       style={{ ...clampedMenuStyle(selection.point), width: MENU_WIDTH }}
     >
-      <p className="mb-2 truncate text-xs text-gray-300" title={selection.selectedText}>
+      <p className="mb-2 truncate text-xs text-muted" title={selection.selectedText}>
         {selection.selectedText || '已选择文本'}
       </p>
       <ColorSwatches value={color} onChange={setColor} />
@@ -78,7 +79,7 @@ export function SelectionMenu({ selection, onHighlight, onAddNote, onClose }: Se
         <button
           type="button"
           aria-label="关闭菜单"
-          className="rounded px-2 py-1 text-sm text-gray-400 transition hover:bg-gray-700 hover:text-white"
+          className="rounded px-2 py-1 text-sm text-muted transition hover:bg-subtle hover:text-ink"
           onClick={onClose}
         >
           ✕
@@ -100,10 +101,10 @@ interface NoteMenuProps {
 export function NoteMenu({ note, point, onColor, onEdit, onDelete, onClose }: NoteMenuProps) {
   return (
     <div
-      className="fixed z-50 rounded-lg border border-gray-600 bg-gray-800 p-3 text-white shadow-xl"
+      className="fixed z-50 rounded-2xl border border-line bg-surface p-3 text-ink shadow-xl"
       style={{ ...clampedMenuStyle(point), width: MENU_WIDTH }}
     >
-      <p className="mb-2 truncate text-xs text-gray-300" title={note.selected_text}>
+      <p className="mb-2 truncate text-xs text-muted" title={note.selected_text}>
         {note.selected_text || '高亮'}
       </p>
       <ColorSwatches value={note.color} onChange={(color) => onColor(color)} />
@@ -111,7 +112,7 @@ export function NoteMenu({ note, point, onColor, onEdit, onDelete, onClose }: No
         <button type="button" className="reader-control" onClick={onEdit}>编辑</button>
         <button
           type="button"
-          className="rounded bg-red-800 px-3 py-1 text-sm text-red-100 transition hover:bg-red-700"
+          className="rounded bg-danger/10 px-3 py-1 text-sm text-danger transition hover:bg-danger/20"
           onClick={onDelete}
         >
           删除
@@ -119,7 +120,7 @@ export function NoteMenu({ note, point, onColor, onEdit, onDelete, onClose }: No
         <button
           type="button"
           aria-label="关闭菜单"
-          className="rounded px-2 py-1 text-sm text-gray-400 transition hover:bg-gray-700 hover:text-white"
+          className="rounded px-2 py-1 text-sm text-muted transition hover:bg-subtle hover:text-ink"
           onClick={onClose}
         >
           ✕
@@ -158,14 +159,14 @@ export function NoteEditorModal({
   const [color, setColor] = useState(initialColor);
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-lg border border-gray-600 bg-gray-800 p-4 text-white shadow-2xl">
+      <div className="w-full max-w-lg rounded-2xl border border-line bg-surface p-4 text-ink shadow-2xl">
         <h2 className="mb-2 font-semibold">{title}</h2>
-        <p className="mb-3 max-h-20 overflow-y-auto rounded bg-gray-900 px-3 py-2 text-xs text-gray-300">
+        <p className="mb-3 max-h-20 overflow-y-auto rounded bg-subtle px-3 py-2 text-xs text-muted">
           {excerpt || '（无选中文本）'}
         </p>
-        <label className="mb-2 block text-sm text-gray-300">颜色</label>
+        <label className="mb-2 block text-sm text-muted">颜色</label>
         <ColorSwatches value={color} onChange={setColor} />
-        <label className="mt-3 mb-1 block text-sm text-gray-300" htmlFor="note-editor-content">批注内容</label>
+        <label className="mt-3 mb-1 block text-sm text-muted" htmlFor="note-editor-content">批注内容</label>
         <textarea
           id="note-editor-content"
           value={content}
@@ -174,16 +175,16 @@ export function NoteEditorModal({
           rows={6}
           autoFocus
           placeholder="写下你的想法（留空则为纯高亮）"
-          className="w-full resize-y rounded bg-gray-700 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+          className="w-full resize-y rounded border border-line bg-paper px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
         />
-        <p className="mt-1 text-right text-xs text-gray-500">{content.length} / {MAX_CONTENT_LENGTH}</p>
-        {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+        <p className="mt-1 text-right text-xs text-muted">{content.length} / {MAX_CONTENT_LENGTH}</p>
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
         <div className="mt-3 flex items-center justify-end gap-2">
           {canDelete && (
             <button
               type="button"
               disabled={saving}
-              className="mr-auto rounded bg-red-800 px-3 py-1 text-sm text-red-100 transition hover:bg-red-700 disabled:opacity-50"
+              className="mr-auto rounded bg-danger/10 px-3 py-1 text-sm text-danger transition hover:bg-danger/20 disabled:opacity-50"
               onClick={onDelete}
             >
               删除
@@ -193,7 +194,7 @@ export function NoteEditorModal({
           <button
             type="button"
             disabled={saving}
-            className="rounded bg-blue-600 px-3 py-1 text-sm text-white transition hover:bg-blue-500 disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1 text-sm text-paper transition hover:opacity-90 disabled:opacity-50"
             onClick={() => onSave(content, color)}
           >
             {saving ? '保存中…' : '保存'}

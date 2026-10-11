@@ -8,6 +8,7 @@ const { queueSettingsWrite } = require(path.join(compiled, 'settingsPersistence.
 const { isReaderPageKey, ignoreReaderShortcut, installReaderKeyboard } = require(path.join(compiled, 'engine/keyboard.js'));
 const { installImageInteractions } = require(path.join(compiled, 'engine/imageInteractions.js'));
 const { withBookTimeout, installProgressLifecycle } = require(path.join(compiled, 'engine/lifecycle.js'));
+const { createRelocatedHandler } = require(path.join(compiled, 'engine/navigation.js'));
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const gate = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
 
@@ -194,4 +195,82 @@ test('image viewer URL encodes reserved filename characters while keeping the en
     cleanup?.();
     global.window = oldWindow;
   }
+});
+
+// These fixtures exercise the production location adapter at the native failure
+// boundary. They do not claim to reproduce EPUB.js DOM mapping or Android input.
+function pageReadoutFixture(start, overrides = {}) {
+  const view = {
+    section: { index: 0, href: 'chapter.xhtml' },
+    position: () => ({ left: -start }),
+  };
+  return { manager: {
+    name: 'default', isPaginated: true,
+    settings: { axis: 'horizontal', direction: 'ltr', fullsize: false },
+    layout: { name: 'reflowable', pageWidth: 412, divisor: 1 },
+    container: { isConnected: true, getBoundingClientRect: () => ({ left: 0 }) },
+    visible: () => [view],
+    ...overrides,
+  } };
+}
+
+function pageReadoutLocation(page, href = 'chapter.xhtml') {
+  return { start: {
+    index: 0, href, cfi: 'epubcfi(/6/2!/4/10/1:0)',
+    displayed: { page, total: 5 },
+  } };
+}
+
+test('fractional native page boundaries report the visible second and last page without changing CFI', () => {
+  let rendition = pageReadoutFixture(411.80950927734375);
+  let updated, saved;
+  const handler = createRelocatedHandler(() => [], (value) => { updated = value; },
+    () => true, (cfi, progression) => { saved = { cfi, progression }; }, () => rendition);
+  const location = pageReadoutLocation(1);
+  handler(location);
+  assert.equal(updated.currentPage, 2, 'visible second page must not still read page one');
+  assert.equal(saved.cfi, location.start.cfi);
+  assert.equal(saved.progression, 2 / 5, 'saving keeps the existing chapter-level page/total meaning');
+  assert.equal(location.start.displayed.page, 1, 'the native event is not mutated');
+
+  rendition = pageReadoutFixture(1647.8095092773438);
+  handler(pageReadoutLocation(4));
+  assert.equal(updated.currentPage, 5, 'fractional chapter-end position must read the last page');
+  rendition = pageReadoutFixture(0);
+  handler(pageReadoutLocation(1));
+  assert.equal(updated.currentPage, 1, 'a new chapter starts at its own first page');
+  rendition = pageReadoutFixture(1648);
+  handler(pageReadoutLocation(5));
+  assert.equal(updated.currentPage, 5, 'returning to an exact last-page boundary adds nothing');
+});
+
+test('readout correction requires the measured single-page LTR boundary and matching section', () => {
+  const samples = [
+    [pageReadoutFixture(410.9), 1], // More than one CSS pixel short is a real partial page.
+    [pageReadoutFixture(412), 2],
+    [pageReadoutFixture(411.8, { settings: { axis: 'vertical' } }), 1],
+    [pageReadoutFixture(411.8, { settings: { axis: 'horizontal', direction: 'rtl' } }), 1],
+    [pageReadoutFixture(411.8, { settings: { axis: 'horizontal', fullsize: true } }), 1],
+    [pageReadoutFixture(411.8, { layout: { name: 'pre-paginated', pageWidth: 412, divisor: 1 } }), 1],
+    [pageReadoutFixture(411.8, { layout: { name: 'reflowable', pageWidth: 206, divisor: 2 } }), 1],
+    [pageReadoutFixture(411.8, { visible: () => [{
+      section: { index: 1, href: 'next.xhtml' }, position: () => ({ left: -411.8 }),
+    }] }), 1],
+    [pageReadoutFixture(823.8), 1], // A lagging event cannot jump two pages based on newer geometry.
+    [null, 1],
+  ];
+  for (const [rendition, nativePage] of samples) {
+    let updated;
+    const handler = createRelocatedHandler(() => [], (value) => { updated = value; },
+      () => true, () => {}, () => rendition);
+    handler(pageReadoutLocation(nativePage));
+    assert.equal(updated.currentPage, nativePage);
+  }
+});
+
+test('retired relocated callbacks never consult geometry from a newer rendition', () => {
+  const handler = createRelocatedHandler(() => [], () => { assert.fail('retired update'); },
+    () => false, () => { assert.fail('retired save'); },
+    () => { assert.fail('retired geometry read'); });
+  handler(pageReadoutLocation(1));
 });
