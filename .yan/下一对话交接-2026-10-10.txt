@@ -1,0 +1,63 @@
+EpubStart 下一对话交接
+日期：2026-10-10（Asia/Shanghai）
+【已被 下一对话交接-2026-10-11.txt 取代，以下仅作历史；其中“最新候选”已过期。】
+工作目录：D:\epub_start
+
+一、接手先读
+
+1. .yan/账本.md —— 先读“最新进展与停止状态”，下方旧快照是历史。
+2. .yan/纸与墨修复交接.md —— 四项已修；下文修前FAIL和待修指示保留为历史，不要自动重做。
+3. .yan/安卓模拟器验收交接.md —— 顶部是最新候选/备份/停止状态；旧APK不能充当修后证据。
+4. .yan/纸与墨四项修复文本存档-2026-10-10.txt —— 本轮完整摘要及证据入口。
+5. docs/verification/ui-paper-ink-2026-10-09.md 的“2026-10-10 四项定点修复与最小复验”节 —— 实际结果的权威记录。
+再按当前用户任务读AGENTS.md和docs/VERIFICATION.md；非Astra或型号不明执行者读结构化补充，派工读当前模型路由。
+
+二、已完成，不自动重做
+
+PI-01：单页LTR默认分页浮点边界读数纠偏；第二页2/5，章末与跨章返回5/5。
+PI-02：继续阅读改为有/无保存位置提示，去除章级进度冒充全书百分比，CFI恢复入口保留。
+PI-03：真实四边安全区接线，44px安静页脚完整避让手势区，工具/设置显隐不改变稳定正文几何。
+PI-04：系统栏跟随实际dark/light/sepia及书架材料，旋转和进程冷启所测图标匹配。
+前端构建、Reader79/79及独立增量审阅通过；新profile APK保留数据安装，四项最小原生复验通过。
+这些结论仅适用于所测路径；历史E5/E9/E10/E11不补勾，整体验收未完成。
+
+三、最新候选与材料
+
+APK：target/ui-paper-ink-native/fix-20261009/build/EpubStart-paper-ink-fixed-x86_64-profile-20261009.apk
+SHA256：AF781F3B7A1FA74E297C0D16D08F49D6CAEE11A5E3610CD6A2B3EFA62FE56345
+包：com.epubstart.reader.profile；x86_64；现有debug签名；非正式发布。
+证据根：target/ui-paper-ink-native/fix-20261009/，摘要范围以build/source-manifest.json为准。
+新备份：acceptance/profile-before/和profile-preinstall/；旧材料/备份未覆盖。
+target证据被忽略，普通提交不会保留。文本存档不等于二进制或原始证据备份。
+
+四、当前工作边界
+
+上轮基线main/HEAD 90e34fe3bbbd83a497b95dd84d6fd136dca4881a；这是快照，下次开始必须查当前工作区。
+已有重构及全部未提交/未跟踪文件保留。编辑不包含Git提交、推送、分支、发布或清数据授权。
+不重新设计，不新增依赖、格式、IPC、权限或Schema，不自动推进其他TODO。
+六份schema曾按本轮起始字节恢复；后续如构建，重新备份当时字节，不能用HEAD或旧备份覆盖现有修改。
+ACL保护哈希：D3EACE193B1E453756736EAF27BB156DF62C7A41B2FE101403EE92EF93E69699。
+只使实际受影响证据失效；不因换会话/换模型重跑已有效检查。
+
+五、原生状态和安全启动
+
+上轮已退出Reader、停止副本、移除9223转发、恢复旋转1/0；本次存档没有再次启动或查询设备。
+只操作emulator-5580和com.epubstart.reader.profile；原AVD及正式包com.epubstart.reader禁止覆盖、清空或卸载。
+副本：target/ui-paper-ink-native/avd/EpubStart_B2_API35.avd。
+活动配对底图为副本内userdata-from-last-state.img与encryptionkey-from-last-state.img及各自活动qcow2；不能切回旧不配对userdata，不wipe，不加载旧快照，不运行旧压力启动器。
+后续确需原生复验时，先查设备/端口/写路径，按安卓交接使用start-copy.ps1和新的唯一ASCII RunLabel；不要原样重跑硬编码旧输出的构建helper覆盖材料。
+六本书保留；合成书最后为首章4/5、CFI /4/20/1:0。全局dark18，真实6.epub覆盖dark22。
+上轮Vite1420/PID14588及ADB server保留；下次按实时状态核对，不把这个PID当未来事实。
+
+六、未验和不能扩写的结论
+
+进程冷启实际横转竖，同第11段可见、设置保留；不证明同几何横屏精确保位。
+早期触控未响应归因及用户原样本issue #3仍未闭合。
+Windows最终原生候选、Linux、真机/OEM/旧WebView、固定版式/RTL/双页真实运行、其他导航/切口、全部精确保位/触控竞态、SAF撤权/异常存储、性能/耗电、正式签发仍未覆盖。
+不要以旧截图、mock、构建或制品一致性替代这些真实验收。
+
+七、下一对话可用开场
+
+接手D:\epub_start。先按本交接顺序阅读最新账本、修复交接、安卓交接和文本存档，再核对当前工作区。四项定点修复及最小复验已经收尾，保护全部已有改动、原AVD、正式书库和证据；不要自动重做或推进其他TODO。按我在新对话中的具体任务继续，真实验收只测对应影响面，未验范围与既有事实分开记录。
+
+存档和交接完成后停止。本文件本身不授权启动新的验收、构建或Git操作。

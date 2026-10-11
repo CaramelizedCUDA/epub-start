@@ -10,7 +10,7 @@ import {
 } from '../../lib/tauri';
 import type { Note, ReadingSettings, ReadingSettingsResult } from '../../types/models';
 import type { TocItem } from 'epubjs';
-import { readingBackground } from './engine/reflow';
+import { readingBackground, readingThemeVariables } from './engine/reflow';
 import { createPageTurnController, type PageTurnDirection } from './engine/pageTurn';
 import {
   installImageInteractions,
@@ -24,6 +24,8 @@ import {
   type SelectionInfo,
 } from './engine/highlights';
 import { ImageViewer } from './ImageViewer';
+import { ReaderChrome, type ReaderPanel } from './ReaderChrome';
+import { ReaderSettingsPanel, type NumericSettingKey } from './ReaderSettingsPanel';
 import { NotesPanel } from './NotesPanel';
 import { NoteEditorModal, NoteMenu, SelectionMenu } from './AnnotationMenu';
 import { useReadingActivity } from './useReadingActivity';
@@ -38,6 +40,7 @@ const PAGE_TURN_GESTURE_RELEASE_MS = 260;
 
 interface EpubReaderProps {
   bookId: string;
+  bookTitle?: string;
   epubRootUrl: string;
   initialHref?: string;
   onClose: () => void;
@@ -47,7 +50,6 @@ type EditorDraft =
   | { kind: 'new'; selection: SelectionInfo; color: string }
   | { kind: 'edit'; note: Note };
 
-type ReaderPanel = 'toc' | 'search' | 'notes' | 'settings';
 type PageTurnEffectPhase = 'playing' | 'dragging' | 'settling' | 'canceling';
 interface PageTurnEffect {
   contentDriven: boolean;
@@ -57,7 +59,7 @@ interface PageTurnEffect {
   progress: number;
 }
 
-export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubReaderProps) {
+export function EpubReader({ bookId, bookTitle, epubRootUrl, initialHref, onClose }: EpubReaderProps) {
   const {
     open,
     close,
@@ -70,6 +72,7 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
     toc,
     currentChapterHref,
     rendition,
+    readingSettings,
     searchResults,
     isSearching,
     hasSearched,
@@ -95,7 +98,10 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
 
   const openedRef = useRef(false);
   const [activePanel, setActivePanel] = useState<ReaderPanel | null>(null);
-  const [isNavigationVisible, setIsNavigationVisible] = useState(true);
+  const [isNavigationVisible, setIsNavigationVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const panelTriggerRef = useRef<HTMLElement | null>(null);
+  const annotationOverlayRef = useRef(false);
   const [settingsResult, setSettingsResult] = useState<ReadingSettingsResult | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<ReadingSettings | null>(null);
   const [settingsScope, setSettingsScope] = useState<'global' | 'book'>('global');
@@ -109,6 +115,7 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
   const [notesError, setNotesError] = useState<string | null>(null);
   const [editorDraft, setEditorDraft] = useState<EditorDraft | null>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
+  annotationOverlayRef.current = Boolean(editorDraft || imageTarget || pendingSelection || clickedNote);
   const settingsDraftRef = useRef<ReadingSettings | null>(null);
   const settingsResultRef = useRef<ReadingSettingsResult | null>(null);
   const settingsScopeRef = useRef<'global' | 'book'>('global');
@@ -132,9 +139,45 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
   const [pageTurnEffect, setPageTurnEffect] = useState<PageTurnEffect | null>(null);
 
   const togglePanel = (panel: ReaderPanel) => {
+    panelTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setActivePanel((current) => current === panel ? null : panel);
     setIsNavigationVisible(true);
   };
+
+  useEffect(() => {
+    if (!activePanel) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    // 模态面板的 Tab 留在面板内；更高层批注编辑器与图片查看器仍优先。
+    const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
+    )).filter((element) => element.getClientRects().length > 0);
+    const focusFirst = () => (focusable()[0] ?? panel).focus();
+    focusFirst();
+    const handleFocus = (event: FocusEvent) => {
+      if (!annotationOverlayRef.current && !panel.contains(event.target as Node)) focusFirst();
+    };
+    const handleTab = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || annotationOverlayRef.current) return;
+      const elements = focusable();
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (!first) { event.preventDefault(); panel.focus(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('focusin', handleFocus);
+    document.addEventListener('keydown', handleTab);
+    return () => {
+      document.removeEventListener('focusin', handleFocus);
+      document.removeEventListener('keydown', handleTab);
+      const trigger = panelTriggerRef.current;
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [activePanel]);
 
   useReadingActivity({
     bookId,
@@ -419,7 +462,7 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
     setPageTurnEffect(effect);
 
     if (!pageTurnControllerRef.current?.commit(direction, PAGE_TURN_GESTURE_RELEASE_MS)) {
-      // Chapter edges, RTL, and continuous flow use EPUB.js navigation.
+      // 所有手势提交经同一个 EPUB.js 翻页入口，保持页码和当前 CFI 同步。
       if (direction === 'previous') prevPage();
       else nextPage();
     }
@@ -524,28 +567,53 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
 
   useEffect(() => {
     if (!rendition || isLoading) return;
-    return installImageInteractions(rendition, epubRootUrl, bookId, {
+    // Rendition 更换或关书后，旧 iframe 的延迟手势不能提交到新会话。
+    let active = true;
+    const readerEpoch = readerEpochRef.current;
+    const isCurrentInteraction = () => {
+      const current = useReaderStore.getState();
+      return active && readerEpoch === readerEpochRef.current
+        && current.bookId === bookId && current.rendition === rendition;
+    };
+    const dispose = installImageInteractions(rendition, epubRootUrl, bookId, {
       onOpen: (target) => {
+        if (!isCurrentInteraction()) return;
         setImageError(null);
         setImageMenu(null);
         setImageTarget(target);
       },
       onContextMenu: (request) => {
+        if (!isCurrentInteraction()) return;
         setImageError(null);
         setImageMenu(request);
       },
       onError: (message) => {
+        if (!isCurrentInteraction()) return;
         setImageMenu(null);
         setImageError(message);
       },
-      onPreviousPage: handlePreviousPage,
-      onNextPage: handleNextPage,
-      onPageTurnGestureMove: updatePageTurnGesture,
-      onPageTurnGestureCancel: cancelPageTurnGesture,
-      onPageTurnGestureCommit: commitPageTurnGesture,
-      onToggleNavigation: () => setIsNavigationVisible((visible) => !visible),
+      onPreviousPage: () => { if (isCurrentInteraction()) handlePreviousPage(); },
+      onNextPage: () => { if (isCurrentInteraction()) handleNextPage(); },
+      onPageTurnGestureMove: (direction, progress, distance) => {
+        if (isCurrentInteraction()) updatePageTurnGesture(direction, progress, distance);
+      },
+      onPageTurnGestureCancel: () => { if (isCurrentInteraction()) cancelPageTurnGesture(); },
+      onPageTurnGestureCommit: (direction, progress, distance) => {
+        if (isCurrentInteraction()) commitPageTurnGesture(direction, progress, distance);
+      },
+      onToggleNavigation: () => {
+        if (isCurrentInteraction()) setIsNavigationVisible((visible) => !visible);
+      },
       isPaginated: () => settingsDraftRef.current?.flow !== 'scrolled',
     });
+    return () => {
+      active = false;
+      dispose();
+      if (pageTurnEffectTimerRef.current !== null) window.clearTimeout(pageTurnEffectTimerRef.current);
+      pageTurnEffectTimerRef.current = null;
+      pageTurnEffectRef.current = null;
+      setPageTurnEffect(null);
+    };
   }, [
     rendition,
     isLoading,
@@ -728,15 +796,18 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
     }
   };
 
-  if (error) {
+  // Initial settings are required to open the book. Surface their failure here
+  // instead of leaving an empty reader whose error is hidden in a tool panel.
+  const openingError = error || (!settingsResult ? settingsError : null);
+  if (openingError) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-        <div className="text-center max-w-md">
-          <p className="text-red-400 text-lg mb-4">打开失败</p>
-          <p className="text-gray-400 mb-6 text-sm break-all">{error}</p>
+      <div className="flex items-center justify-center h-screen bg-paper text-ink">
+        <div className="text-center max-w-md px-6">
+          <p className="text-danger text-lg mb-4">打开失败</p>
+          <p className="text-muted mb-6 text-sm break-all">{openingError}</p>
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition"
+            className="px-6 py-2 bg-accent text-paper hover:opacity-90 rounded-lg transition"
           >
             返回书架
           </button>
@@ -749,26 +820,30 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
     ? notes.find((note) => note.id === clickedNote.noteId)
     : undefined;
 
+  // 正文和工具使用当前实际应用的主题，键入预览不必等待持久化完成。
   return (
     <div
-      className="reader-shell relative flex h-screen min-h-0 flex-col overflow-hidden text-white"
-      style={{ backgroundColor: readingBackground(settingsResult?.effective ?? null) }}
+      className="reader-shell relative flex h-screen min-h-0 flex-col overflow-hidden text-ink"
+      // Android 只读取当前实际预览的材料主题，不把系统深色偏好当成阅读设置。
+      data-reader-theme={(readingSettings ?? settingsResult?.effective)?.theme ?? 'light'}
+      style={{ ...readingThemeVariables(readingSettings ?? settingsResult?.effective ?? null), backgroundColor: readingBackground(readingSettings ?? settingsResult?.effective ?? null) } as CSSProperties}
     >
-      {/* Reader viewport */}
+      {/* 正文使用独立的固定留白，浮动工具覆盖其上；显隐不改变 EPUB viewport。 */}
       <div
         className="relative min-h-0 flex-1 overflow-hidden"
-        style={{ backgroundColor: readingBackground(settingsResult?.effective ?? null) }}
+        style={{ backgroundColor: readingBackground(readingSettings ?? settingsResult?.effective ?? null) }}
       >
         <div
           id="epub-reader-viewport"
-          className="absolute inset-x-0 top-0 bottom-28 min-h-0 sm:bottom-16"
+          className="absolute left-[var(--reader-safe-left,env(safe-area-inset-left,0px))] right-[var(--reader-safe-right,env(safe-area-inset-right,0px))] top-[calc(3rem+var(--reader-safe-top,env(safe-area-inset-top,0px)))] bottom-[calc(3rem+var(--reader-safe-bottom,env(safe-area-inset-bottom,0px)))] min-h-0"
         />
 
-        {isLoading && (
-          <div className="absolute inset-x-0 top-0 bottom-28 z-20 flex items-center justify-center bg-gray-900 text-white sm:bottom-16">
+        {(isLoading || !settingsResult) && (
+          <div className="absolute inset-0 z-[60] flex items-center justify-center bg-paper px-10 text-ink">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4" />
-              <p className="text-lg">Loading EPUB...</p>
+              <p className="mb-3 max-w-sm font-reading text-xl font-normal leading-relaxed">{bookTitle}</p>
+              <p className="text-sm text-muted">正在打开…</p>
+              <div className="mx-auto mt-6 h-[30px] w-[30px] animate-spin rounded-full border-2 border-line border-t-accent" />
             </div>
           </div>
         )}
@@ -803,34 +878,40 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
           <button
             type="button"
             aria-label="关闭阅读工具面板"
-            className="absolute inset-0 z-20 bg-black/10"
+            className="absolute inset-0 z-[45] bg-black/20"
             onClick={() => setActivePanel(null)}
           />
           <aside
+            ref={panelRef}
+            tabIndex={-1}
             data-reader-panel
-            className="absolute bottom-28 left-3 right-3 z-30 max-h-[calc(100vh-9rem)] overflow-hidden rounded-2xl border border-gray-600 bg-gray-800/95 shadow-2xl backdrop-blur sm:bottom-16 sm:left-auto sm:right-6 sm:w-[min(28rem,calc(100%-3rem))] sm:max-h-[calc(100vh-7rem)]"
+            role="dialog"
+            aria-modal="true"
+            aria-label={activePanel === 'settings' ? '阅读设置' : activePanel === 'toc' ? '目录' : activePanel === 'notes' ? '批注' : '搜索当前书籍'}
+            className="absolute bottom-0 left-0 right-0 z-50 flex max-h-[88vh] flex-col overflow-hidden rounded-t-3xl border border-line bg-surface text-ink shadow-2xl sm:bottom-20 sm:left-auto sm:right-6 sm:max-h-[calc(100vh-8rem)] sm:w-[min(28rem,calc(100%-3rem))] sm:rounded-2xl"
           >
-            <div className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4 sm:max-h-[calc(100vh-7rem)]">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="font-semibold">
-                  {activePanel === 'toc' && '目录'}
-                  {activePanel === 'search' && '搜索当前书籍'}
-                  {activePanel === 'notes' && '批注'}
-                  {activePanel === 'settings' && '阅读设置'}
-                </h2>
-                <button
-                  type="button"
-                  className="rounded px-2 py-1 text-xs text-gray-300 hover:bg-gray-700 hover:text-white"
-                  onClick={() => setActivePanel(null)}
-                >
-                  关闭
-                </button>
-              </div>
-
+            <div aria-hidden="true" className="mx-auto mt-3 h-[5px] w-[55px] shrink-0 rounded-full bg-line sm:hidden" />
+            {/* 标题和完成按钮留在滚动区外，展开精确设置后仍能直接收起面板。 */}
+            <div className="flex shrink-0 items-center justify-between gap-3 px-5 pb-1 pt-2 sm:pt-4">
+              <h2 className="font-reading text-[22px] font-medium">
+                {activePanel === 'toc' && '目录'}
+                {activePanel === 'search' && '搜索当前书籍'}
+                {activePanel === 'notes' && '批注'}
+                {activePanel === 'settings' && '阅读设置'}
+              </h2>
+              <button
+                type="button"
+                className="min-h-11 rounded px-2 py-1 text-base font-semibold text-accent hover:bg-subtle"
+                onClick={() => setActivePanel(null)}
+              >
+                {activePanel === 'settings' ? '完成' : '关闭'}
+              </button>
+            </div>
+            <div className="min-h-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
               {activePanel === 'toc' && (
                 <div>
                   {toc.length === 0 ? (
-                    <p className="text-sm text-gray-400">此书未提供目录。</p>
+                    <p className="text-sm text-muted">此书未提供目录。</p>
                   ) : (
                     <TocTree
                       items={toc}
@@ -857,13 +938,13 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
                       }}
                       maxLength={200}
                       aria-label="搜索当前书籍"
-                      className="min-w-0 flex-1 rounded bg-gray-700 px-3 py-2 text-base"
+                      className="min-w-0 flex-1 rounded-xl border border-line bg-paper px-3 py-2 text-base text-ink outline-none focus:border-accent"
                       placeholder="输入关键词"
                     />
                     <button type="button" disabled={isSearching} onClick={() => void searchCurrentBook(query)} className="reader-control">{isSearching ? '查找中…' : '查找'}</button>
                   </div>
-                  <p className="mt-2 text-xs text-gray-400">至少输入 2 个字符。每章显示首处摘要，点击跳转到章节，不是字词级 CFI 定位。</p>
-                  <div role="status" aria-live="polite" className="mt-2 text-xs text-gray-300">
+                  <p className="mt-2 text-xs text-muted">至少输入 2 个字符。每章显示首处摘要，点击跳转到章节，不是字词级 CFI 定位。</p>
+                  <div role="status" aria-live="polite" className="mt-2 text-xs text-muted">
                     {isSearching && '正在逐章查找…'}
                     {searchError && <p>{searchError}</p>}
                     {searchLimited && <p>已达到 50 个命中章节的上限；后续章节尚未扫描。</p>}
@@ -875,7 +956,7 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
                         type="button"
                         key={`${result.href}-${index}`}
                         onClick={() => handleGoToHref(result.href)}
-                        className="block w-full rounded bg-gray-700/60 p-2 text-left text-xs"
+                        className="block w-full rounded-xl border border-line bg-paper p-3 text-left text-sm leading-relaxed hover:bg-subtle"
                       >
                         {result.excerpt}
                       </button>
@@ -891,77 +972,41 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
                 />
               )}
               {activePanel === 'settings' && settingsDraft && (
-                <div>
-                  <div className="mb-3 grid grid-cols-2 rounded bg-gray-900 p-1 text-sm">
-                    <button type="button" onClick={() => changeSettingsScope('global')} className={`rounded px-2 py-1 ${settingsScope === 'global' ? 'bg-blue-600' : 'text-gray-400'}`}>全局默认</button>
-                    <button type="button" onClick={() => changeSettingsScope('book')} className={`rounded px-2 py-1 ${settingsScope === 'book' ? 'bg-blue-600' : 'text-gray-400'}`}>仅本书</button>
-                  </div>
-                  <div className="space-y-3 text-sm">
-                    <SettingSelect label="主题" value={settingsDraft.theme} onChange={(value) => { const draft = { ...settingsDraft, theme: value as ReadingSettings['theme'] }; previewSettings(draft); scheduleSettingsSave(draft); }} options={[['light', '浅色'], ['sepia', '暖色'], ['dark', '深色']]} />
-                    <SettingSelect label="字体" value={settingsDraft.font_family} onChange={(value) => { const draft = { ...settingsDraft, font_family: value as ReadingSettings['font_family'] }; previewSettings(draft); scheduleSettingsSave(draft); }} options={[['publisher', '出版方'], ['serif', '衬线'], ['sans', '无衬线'], ['system', '系统']]} />
-                    <SettingStepper label="字号" value={settingsDraft.font_size_px} min={12} max={32} step={1} unit="px" onPreview={(value, persist) => updateNumericSetting('font_size_px', value, persist)} />
-                    <SettingStepper label="行距" value={settingsDraft.line_height_multiplier} min={1} max={3} step={0.1} onPreview={(value, persist) => updateNumericSetting('line_height_multiplier', value, persist)} />
-                    <SettingStepper label="段落行距" value={settingsDraft.paragraph_spacing_multiplier} min={0} max={2} step={0.1} onPreview={(value, persist) => updateNumericSetting('paragraph_spacing_multiplier', value, persist)} />
-                    <SettingStepper label="首行缩进" value={settingsDraft.text_indent_em} min={0} max={4} step={0.5} unit="em" onPreview={(value, persist) => updateNumericSetting('text_indent_em', value, persist)} />
-                    <SettingStepper label="上边距" value={settingsDraft.margin_top_px} min={0} max={100} step={1} unit="px" onPreview={(value, persist) => updateNumericSetting('margin_top_px', value, persist)} />
-                    <SettingStepper label="下边距" value={settingsDraft.margin_bottom_px} min={0} max={100} step={1} unit="px" onPreview={(value, persist) => updateNumericSetting('margin_bottom_px', value, persist)} />
-                    <SettingStepper label="左边距" value={settingsDraft.margin_left_percent} min={0} max={20} step={1} unit="%" onPreview={(value, persist) => updateNumericSetting('margin_left_percent', value, persist)} />
-                    <SettingStepper label="右边距" value={settingsDraft.margin_right_percent} min={0} max={20} step={1} unit="%" onPreview={(value, persist) => updateNumericSetting('margin_right_percent', value, persist)} />
-                    <SettingStepper label="最大列宽" value={settingsDraft.max_column_width_px} min={300} max={1200} step={10} unit="px" onPreview={(value, persist) => updateNumericSetting('max_column_width_px', value, persist)} />
-                    <SettingSelect label="排版" value={settingsDraft.flow} onChange={(value) => { const draft = { ...settingsDraft, flow: value as ReadingSettings['flow'] }; previewSettings(draft); scheduleSettingsSave(draft); }} options={[['paginated', '分页'], ['scrolled', '滚动']]} />
-                    <SettingSelect label="跨页" value={settingsDraft.spread} onChange={(value) => { const draft = { ...settingsDraft, spread: value as ReadingSettings['spread'] }; previewSettings(draft); scheduleSettingsSave(draft); }} options={[['auto', '自动'], ['none', '单页'], ['always', '双页']]} />
-                  </div>
-                  {settingsError && <p className="mt-3 text-xs text-red-300">{settingsError}</p>}
-                  <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    {settingsResult?.book_override && <button type="button" disabled={isSavingSettings} onClick={clearBookOverride} className="reader-control">清除单书覆盖</button>}
-                    <span className="self-center text-xs text-gray-400">{isSavingSettings ? '保存中…' : '已自动保存'}</span>
-                  </div>
-                </div>
+                <ReaderSettingsPanel
+                  draft={settingsDraft}
+                  scope={settingsScope}
+                  hasBookOverride={Boolean(settingsResult?.book_override)}
+                  saving={isSavingSettings}
+                  error={settingsError}
+                  onScope={changeSettingsScope}
+                  onDraft={(draft) => { previewSettings(draft); scheduleSettingsSave(draft); }}
+                  onNumeric={updateNumericSetting}
+                  onClearOverride={() => { void clearBookOverride(); }}
+                />
               )}
               {activePanel === 'settings' && !settingsDraft && (
-                <p className="text-sm text-gray-400">正在加载阅读设置…</p>
+                <p className="text-sm text-muted">正在加载阅读设置…</p>
               )}
             </div>
           </aside>
         </>
       )}
 
-      {isNavigationVisible && (
-        <nav
-          data-reader-navigation
-          aria-label="阅读工具"
-          className="reader-navigation pointer-events-none absolute bottom-3 left-3 right-3 z-40 flex justify-center"
-        >
-          <div className="pointer-events-auto flex max-w-full flex-col gap-1 rounded-2xl border border-white/10 bg-[#17212b]/95 p-2 shadow-2xl backdrop-blur sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
-            <div className="flex max-w-full shrink-0 flex-wrap items-center justify-center gap-1">
-              <button
-                type="button"
-                data-reader-back
-                onClick={onClose}
-                className="reader-nav-button reader-nav-primary"
-                aria-label="返回书架"
-              >
-                <span aria-hidden="true">←</span>
-                <span>藏书</span>
-              </button>
-              <span data-reader-page className="min-w-[4.5rem] px-2 text-center text-xs text-gray-300" aria-live="polite">
-                {currentPage} / {totalPages}
-              </span>
-              <button type="button" onClick={handlePreviousPage} className="reader-nav-button reader-nav-page" aria-label="上一页" title="上一页">‹</button>
-              <button type="button" onClick={handleNextPage} className="reader-nav-button reader-nav-page" aria-label="下一页" title="下一页">›</button>
-            </div>
-            <div className="flex max-w-full shrink-0 flex-wrap items-center justify-center gap-1">
-              <button type="button" data-reader-tool="toc" onClick={() => togglePanel('toc')} className={`reader-nav-button ${activePanel === 'toc' ? 'reader-nav-active' : ''}`}>目录</button>
-              <button type="button" data-reader-tool="search" onClick={() => togglePanel('search')} className={`reader-nav-button ${activePanel === 'search' ? 'reader-nav-active' : ''}`}>搜索</button>
-              <button type="button" data-reader-tool="notes" onClick={() => togglePanel('notes')} className={`reader-nav-button ${activePanel === 'notes' ? 'reader-nav-active' : ''}`}>批注</button>
-              <button type="button" data-reader-tool="settings" onClick={() => togglePanel('settings')} className={`reader-nav-button ${activePanel === 'settings' ? 'reader-nav-active' : ''}`}>设置</button>
-              <button type="button" data-reader-tool="fullscreen" onClick={handleFullscreen} className="reader-nav-button desktop-fullscreen-control">
-                {isFullscreen ? '退出全屏' : '全屏'}
-              </button>
-            </div>
-          </div>
-        </nav>
-      )}
+      <ReaderChrome
+        bookTitle={bookTitle || '阅读'}
+        chapterTitle={findChapterTitle(toc, currentChapterHref)}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        activePanel={activePanel}
+        visible={isNavigationVisible}
+        isFullscreen={isFullscreen}
+        onClose={onClose}
+        onPrevious={handlePreviousPage}
+        onNext={handleNextPage}
+        onPanel={togglePanel}
+        onFullscreen={() => { void handleFullscreen(); }}
+        onToggleVisible={() => { setActivePanel(null); setIsNavigationVisible((visible) => !visible); }}
+      />
 
       {imageTarget && (
         <ImageViewer
@@ -969,27 +1014,27 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
           initialMenuPoint={null}
           isFullscreen={isFullscreen}
           onClose={() => { setImageTarget(null); setImageMenu(null); setImageError(null); }}
-           onOpenSettings={() => { setActivePanel('settings'); setIsNavigationVisible(true); setImageTarget(null); setImageMenu(null); }}
+          onOpenSettings={() => { setActivePanel('settings'); setIsNavigationVisible(true); setImageTarget(null); setImageMenu(null); }}
           onToggleFullscreen={() => { void handleFullscreen(); }}
           onSave={handleSaveImage}
         />
       )}
       {imageMenu && !imageTarget && (
         <div
-          className="fixed z-50 min-w-44 rounded border border-gray-600 bg-gray-800 p-1 text-white shadow-xl"
+          className="fixed z-50 min-w-44 rounded border border-line bg-surface p-1 text-ink shadow-xl"
           style={{ left: Math.min(imageMenu.point.x, window.innerWidth - 190), top: Math.min(imageMenu.point.y, window.innerHeight - 110) }}
         >
-          <p className="px-3 py-1 text-xs text-gray-400">更多工具</p>
+          <p className="px-3 py-1 text-xs text-muted">更多工具</p>
           <button
             type="button"
-            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-700"
+            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-subtle"
             onClick={() => { setImageTarget(imageMenu.target); setImageMenu(null); }}
           >
             放大图像
           </button>
           <button
             type="button"
-            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-gray-700"
+            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-subtle"
             onClick={() => { const target = imageMenu.target; setImageMenu(null); void saveImageTarget(target); }}
           >
             另存为…
@@ -997,7 +1042,7 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
         </div>
       )}
       {imageError && (
-        <div className="fixed bottom-4 left-1/2 z-[60] max-w-xl -translate-x-1/2 rounded border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-100 shadow-xl">
+        <div className="fixed bottom-4 left-1/2 z-[60] max-w-xl -translate-x-1/2 rounded border border-danger/30 bg-surface px-4 py-3 text-sm text-danger shadow-xl">
           {imageError}
         </div>
       )}
@@ -1047,12 +1092,12 @@ export function EpubReader({ bookId, epubRootUrl, initialHref, onClose }: EpubRe
         />
       )}
       {notesError && !editorDraft && (
-        <div className="fixed bottom-4 left-1/2 z-[60] flex max-w-xl -translate-x-1/2 items-center gap-3 rounded border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-100 shadow-xl">
+        <div className="fixed bottom-4 left-1/2 z-[60] flex max-w-xl -translate-x-1/2 items-center gap-3 rounded border border-danger/30 bg-surface px-4 py-3 text-sm text-danger shadow-xl">
           <span>{notesError}</span>
           <button
             type="button"
             onClick={() => setNotesError(null)}
-            className="text-xs text-red-300 underline hover:text-red-100"
+            className="text-xs text-danger underline hover:text-danger"
           >
             关闭
           </button>
@@ -1082,12 +1127,12 @@ function TocTree({ items, currentHref, onNavigate, depth = 0 }: TocTreeProps) {
               aria-current={isCurrent ? 'location' : undefined}
               className={`flex w-full items-center gap-2 rounded py-1 pr-2 text-left text-sm transition ${
                 isCurrent
-                  ? 'bg-blue-600/30 font-medium text-blue-200'
-                  : 'text-gray-200 hover:bg-gray-700'
+                  ? 'bg-accent-soft font-medium text-accent'
+                  : 'text-ink hover:bg-subtle'
               }`}
               style={{ paddingLeft: `${depth * 16 + 8}px` }}
             >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isCurrent ? 'bg-blue-300' : 'bg-gray-600'}`} />
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isCurrent ? 'bg-accent' : 'bg-line'}`} />
               <span>{item.label}</span>
             </button>
             {item.subitems && item.subitems.length > 0 && (
@@ -1105,116 +1150,15 @@ function TocTree({ items, currentHref, onNavigate, depth = 0 }: TocTreeProps) {
   );
 }
 
-interface SettingSelectProps {
-  label: string;
-  value: string;
-  options: Array<[string, string]>;
-  onChange: (value: string) => void;
-}
-
-function SettingSelect({ label, value, options, onChange }: SettingSelectProps) {
-  return (
-    <label className="flex items-center justify-between gap-3">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded bg-gray-700 px-2 py-1">
-        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
-      </select>
-    </label>
-  );
-}
-
-type NumericSettingKey = {
-  [K in keyof ReadingSettings]: ReadingSettings[K] extends number ? K : never
-}[keyof ReadingSettings];
-
-interface SettingStepperProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit?: string;
-  onPreview: (value: number, persist: boolean) => void;
-}
-
-function SettingStepper({
-  label,
-  value,
-  min,
-  max,
-  step,
-  unit = '',
-  onPreview,
-}: SettingStepperProps) {
-  const decimals = decimalPlaces(step);
-  const [text, setText] = useState(formatNumber(value, decimals));
-  const isEditingRef = useRef(false);
-
-  useEffect(() => {
-    if (!isEditingRef.current) setText(formatNumber(value, decimals));
-  }, [value, decimals]);
-
-  const commit = () => {
-    const parsed = Number(text);
-    const next = clampAndRound(Number.isFinite(parsed) ? parsed : value, min, max, decimals);
-    setText(formatNumber(next, decimals));
-    onPreview(next, true);
-  };
-
-  const stepBy = (direction: -1 | 1) => {
-    const next = clampAndRound(value + direction * step, min, max, decimals);
-    setText(formatNumber(next, decimals));
-    onPreview(next, true);
-  };
-
-  return (
-    <label className="grid grid-cols-[minmax(5rem,auto)_2rem_minmax(0,1fr)_2rem_auto] items-center gap-1 whitespace-nowrap">
-      <span className="min-w-0 truncate">{label}</span>
-      <button type="button" className="reader-control px-0" onClick={() => stepBy(-1)} aria-label={`${label}减小`}>-</button>
-      <input
-        type="text"
-        inputMode={decimals > 0 ? 'decimal' : 'numeric'}
-        value={text}
-        onChange={(event) => {
-          const next = event.target.value;
-          const pattern = decimals > 0 ? /^\d*(?:\.\d*)?$/ : /^\d*$/;
-          if (!pattern.test(next)) return;
-          setText(next);
-          const parsed = Number(next);
-          if (next !== '' && Number.isFinite(parsed)) {
-            onPreview(clampAndRound(parsed, min, max, decimals), false);
-          }
-        }}
-        onFocus={() => { isEditingRef.current = true; }}
-        onBlur={() => { isEditingRef.current = false; commit(); }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            commit();
-            event.currentTarget.blur();
-          }
-        }}
-        className="min-w-0 rounded bg-gray-700 px-2 py-1 text-center"
-        aria-label={label}
-      />
-      <button type="button" className="reader-control px-0" onClick={() => stepBy(1)} aria-label={`${label}增大`}>+</button>
-      <span className="text-gray-400">{unit}</span>
-    </label>
-  );
-}
-
-function decimalPlaces(step: number): number {
-  const dot = String(step).indexOf('.');
-  return dot < 0 ? 0 : String(step).length - dot - 1;
-}
-
-function clampAndRound(value: number, min: number, max: number, decimals: number): number {
-  const factor = 10 ** decimals;
-  return Math.round(Math.min(max, Math.max(min, value)) * factor) / factor;
-}
-
-function formatNumber(value: number, decimals: number): string {
-  return decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
+// 目录标题只消费现有导航结果；展示壳不接触 href 或 CFI。
+function findChapterTitle(items: TocItem[], currentHref: string | null): string {
+  if (!currentHref) return '';
+  for (const item of items) {
+    if (item.href === currentHref) return item.label;
+    const nested = findChapterTitle(item.subitems || [], currentHref);
+    if (nested) return nested;
+  }
+  return '';
 }
 
 function stripUpdatedAt(settings: ReadingSettings): Omit<ReadingSettings, 'updated_at'> {

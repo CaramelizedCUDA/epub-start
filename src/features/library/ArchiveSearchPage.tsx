@@ -1,3 +1,4 @@
+// Paper-and-ink presentation keeps the existing catalog queries and error states.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import {
@@ -163,34 +164,33 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
 
   return (
     <section className="pt-8 lg:pt-10" aria-labelledby="archive-search-title">
-      <div className="border-t-[3px] border-[#2e6e67] pt-5">
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#d0d9d4] pb-5">
+      <div className="border-t border-accent pt-5">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
           <div>
-            <button type="button" onClick={onBack} className="mb-4 border-b border-transparent text-xs text-[#2e6e67] transition hover:border-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">← 藏书</button>
-            <p className="mb-1 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#2e6e67]">Search the archive</p>
-            <h1 id="archive-search-title" className="font-serif text-4xl font-medium tracking-[-0.05em] text-[#18272c] sm:text-5xl">搜索</h1>
+            <button type="button" onClick={onBack} className="mb-4 border-b border-transparent text-xs text-accent transition hover:border-accent focus:outline-none focus:ring-2 focus:ring-accent">← 藏书</button>
+            <h1 id="archive-search-title" className="font-reading text-3xl font-medium tracking-[-0.02em] text-ink sm:text-4xl">搜索</h1>
           </div>
-          <p className="max-w-sm text-right text-sm leading-relaxed text-[#687571]">书名和作者即时搜索；系列正文搜索只在选定系列的本地索引中进行。</p>
+          <p className="max-w-sm text-left sm:text-right text-sm leading-relaxed text-muted">书名和作者即时搜索；系列正文搜索只在选定系列的本地索引中进行。</p>
         </div>
       </div>
 
-      {error && <div className="mt-5 border-l-[3px] border-[#a54b45] bg-[#fff8f6] px-5 py-4" role="alert"><p className="break-words text-sm leading-relaxed text-[#7c3834]">{error}</p></div>}
+      {error && <div className="mt-5 border-l border-danger bg-surface px-5 py-4" role="alert"><p className="break-words text-sm leading-relaxed text-danger">{error}</p></div>}
 
-      <div className="mt-7 border-t-[3px] border-[#c5a76b] bg-[#f9fbf7] p-4 sm:p-5">
-        <div className="flex flex-wrap gap-2 border-b border-[#d0d9d4] pb-4" role="tablist" aria-label="搜索范围">
-          <button type="button" role="tab" aria-selected={scope === 'library'} onClick={() => switchScope('library')} className={`border-b-2 px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c5a76b] ${scope === 'library' ? 'border-[#2e6e67] text-[#18272c]' : 'border-transparent text-[#687571]'}`}>藏书信息</button>
-          <button type="button" role="tab" aria-selected={scope === 'series'} onClick={() => switchScope('series')} className={`border-b-2 px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#c5a76b] ${scope === 'series' ? 'border-[#2e6e67] text-[#18272c]' : 'border-transparent text-[#687571]'}`}>系列正文</button>
+      <div className="mt-7 rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <div className="flex flex-wrap gap-2 border-b border-line pb-4" role="tablist" aria-label="搜索范围">
+          <button type="button" role="tab" aria-selected={scope === 'library'} onClick={() => switchScope('library')} className={`border-b-2 px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${scope === 'library' ? 'border-accent text-ink' : 'border-transparent text-muted'}`}>藏书信息</button>
+          <button type="button" role="tab" aria-selected={scope === 'series'} onClick={() => switchScope('series')} className={`border-b-2 px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent ${scope === 'series' ? 'border-accent text-ink' : 'border-transparent text-muted'}`}>系列正文</button>
         </div>
         <form onSubmit={(event) => void handleSubmit(event)} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label htmlFor="archive-search-query" className="min-w-0 flex-1">
-            <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">{scope === 'library' ? '书名 / 作者' : '系列内正文'}</span>
-            <input id="archive-search-query" maxLength={200} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={scope === 'library' ? '输入书名或作者' : '输入章节中的词语'} className="mt-1 w-full border-b border-[#9fb4ac] bg-transparent px-1 py-2 font-serif text-xl text-[#18272c] outline-none placeholder:text-[#9aa7a1] focus:border-[#2e6e67]" />
+            <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-muted">{scope === 'library' ? '书名 / 作者' : '系列内正文'}</span>
+            <input id="archive-search-query" maxLength={200} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={scope === 'library' ? '输入书名或作者' : '输入章节中的词语'} className="mt-1 w-full border-b border-line bg-transparent px-1 py-2 font-reading text-xl text-ink outline-none placeholder:text-muted focus:border-accent" />
           </label>
-          {scope === 'series' && <label className="sm:w-56"><span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">搜索范围</span><select value={selectedSeriesId} onChange={(event) => changeSeries(event.target.value)} className="mt-1 w-full border border-[#d0d9d4] bg-[#edf1ee] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#c5a76b]"><option value="">选择系列</option>{series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-          <button type="submit" disabled={isSearching} className="min-h-10 border border-[#18272c] bg-[#18272c] px-5 py-2 text-sm text-[#f9fbf7] transition hover:bg-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] disabled:opacity-50">{isSearching ? '索引中…' : '搜索'}</button>
+          {scope === 'series' && <label className="sm:w-56"><span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-muted">搜索范围</span><select value={selectedSeriesId} onChange={(event) => changeSeries(event.target.value)} className="mt-1 w-full border border-line bg-paper px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"><option value="">选择系列</option>{series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+          <button type="submit" disabled={isSearching} className="min-h-10 border border-ink bg-ink px-5 py-2 text-sm text-surface transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50">{isSearching ? '索引中…' : '搜索'}</button>
         </form>
         {scope === 'series' && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#d0d9d4] pt-3 text-xs text-[#687571]">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3 text-xs text-muted">
             <span>{selectedSeries ? `“${selectedSeries.name}”的正文索引` : '选择系列后建立正文索引'}</span>
             {indexStatus && <IndexStatus status={indexStatus} isSearching={Boolean(taskId)} onCancel={() => void handleCancel()} />}
           </div>
@@ -198,7 +198,7 @@ export function ArchiveSearchPage({ books, onBack, onOpenBook }: ArchiveSearchPa
       </div>
 
       {scope === 'series' && contentResults.length >= 50 && (
-        <p className="mt-4 text-sm text-[#687571]" role="status">最多显示 50 条命中，请缩小关键词范围。</p>
+        <p className="mt-4 text-sm text-muted" role="status">最多显示 50 条命中，请缩小关键词范围。</p>
       )}
       <section className="mt-8" aria-live="polite">
         {scope === 'library' ? (
@@ -220,17 +220,17 @@ function IndexStatus({ status, isSearching, onCancel }: { status: SearchIndexSta
   return (
     <span className="flex flex-wrap items-center gap-3">
       <span>{label} · {status.indexed_documents}/{status.total_documents || '—'} 章节</span>
-      {status.error_detail && status.status !== 'building' && <span className="max-w-md text-[#8b7137]" title={status.error_detail}>部分章节可能不可搜索</span>}
-      {isSearching && status.status === 'building' && <button type="button" onClick={onCancel} className="border-b border-[#a54b45] text-[#a54b45] focus:outline-none focus:ring-2 focus:ring-[#c5a76b]">取消索引</button>}
+      {status.error_detail && status.status !== 'building' && <span className="max-w-md text-muted" title={status.error_detail}>部分章节可能不可搜索</span>}
+      {isSearching && status.status === 'building' && <button type="button" onClick={onCancel} className="border-b border-danger text-danger focus:outline-none focus:ring-2 focus:ring-accent">取消索引</button>}
     </span>
   );
 }
 
 function SearchResultHeader({ count, label, children }: { count: number; label: string; children: React.ReactNode }) {
   return (
-    <div className="border-t border-[#d0d9d4]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d0d9d4] py-3"><span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[#687571]">{label}</span><span className="font-mono text-sm text-[#5c7397]">{count} 项</span></div>
-      <div className="divide-y divide-[#d0d9d4]">{children}</div>
+    <div className="border-t border-line">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-3"><span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-muted">{label}</span><span className="font-mono text-sm text-accent">{count} 项</span></div>
+      <div className="divide-y divide-line">{children}</div>
     </div>
   );
 }
@@ -238,9 +238,9 @@ function SearchResultHeader({ count, label, children }: { count: number; label: 
 function MetadataResult({ book, onOpen }: { book: BookSummary; onOpen: () => void }) {
   return (
     <article className="grid gap-4 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-      <button type="button" onClick={onOpen} className="justify-self-start focus:outline-none focus:ring-2 focus:ring-[#c5a76b]"><div className="h-20 w-14 overflow-hidden"><span className="sr-only">打开 {book.title}</span><span className="block h-full w-full"><MiniCover book={book} /></span></div></button>
-      <div className="min-w-0"><h2 className="truncate font-serif text-xl text-[#18272c]">{book.title}</h2><p className="mt-1 truncate text-sm text-[#687571]">{book.authors.length > 0 ? book.authors.join(' · ') : '作者信息未提供'}</p></div>
-      <button type="button" onClick={onOpen} className="justify-self-start border-b border-[#2e6e67] py-1 text-xs text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] sm:justify-self-end">打开这本书 →</button>
+      <button type="button" onClick={onOpen} className="justify-self-start focus:outline-none focus:ring-2 focus:ring-accent"><div className="h-20 w-14 overflow-hidden"><span className="sr-only">打开 {book.title}</span><span className="block h-full w-full"><MiniCover book={book} /></span></div></button>
+      <div className="min-w-0"><h2 className="truncate font-reading text-xl text-ink">{book.title}</h2><p className="mt-1 truncate text-sm text-muted">{book.authors.length > 0 ? book.authors.join(' · ') : '作者信息未提供'}</p></div>
+      <button type="button" onClick={onOpen} className="justify-self-start border-b border-accent py-1 text-xs text-accent focus:outline-none focus:ring-2 focus:ring-accent sm:justify-self-end">打开这本书 →</button>
     </article>
   );
 }
@@ -248,16 +248,16 @@ function MetadataResult({ book, onOpen }: { book: BookSummary; onOpen: () => voi
 function ContentResult({ result, book, onOpen }: { result: SearchResult; book: BookSummary | null; onOpen: (book: BookSummary, initialHref?: string) => void }) {
   return (
     <article className="grid gap-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <div className="min-w-0"><p className="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[#2e6e67]">{book?.title ?? '书籍已不在书架'} · {result.title || result.href}</p><p className="mt-2 text-sm leading-relaxed text-[#18272c]">{result.snippet}</p><p className="mt-2 truncate text-xs text-[#687571]">章节来源：{result.href} · 跳转精度：章节级（非精确 CFI）</p></div>
-      {book ? <button type="button" onClick={() => onOpen(book, result.href)} className="justify-self-start border-b border-[#2e6e67] py-1 text-xs text-[#2e6e67] focus:outline-none focus:ring-2 focus:ring-[#c5a76b] sm:justify-self-end">打开命中章节 →</button> : <span className="text-xs text-[#a54b45]">无法打开</span>}
+      <div className="min-w-0"><p className="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-accent">{book?.title ?? '书籍已不在书架'} · {result.title || result.href}</p><p className="mt-2 text-sm leading-relaxed text-ink">{result.snippet}</p><p className="mt-2 truncate text-xs text-muted">章节来源：{result.href} · 跳转精度：章节级（非精确 CFI）</p></div>
+      {book ? <button type="button" onClick={() => onOpen(book, result.href)} className="justify-self-start border-b border-accent py-1 text-xs text-accent focus:outline-none focus:ring-2 focus:ring-accent sm:justify-self-end">打开命中章节 →</button> : <span className="text-xs text-danger">无法打开</span>}
     </article>
   );
 }
 
 function EmptySearch({ query, scope }: { query: string; scope: string }) {
-  return <div className="border-l-[3px] border-[#c5a76b] bg-[#f9fbf7] px-5 py-6 text-sm text-[#687571]">没有在{scope}中找到“{query}”。查询范围和关键词已保留，可以直接修改后重试。</div>;
+  return <div className="border-l border-accent bg-surface px-5 py-6 text-sm text-muted">没有在{scope}中找到“{query}”。查询范围和关键词已保留，可以直接修改后重试。</div>;
 }
 
 function MiniCover({ book }: { book: BookSummary }) {
-  return <div className="relative h-full w-full overflow-hidden bg-[#4d6188] p-1.5 text-[#f8faf5]"><span className="font-mono text-[0.45rem]">{book.format.toUpperCase()}</span>{book.cover_cache_path ? <img src={convertFileSrc(book.cover_cache_path)} alt="" className="absolute inset-0 h-full w-full object-cover" /> : <span className="absolute bottom-1 left-1 right-1 font-serif text-xs leading-tight">{book.title}</span>}<span className="absolute bottom-0 right-0 top-0 w-0.5 bg-white/30" aria-hidden="true" /></div>;
+  return <div className="relative h-full w-full overflow-hidden rounded-lg bg-accent p-1.5 text-surface"><span className="font-mono text-[0.45rem]">{book.format.toUpperCase()}</span>{book.cover_cache_path ? <img src={convertFileSrc(book.cover_cache_path)} alt="" className="absolute inset-0 h-full w-full object-cover" /> : <span className="absolute bottom-1 left-1 right-1 font-reading text-xs leading-tight">{book.title}</span>}<span className="absolute bottom-0 right-0 top-0 w-0.5 bg-white/30" aria-hidden="true" /></div>;
 }

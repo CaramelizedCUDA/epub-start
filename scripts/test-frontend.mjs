@@ -22,6 +22,7 @@ const readerTests = new Map([['reader', [
   'readingActivity-closeout.test.cjs',
   'reader-helpers.test.cjs', 'seriesSearch-closeout.test.cjs',
   'pageTurn.test.cjs',
+  'pagination.test.cjs',
   'reflow-anchor.test.cjs',
 ]]]);
 const testSuites = new Map([...libraryTests, ...readerTests]);
@@ -452,6 +453,7 @@ async function prepareBuild(buildRoot, suites) {
       'features/reader/engine/keyboard.ts',
       'features/reader/engine/imageInteractions.ts',
       'features/reader/engine/pageTurn.ts',
+      'features/reader/engine/pagination.ts',
       'features/reader/settingsPersistence.ts',
       'features/reader/useReadingActivity.ts',
       'features/library/seriesSearch.ts',

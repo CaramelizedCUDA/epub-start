@@ -175,6 +175,14 @@ src/features/reader/engine/  # EPUB.js 生命周期、目录、搜索、高亮�
 src/stores/                  # Zustand 业务状态
 ```
 
+纸与墨重构将展示边界落实为 `ReaderChrome`（书名、章节文字、页码与动作回调）、`ReaderSettingsPanel`（当前 EPUB 设置表单）和 `BookActionsSheet`（现有书籍操作）。展示壳不接受 EPUB.js Rendition 或 CFI；`EpubReader` 继续协调引擎、搜索、批注与设置持久化。共享 Tailwind 纸墨 token 只统一颜色与字型，不统一格式能力。
+
+这为后续 TXT/PDF 提供可复用的书架卡片与 Reader 展示壳；当前不增加新格式路由、处理器、能力占位或通用位置。TXT 文本锚点和 PDF 固定页位置、缩放、文本层仍按 P3.0/P3.1/P3.3 评审，不能使用现有 `location_cfi` 冒充。导入继续明确只接受 EPUB。
+
+可重排 EPUB 的正文基线在引擎主题内使用两端对齐、字间分配与行首标点压缩；`text-wrap: pretty` 是浏览器支持时的渐进增强。出版方块级对齐与预格式化内容继续生效，固定版式不注入这组基线。此组规则不修改 EPUB.js 的列宽、列距或正文水平 padding，也不作为章末跳页已修复的证据。
+
+分页初次打开以显式章节目标（优先）或保存 CFI 为权威目标，主题、字体/图片与几何稳定后再次定位；不能让首次尚未稳定的可见行覆盖这个目标。日常设置/窗口变化仍按下述可见文本锚点重排。
+
 上一页、下一页、目录、搜索、批注和阅读设置必须有屏幕上可发现的控件；键盘、触摸区和悬停只能作为补充。分页正文左右各 25% 的点击翻页在 EPUB iframe 内判定，图片、链接、表单控件和活动文本选区必须优先，不得用主页面透明元素覆盖 iframe 图片命中。书架页提供全局阅读设置与全屏/退出全屏入口；书架设置只读取/保存全局默认值，不修改单书覆盖。目录由 EPUB.js 的 NCX/NAV 统一导航模型递归渲染，当前位置仅从 `relocated` 事件的章节 href 推导，不在 Rust 重复解析目录。分页使用 default manager；滚动阅读必须使用 continuous manager 预载相邻 spine 项并支持自然双向跨章滚动，向上预载或裁剪章节时必须以首个可见文本行校正滚动位置。排版切换通过重建 Rendition 保持 CFI。阅读设置由 Rust 持久化；数值项使用可键入的 `- / 输入框 / + / 单位` 控件，输入过程立即预览，按钮变化 300ms 防抖保存，失焦/Enter 提交键入值，保存失败重试一次且不回滚预览。设置、全屏、ESC 退出全屏和窗口尺寸变化都必须经 `reader/engine/reflow.ts` 串行执行“捕获视口第一条可见文本行的起始 CFI → 重排/resize → 等待 relocated → 重注入主题 → 恢复该 CFI”，禁止只恢复章节/页级 CFI 冒充目光锚点，也禁止调用点直接触发 `rendition.resize()`。连续滚动可再按原 `viewportY` 校正像素位置；分页模式不得通过 `top/transform` 平移 iframe 文档根元素，以免破坏 EPUB.js 多列坐标。样式仍只使用 TailwindCSS，EPUB iframe 内容样式通过 EPUB.js 注入。分页布局宽度由 `reader/engine/reflow.ts` 的 `readerViewportGeometry` 在 `renderTo`/`resize` 前统一计算：单页不超过 `max_column_width_px`，双页不超过 `2 * max_column_width_px + gap`；正文 body 不再注入 `max-width`，避免破坏 EPUB.js 的列宽与分页坐标。iframe 外侧点击由 reader engine 处理，保证缩窄布局时左右区域仍可翻页。自动跨页在桌面可用宽度达到 1000px 时采用双页，否则采用单页；首次展示在字体与图片稳定后以相同几何做一次锚定重排。
 
 高亮与批注由 `reader/engine/highlights.ts` 适配：Rendition `selected` 事件给出选区 CFI range，前端据此生成可独立定位的起止 CFI 与纯文本选中内容，经既有 notes 命令保存；`cfi_range` 通过 `rendition.annotations.highlight` 渲染为可点击标记，标记点击打开改色/编辑/删除菜单，批注列表点击按 `cfi_start` 定位并恢复。渲染、列表与正文输入只按纯文本处理。EPUB.js 在每次 view 渲染时自动重注入已注册标记，因此翻页与重启后只需重新注册一次；主题、排版切换或重建 Rendition 后必须重新注册全部标记。标记点击不得触发边缘翻页。

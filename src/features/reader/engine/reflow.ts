@@ -51,6 +51,8 @@ export interface PreserveAndReflowOptions {
   restoreTheme: boolean;
   settings?: ReadingSettings | null;
   preserveTextAnchor?: boolean;
+  // An explicit opening location must survive interim first-display layouts.
+  restoreTarget?: string;
 }
 
 export interface TextAnchor {
@@ -111,8 +113,11 @@ export async function preserveAndReflow(
 ): Promise<void> {
   const previous = renditionQueues.get(rendition) ?? Promise.resolve();
   const current = previous.catch(() => undefined).then(async () => {
-    const savedCfi = await readCurrentCfi(rendition);
-    const textAnchor = options.preserveTextAnchor
+    // Opening asset waits and the final authoritative display belong to this
+    // same transaction. Later fullscreen/resize work cannot capture its interim page.
+    if (options.restoreTarget) await waitForRenderedAssets(rendition);
+    const savedCfi = options.restoreTarget ?? await readCurrentCfi(rendition);
+    const textAnchor = options.preserveTextAnchor && !options.restoreTarget
       ? await captureReflowAnchor(rendition)
       : null;
     // The captured anchor stays local through this reflow's own movements;
@@ -129,7 +134,8 @@ export async function preserveAndReflow(
       await waitForViewportLayout();
     }
 
-    const restoreCfi = textAnchor?.cfi ?? savedCfi;
+    if (options.restoreTarget) await waitForRenderedAssets(rendition);
+    const restoreCfi = options.restoreTarget ?? textAnchor?.cfi ?? savedCfi;
     if (restoreCfi) {
       const restored = waitForRelocated(rendition);
       await rendition.display(restoreCfi);
@@ -354,13 +360,16 @@ export function resizeToViewport(
 export async function settleInitialPagination(
   rendition: Rendition,
   settings: ReadingSettings,
+  initialTarget?: string,
 ): Promise<void> {
   if (settings.flow !== 'paginated') return;
-  await waitForRenderedAssets(rendition);
+  // Ordinary first-open anchoring retains its existing behavior. Explicit
+  // saved/search targets settle entirely inside the rendition's reflow queue.
+  if (!initialTarget) await waitForRenderedAssets(rendition);
   await preserveAndReflow(
     rendition,
     () => resizeToViewport(rendition, settings),
-    { restoreTheme: true, settings, preserveTextAnchor: true },
+    { restoreTheme: true, settings, preserveTextAnchor: !initialTarget, restoreTarget: initialTarget },
   );
 }
 
@@ -402,15 +411,11 @@ export function injectReadingTheme(
   rendition: Rendition,
   settings: ReadingSettings,
 ): void {
-  const palette = {
-    light: { background: '#f8fafc', color: '#111827' },
-    sepia: { background: '#f4ecd8', color: '#3f3527' },
-    dark: { background: '#111827', color: '#f9fafb' },
-  }[settings.theme];
+  const palette = READING_PALETTES[settings.theme];
   const fontFamily = {
     publisher: 'inherit',
-    serif: 'Georgia, "Times New Roman", serif',
-    sans: 'Arial, Helvetica, sans-serif',
+    serif: '"Songti SC", "Noto Serif CJK SC", SimSun, Georgia, serif',
+    sans: 'system-ui, "Microsoft YaHei", sans-serif',
     system: 'system-ui, sans-serif',
   }[settings.font_family];
   // EPUB.js makes the paginated body wider than one page. Resolve the stored
@@ -464,6 +469,15 @@ export function injectReadingTheme(
       'overflow-wrap': 'break-word !important',
       'word-wrap': 'break-word !important',
       'touch-action': 'pan-y !important',
+      // These are a reflowable text baseline, not pagination geometry. Older
+      // WebViews ignore unsupported properties; publisher block alignment and
+      // preformatted text remain authoritative. Fixed-layout pages opt out.
+      ...(!isPrePaginatedRendition(rendition) ? {
+        'text-align': 'justify',
+        'text-justify': 'inter-character',
+        'text-spacing-trim': 'trim-start',
+        'text-wrap': 'pretty',
+      } : {}),
     },
     p: {
       'margin-bottom': `${settings.paragraph_spacing_multiplier}em !important`,
@@ -589,10 +603,37 @@ function resolveSpread(
   return viewportWidth >= AUTO_SPREAD_MIN_VIEWPORT_PX ? 'both' : 'none';
 }
 
+// Keep iframe paper and React tools on the same palette. Only presentation is
+// shared here; EPUB settings and CFI do not become a future PDF/TXT contract.
+const READING_PALETTES = {
+  light: {
+    background: '#fbfaf6', color: '#25241f', paper: '251 250 246',
+    surface: '251 250 246', subtle: '235 232 224', ink: '37 36 31',
+    muted: '113 110 100', line: '221 217 207', accent: '44 107 100',
+    'accent-soft': '227 237 231', danger: '163 63 50',
+  },
+  sepia: {
+    background: '#f6ecd8', color: '#43392d', paper: '246 236 216',
+    surface: '241 230 204', subtle: '231 218 190', ink: '67 57 45',
+    muted: '116 102 81', line: '216 203 177', accent: '44 107 100',
+    'accent-soft': '222 226 202', danger: '155 59 46',
+  },
+  dark: {
+    // 深色使用暖炭灰而不是近纯黑，正文与工具也一起降低明暗反差。
+    background: '#262520', color: '#d6d0c3', paper: '38 37 32',
+    surface: '44 43 37', subtle: '54 52 45', ink: '214 208 195',
+    muted: '163 157 144', line: '75 72 63', accent: '137 183 165',
+    'accent-soft': '45 60 50', danger: '221 147 133',
+  },
+};
+
 export function readingBackground(settings: ReadingSettings | null): string {
-  if (settings?.theme === 'light') return '#f8fafc';
-  if (settings?.theme === 'sepia') return '#f4ecd8';
-  return '#111827';
+  return READING_PALETTES[settings?.theme ?? 'light'].background;
+}
+
+export function readingThemeVariables(settings: ReadingSettings | null): Record<string, string> {
+  const { background: _background, color: _color, ...materials } = READING_PALETTES[settings?.theme ?? 'light'];
+  return Object.fromEntries(Object.entries(materials).map(([key, value]) => [`--${key}`, value]));
 }
 
 export async function waitForRenditionReady(rendition: Rendition): Promise<void> {

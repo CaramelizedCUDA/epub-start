@@ -4,6 +4,12 @@
 
 ## 当前状态与工作规则
 
+### 2026-10-09 纸与墨 UI 重构
+
+用户批准按新手机设计稿与交互示例直接实施：统一前端语言、处理 EPUB 阅读问题、保留 TXT/PDF 展示扩展边界。本次不实现新格式、不解锁解析依赖/IPC/Schema，也不提交或发布。实现及当前检查集中于 [纸与墨重构记录](docs/verification/ui-paper-ink-2026-10-09.md)；Windows WebView2 与 Android 实际阅读验收单独列出，历史完成状态不回写。
+
+用户预览后的展示纠偏与柔和深色保留。2026-10-10 接续定点修复四项：页码浮点边界纠偏、继续阅读保存位置文案、真实安全区及系统栏主题同步。前端构建、Reader 红绿及79/79回归、独立增量审阅通过；新隔离 x86_64 profile APK（SHA256 `AF781F3B…E56345`）在同一 Android35/WebView124 副本保留数据安装，四项最小原生路径通过。进程冷启实际回竖屏，目标段落和设置恢复，不宣称同几何横屏精确保位。**不判整体验收通过、不补勾 E5/E9/E10**；早期触控归因、Windows 最终候选、真机/OEM/旧 WebView和用户原样本 issue #3 仍待承接。实现、真实动作及未测范围见同一[集中记录](docs/verification/ui-paper-ink-2026-10-09.md#2026-10-10-四项定点修复与最小复验)，副本重开与当前候选见[交接](.yan/安卓模拟器验收交接.md)。
+
 ### 2026-09-16 首版 v0.1.0 定稿
 
 验收候选 `20260916-dual-fix-2` 已归入 main，业务源码提交 `1a91757`。许可证确定为 GPL-3.0-only；Windows x64 免安装 ZIP、正式签名 Android arm64 APK、项目与第三方源码、许可归档及校验清单已准备。签发记录见 [首版发布检查](docs/verification/release-v0.1.0-2026-09-16.md)，下载与实际发布状态见 [v0.1.0 Release](https://github.com/CaramelizedCUDA/epub-start/releases/tag/v0.1.0)。
