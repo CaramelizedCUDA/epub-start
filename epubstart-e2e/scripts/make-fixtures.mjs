@@ -72,7 +72,7 @@ function css(fonts) {
     )
     .join("\n");
   return `${face}
-body { font-family: ${fonts.length ? '"E2EFont", ' : ""}serif; line-height: 1.7; }
+html, body { font-family: ${fonts.length ? '"E2EFont", ' : ""}serif; line-height: 1.7; }
 h1 { font-size: 1.6em; margin: 0 0 0.8em; }
 h2 { font-size: 1.25em; margin: 1.2em 0 0.6em; }
 p { margin: 0 0 0.8em; text-align: justify; overflow-wrap: anywhere; }

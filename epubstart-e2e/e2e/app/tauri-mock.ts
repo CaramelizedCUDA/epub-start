@@ -15,10 +15,11 @@ export interface TauriMockConfig {
   bookBase: string; // 书资源服务的根地址，例如 http://127.0.0.1:4174
 }
 
-// 与 Rust 测试夹具 valid_input 一致的阅读设置，作为模拟的全局默认值
+// 与 Rust 测试夹具 valid_input 一致的阅读设置，作为模拟的全局默认值；
+// font_family 固定为 publisher，使 reflow.ts 输出 inherit 并使用合成 EPUB 内嵌的 E2EFont（Noto Sans SC 子集）
 const DEFAULT_SETTINGS = {
   theme: "light",
-  font_family: "serif",
+  font_family: "publisher",
   font_size_px: 16,
   line_height_multiplier: 1.5,
   paragraph_spacing_multiplier: 0.5,

@@ -14,8 +14,8 @@
 | 4 本合成 fixture | 已验证：zip/XHTML 结构合法、字节级可复现、在多列布局下零违规 |
 | 不变量单测（16 条）、类型检查、静态规则自检 | 全绿 |
 | Playwright spec 的框架部分（矩阵、快照、配置） | 对着模拟页跑通，快照两次运行一致 |
-| **真实 EPUB.js 0.3.93（harness 目标）** | **已跑通**（8 通过，16 跳过） |
-| **EpubStart 本体（app 目标）** | **已接通并跑通（24/24 通过）**。开发期钩子在 `src/features/reader/e2eHook.ts`，适配层在 `e2e/adapter.ts`（浏览器内使用 `tauri-mock.ts`，不替代真实 Tauri/SQLite/SAF 验收）。注：`fixtures/fonts/` 字体尚未接入确定性快照基线，详见 `HANDOVER.md` 第 6 节 |
+| **真实 EPUB.js 0.3.93（harness 目标）** | **已跑通**（8 通过，16 跳过；内嵌 Noto Sans SC 字体快照已锁定） |
+| **EpubStart 本体（app 目标）** | **已接通并跑通（24/24 通过）**。开发期钩子在 `src/features/reader/e2eHook.ts`，适配层在 `e2e/adapter.ts`（浏览器内使用 `tauri-mock.ts`，默认字体固定为 `publisher` 以命中内嵌 `E2EFont`，不替代真实 Tauri/SQLite/SAF 验收） |
 | `readerViewportGeometry` 的属性测试 | 留待后续补充 |
 
 结论：检查器本身可信，但“它在真 EPUB.js 上长什么样”要等第一次真跑才知道。第一次真跑出的红灯，先判断是检查器假设不对，还是真 bug。

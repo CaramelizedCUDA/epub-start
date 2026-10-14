@@ -7,7 +7,7 @@
 - 自动化套件（`epubstart-e2e/`）已接入项目，三个目标全部可运行：`harness`（纯 EPUB.js 基线）、`app`（EpubStart 本体，浏览器内 + 模拟 IPC）、`mock`（框架自检）。
 - 重排锚定的 5 个失败已全部定位并修复（列窗口 + 分页恢复后的页校正），app 目标 **24/24 通过**。
 - EPUB.js 升级（0.3.93 → 0.4.x）**本轮不做**，已完成影响面调研与试验，结论见第 5 节，留待专门阶段。
-- 中文字体（Noto Sans SC 子集）已放入 `fixtures/fonts/`，但**尚未接入确定性快照**，也未重建 fixture 与快照基线（见第 6 节，这是下一步的硬性前置）。
+- 中文字体（Noto Sans SC 子集）已放入 `fixtures/fonts/`，并已完成 `publisher` 字体固定、合成书重建、`E2EFont` 加载状态断言及 `harness`/`app` 快照基线更新（见第 6 节）。
 - 单测补法选方案 A，已实现并证明能发现缺陷（修复前失败、修复后通过）。
 
 ## 2. 改动清单（相对 HEAD，未提交）
@@ -65,15 +65,14 @@
 - **npm 渠道**：`epubjs` 的 `latest` 标签仍是 0.3.93，0.4.2 不是默认渠道。
 - **结论**：升级需要专门阶段，改动点集中在 `lifecycle.ts`、`pagination.ts`、`navigation.ts`、`reflow.ts`，并需要重新跑 app 与 harness 两套 e2e。
 
-## 6. 字体：已放入，未接入（下一步硬性前置）
+## 6. 字体：已完成接入与快照基线重建（2026-10-14 更新）
 
 - 字体与许可证已就位（见第 2 节）。
-- **风险**：`scripts/make-fixtures.mjs` 会把 `fixtures/fonts/` 里的字体嵌入每本合成书，并把 body 的 font-family 设为 `"E2EFont", serif`。因此：
-  - 重新运行 `npm run fixtures` 会改变所有 fixture 的内容；
-  - 现有 harness 与 app 的快照基线是**在没有字体时生成的**，重建 fixture 后它们必然失效；
-  - 在重建并重新生成基线之前，**不要**把快照当作稳定基线使用。
-- **阅读器侧**：`reflow.ts` 的字体映射是 `publisher → inherit`，`serif/sans/system → 系统字体栈`（约 425-430 行）。只有 `publisher` 会用到书内嵌字体；默认的 `serif` 不会，所以 app 的确定性还需要额外的接入（测试设置或钩子里固定 font 设置，或在 EPUB 内容里注入 @font-face）。这一点未做。
-- **建议的接入顺序**：(1) 固定 app 的字体设置为 `publisher` 或在 e2e 钩子里覆盖；(2) 重建 fixtures；(3) 重建 harness 与 app 快照；(4) 逐条核对快照变化是否符合预期。
+- **已解决的三个关键细节**：
+  1. `scripts/make-fixtures.mjs` 将样式选择器从 `body` 改为 `html, body { font-family: "E2EFont", serif; }`，使 `reflow.ts` 在 `publisher` 模式下向 `body` 注入 `font-family: inherit !important` 时，能从 `html` 正确继承 `"E2EFont"` 而不会回退到浏览器默认字体。
+  2. `e2e/app/tauri-mock.ts` 将默认 `font_family` 固定为 `"publisher"`；`e2e/app/book-entries.mjs` 补齐 `.woff2`/`.woff`/`.ttf`/`.otf` 的 MIME 类型。
+  3. `e2e/in-page/walker.js` 在 `settle()` 中显式执行 `doc.fonts.load('16px "E2EFont"')`，并在 `reader.spec.ts` 中断言 iframe 内 `bodyFontFamily` 含 `E2EFont` 且 `FontFace.status === "loaded"`。
+- **Fixtures 与快照基线**：已运行 `npm run fixtures` 将 `NotoSansSC-chinese-simplified-400.woff2` 写入 4 本合成 `.epub`（记录于 `fixtures/manifest.json`），并重新生成、二次复跑确认 `harness`（8/8）与 `app`（24/24）快照基线完全稳定。
 
 ## 7. 单测（方案 A）
 

@@ -10,7 +10,7 @@ import {
 } from "./invariants.ts";
 import { matrix, REFLOW_STEPS, SETTINGS } from "./matrix.ts";
 import { summaryJson } from "./summary.ts";
-import { advance, installWalker, readAnchor, readCurrent, walkBook } from "./walk.ts";
+import { advance, installWalker, readAnchor, readCurrent, readFontStatus, walkBook } from "./walk.ts";
 import { signature } from "./types.ts";
 
 // 已知问题先在这里挂起（写清楚原因和链接），不要让它们把整套测试长期染红。
@@ -29,6 +29,12 @@ for (const vp of M.viewports) {
           await installWalker(page);
           await openFixture(page, fx.file);
           await applySettings(page, st);
+
+          if (TARGET !== "mock") {
+            const fontStatus = await readFontStatus(page);
+            expect(fontStatus.bodyFontFamily).toContain("E2EFont");
+            expect(fontStatus.faces).toContainEqual({ family: "E2EFont", status: "loaded" });
+          }
 
           const traj = await walkBook(page, {
             bookId: fx.id,

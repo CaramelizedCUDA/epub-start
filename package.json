@@ -12,6 +12,8 @@
     "check:arch": "node epubstart-e2e/scripts/check-architecture.mjs --root src",
     "test:frontend": "node scripts/test-frontend.mjs",
     "test:e2e:unit": "npm --prefix epubstart-e2e test",
+    "test:e2e:harness": "npm --prefix epubstart-e2e run fixtures && node epubstart-e2e/scripts/e2e.mjs harness",
+    "test:e2e:app": "npm --prefix epubstart-e2e run fixtures && node epubstart-e2e/scripts/e2e.mjs app",
     "audit:android-release": "node scripts/audit-android-release.mjs",
     "audit:unwrap": "node scripts/audit-unwrap.mjs",
     "audit:check": "node scripts/audit-unwrap.mjs --check",

@@ -55,6 +55,11 @@ type WalkerApi = {
   advance(n: number, o?: unknown): Promise<PageRecord>;
   readCurrent(): Promise<PageRecord>;
   readAnchor(): Promise<{ chapterIndex: number; offset: number; href: string }>;
+  readFontStatus(): Promise<{
+    htmlFontFamily: string;
+    bodyFontFamily: string;
+    faces: { family: string; status: string }[];
+  }>;
 };
 
 export function advance(page: Page, n: number, skipInitialDisplay = false): Promise<PageRecord> {
@@ -70,4 +75,10 @@ export function readCurrent(page: Page): Promise<PageRecord> {
 
 export function readAnchor(page: Page): Promise<{ chapterIndex: number; offset: number; href: string }> {
   return page.evaluate(() => (window as unknown as { __e2eWalker: WalkerApi }).__e2eWalker.readAnchor());
+}
+
+export function readFontStatus(
+  page: Page,
+): Promise<{ htmlFontFamily: string; bodyFontFamily: string; faces: { family: string; status: string }[] }> {
+  return page.evaluate(() => (window as unknown as { __e2eWalker: WalkerApi }).__e2eWalker.readFontStatus());
 }

@@ -43,7 +43,10 @@
   async function settle(contents) {
     var doc = contents.document;
     try {
-      if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+      if (doc.fonts) {
+        if (doc.fonts.load) await doc.fonts.load('16px "E2EFont"');
+        if (doc.fonts.ready) await doc.fonts.ready;
+      }
     } catch (e) {
       /* 忽略 */
     }
@@ -334,5 +337,30 @@
     return { chapterIndex: p.chapterIndex, offset: p.textStart, href: p.href };
   }
 
-  window.__e2eWalker = { walk: walk, advance: advance, readCurrent: readCurrent, readAnchor: readAnchor };
+  async function readFontStatus() {
+    var rendition = getRendition();
+    var contents = await waitLive(rendition);
+    await settle(contents);
+    var doc = contents.document;
+    var win = contents.window;
+    var faces = [];
+    if (doc.fonts && doc.fonts.forEach) {
+      doc.fonts.forEach(function (f) {
+        faces.push({ family: String(f.family).replace(/^['"]|['"]$/g, ""), status: f.status });
+      });
+    }
+    return {
+      htmlFontFamily: win.getComputedStyle(doc.documentElement).fontFamily,
+      bodyFontFamily: win.getComputedStyle(doc.body).fontFamily,
+      faces: faces,
+    };
+  }
+
+  window.__e2eWalker = {
+    walk: walk,
+    advance: advance,
+    readCurrent: readCurrent,
+    readAnchor: readAnchor,
+    readFontStatus: readFontStatus,
+  };
 })();

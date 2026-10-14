@@ -10,6 +10,9 @@
 import { spawnSync, execSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SUITE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const [target, ...rest] = process.argv.slice(2);
 if (!["harness", "app", "mock"].includes(target ?? "")) {
@@ -39,5 +42,9 @@ function findCli() {
   return path.join(root, "playwright", "cli.js");
 }
 
-const r = spawnSync(process.execPath, [findCli(), "test", ...args], { stdio: "inherit", env });
+const r = spawnSync(process.execPath, [findCli(), "test", ...args], {
+  cwd: SUITE_ROOT,
+  stdio: "inherit",
+  env,
+});
 process.exit(r.status ?? 1);

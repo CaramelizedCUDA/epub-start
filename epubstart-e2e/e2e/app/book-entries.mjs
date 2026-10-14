@@ -21,6 +21,10 @@ const TYPES = {
   ".png": "image/png",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
 };
 
 const zips = new Map();
