@@ -1,0 +1,200 @@
+{
+  "book": "short-chapters",
+  "settings": "f16-single",
+  "viewport": "1137x713@1.25",
+  "totalPages": 14,
+  "chapters": [
+    {
+      "index": 0,
+      "href": "ch01.xhtml",
+      "textLength": 44,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          44,
+          "第1章§1s",
+          "column",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 1,
+      "href": "ch02.xhtml",
+      "textLength": 234,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          234,
+          "第2章§2v",
+          "秋长去墨，光",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 2,
+      "href": "ch03.xhtml",
+      "textLength": 3,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          3,
+          "第3章",
+          "第3章",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 3,
+      "href": "ch04.xhtml",
+      "textLength": 940,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          940,
+          "第4章§4p",
+          "column",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 4,
+      "href": "ch05.xhtml",
+      "textLength": 35,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          35,
+          "第5章§9w",
+          "settle",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 5,
+      "href": "ch06.xhtml",
+      "textLength": 1735,
+      "pageCount": 2,
+      "pages": [
+        [
+          0,
+          1133,
+          "第6章§10",
+          "地字秋页古短"
+        ],
+        [
+          1133,
+          1735,
+          "落来冬落，间",
+          "月字落，墨山",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 6,
+      "href": "ch07.xhtml",
+      "textLength": 263,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          263,
+          "第7章§22",
+          "seline",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 7,
+      "href": "ch08.xhtml",
+      "textLength": 530,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          530,
+          "第8章§25",
+          "paging",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 8,
+      "href": "ch09.xhtml",
+      "textLength": 54,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          54,
+          "第9章§26",
+          "，影影页地影",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 9,
+      "href": "ch10.xhtml",
+      "textLength": 1383,
+      "pageCount": 2,
+      "pages": [
+        [
+          0,
+          1330,
+          "第10章§2",
+          "夏合页秋页天"
+        ],
+        [
+          1330,
+          1383,
+          "夏今，去，近",
+          "落雨云去暗行",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 10,
+      "href": "ch11.xhtml",
+      "textLength": 19,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          19,
+          "第11章§3",
+          "anchor",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 11,
+      "href": "ch12.xhtml",
+      "textLength": 809,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          809,
+          "第12章§3",
+          "落月长去书重",
+          1
+        ]
+      ]
+    }
+  ]
+}

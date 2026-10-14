@@ -1,0 +1,37 @@
+{
+  "fonts": [],
+  "books": [
+    {
+      "id": "long-chapter",
+      "file": "long-chapter.epub",
+      "chapters": 1,
+      "approxTextChars": 36531,
+      "bytes": 80125,
+      "sha256": "da63450b8e33520e"
+    },
+    {
+      "id": "short-chapters",
+      "file": "short-chapters.epub",
+      "chapters": 12,
+      "approxTextChars": 6049,
+      "bytes": 21145,
+      "sha256": "3be11d3e63feec50"
+    },
+    {
+      "id": "chapter-top-image",
+      "file": "chapter-top-image.epub",
+      "chapters": 6,
+      "approxTextChars": 3308,
+      "bytes": 15434,
+      "sha256": "a7bb0e4b50e29b0e"
+    },
+    {
+      "id": "cjk-mixed",
+      "file": "cjk-mixed.epub",
+      "chapters": 4,
+      "approxTextChars": 28283,
+      "bytes": 87862,
+      "sha256": "094c7c8e8f9c7ec0"
+    }
+  ]
+}

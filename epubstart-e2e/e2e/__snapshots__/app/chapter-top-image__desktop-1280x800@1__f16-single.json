@@ -1,0 +1,140 @@
+{
+  "book": "chapter-top-image",
+  "settings": "f16-single",
+  "viewport": "1280x800@1",
+  "totalPages": 13,
+  "chapters": [
+    {
+      "index": 0,
+      "href": "ch01.xhtml",
+      "textLength": 947,
+      "pageCount": 2,
+      "pages": [
+        [
+          0,
+          320,
+          "宽图开头wi",
+          "ustify"
+        ],
+        [
+          320,
+          947,
+          "paging",
+          "远古去去来长",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 1,
+      "href": "ch02.xhtml",
+      "textLength": 311,
+      "pageCount": 3,
+      "pages": [
+        [
+          0,
+          4,
+          "高图开头",
+          "高图开头"
+        ],
+        [
+          4,
+          8,
+          "tall",
+          "tall"
+        ],
+        [
+          8,
+          311,
+          "§3书影，字",
+          "古月人长花。",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 2,
+      "href": "ch03.xhtml",
+      "textLength": 5,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          5,
+          "cover",
+          "cover",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 3,
+      "href": "ch04.xhtml",
+      "textLength": 1320,
+      "pageCount": 3,
+      "pages": [
+        [
+          0,
+          614,
+          "文中插图§4",
+          "ewport"
+        ],
+        [
+          614,
+          910,
+          "wide§5",
+          "远页云远秋雨"
+        ],
+        [
+          910,
+          1320,
+          "秋水山秋短长",
+          "今云春风短。",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 4,
+      "href": "ch05.xhtml",
+      "textLength": 510,
+      "pageCount": 1,
+      "pages": [
+        [
+          0,
+          510,
+          "行内小图§6",
+          "eading",
+          1
+        ]
+      ]
+    },
+    {
+      "index": 5,
+      "href": "ch06.xhtml",
+      "textLength": 215,
+      "pageCount": 3,
+      "pages": [
+        [
+          0,
+          5,
+          "连续两张图",
+          "连续两张图"
+        ],
+        [
+          5,
+          9,
+          "tall",
+          "tall"
+        ],
+        [
+          9,
+          215,
+          "wide§8",
+          "墨明古暗冬远",
+          1
+        ]
+      ]
+    }
+  ]
+}

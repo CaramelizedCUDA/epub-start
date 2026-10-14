@@ -1,0 +1,5 @@
+node_modules/
+test-results/
+playwright-report/
+# 生成物：由 npm run fixtures 确定性地重新生成。regression/ 和 fonts/ 里的文件要提交。
+fixtures/*.epub

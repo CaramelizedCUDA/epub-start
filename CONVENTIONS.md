@@ -92,6 +92,7 @@
 
 - 前端运行时：`react`、`react-dom`、`@tauri-apps/api`、`@tauri-apps/plugin-dialog`、`epubjs`、`zustand`。
 - 前端构建与样式：`@tauri-apps/cli`、`vite`、`@vitejs/plugin-react`、TypeScript、`@types/react`、`@types/react-dom`、`tailwindcss`、`postcss`、`autoprefixer`。
+- 前端自动化验证（仅开发期，不进入运行时产物）：`@playwright/test`、`jszip`、`@types/node`。阅读器回归套件（`epubstart-e2e`）使用，版本以获批的 `package.json` 与锁文件为准。
 - Rust：`tauri` v2、`tauri-build`、`tauri-plugin-dialog`、`serde`、`serde_json`、`rusqlite`、`zip`、`quick-xml`、`tokio`、`uuid`。项目不得直接添加 `jni`；Tauri 自身的传递依赖不视为项目白名单项。
 
 存储使用 `rusqlite` 提供的 SQLite。React 沿用当前 React 18。`@tauri-apps/plugin-dialog` 与 `tauri-plugin-dialog` 是已批准的额外官方插件，用于 Windows/Linux 文件选择；Android 持久 SAF 选择使用项目自有 Tauri 移动插件和 `ACTION_OPEN_DOCUMENT`，不引入额外第三方依赖。不得通过 JSON 在 Kotlin/Rust 之间复制整本 EPUB。PDF、RAR/CBR、HTTP/OAuth、WebDAV 和厂商 Provider SDK 尚未获批。

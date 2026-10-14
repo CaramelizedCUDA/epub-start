@@ -33,6 +33,7 @@ interface RenditionLayoutHost {
     layout?: {
       height?: number;
       name?: string;
+      delta?: number;
     };
   };
   book?: {
@@ -140,6 +141,7 @@ export async function preserveAndReflow(
       const restored = waitForRelocated(rendition);
       await rendition.display(restoreCfi);
       await restored;
+      if (textAnchor) await correctAnchorPageAfterLayout(rendition, restoreCfi);
     }
 
     if (textAnchor) {
@@ -170,10 +172,20 @@ export function clearFirstLineOffset(rendition: Rendition): void {
   }
 }
 
+// 分页模式只有 .epub-container 的列窗口里的文字属于当前页；视口两侧的灰边文字
+// 属于相邻页，若作为锚点会让重排后跳到相邻页。连续滚动仍以整个视口为可见范围。
+function readingWindowRect(viewport: HTMLElement, rendition: Rendition): DOMRect {
+  const rect = viewport.getBoundingClientRect();
+  const scroller = viewport.querySelector<HTMLElement>('.epub-container');
+  if (rendition.settings.flow === 'scrolled' || !scroller) return rect;
+  const scrollerRect = scroller.getBoundingClientRect();
+  return new DOMRect(scrollerRect.left + scroller.clientLeft, rect.top, scroller.clientWidth, rect.height);
+}
+
 export function captureFirstVisibleLine(rendition: Rendition): TextAnchor | null {
   const viewport = document.getElementById('epub-reader-viewport');
   if (!viewport) return null;
-  const viewportRect = viewport.getBoundingClientRect();
+  const viewportRect = readingWindowRect(viewport, rendition);
   let first: {
     content: Content;
     rect: DOMRect;
@@ -363,8 +375,9 @@ export async function settleInitialPagination(
   initialTarget?: string,
 ): Promise<void> {
   if (settings.flow !== 'paginated') return;
-  // Ordinary first-open anchoring retains its existing behavior. Explicit
-  // saved/search targets settle entirely inside the rendition's reflow queue.
+  // Ordinary first-open anchoring also runs the anchor-page correction, which
+  // only acts on a scrollLeft mismatch. Explicit saved/search targets skip text
+  // anchoring and settle entirely inside the rendition's reflow queue.
   if (!initialTarget) await waitForRenderedAssets(rendition);
   await preserveAndReflow(
     rendition,
@@ -675,6 +688,24 @@ function waitForViewportLayout(): Promise<void> {
       window.requestAnimationFrame(() => resolve());
     });
   });
+}
+
+// EPUB.js 的 moveTo 会把目标页钳制在 display 时的 scrollWidth 之内。字号等设置变化后内容宽度要过两帧
+// 才扩展，首次 display 可能把锚点拉回前一页。布局稳定后若锚点所在页与当前位置不一致，再定位一次。
+async function correctAnchorPageAfterLayout(rendition: Rendition, cfi: string): Promise<void> {
+  if (rendition.settings.flow === 'scrolled') return;
+  await waitForViewportLayout();
+  const scroller = document.getElementById('epub-reader-viewport')
+    ?.querySelector<HTMLElement>('.epub-container');
+  const content = rendition.getContents()[0];
+  const delta = (rendition as unknown as RenditionLayoutHost).manager?.layout?.delta;
+  if (!scroller || !content || !delta) return;
+  const { left } = await content.locationOf(cfi);
+  const wanted = Math.min(Math.floor(left / delta) * delta, Math.max(0, scroller.scrollWidth - delta));
+  if (Math.abs(scroller.scrollLeft - wanted) < 0.5) return;
+  const restored = waitForRelocated(rendition);
+  await rendition.display(cfi);
+  await restored;
 }
 
 async function waitForRenderedAssets(rendition: Rendition): Promise<void> {

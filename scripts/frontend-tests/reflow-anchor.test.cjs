@@ -4,6 +4,14 @@ const fs = require('node:fs');
 const Module = require('node:module');
 const ts = require('typescript');
 const { test } = require('node:test');
+// Node 没有 DOMRect；reflow.ts 在浏览器中用它构造列窗口矩形
+if (typeof DOMRect === 'undefined') {
+  global.DOMRect = class DOMRect {
+    constructor(x = 0, y = 0, width = 0, height = 0) {
+      Object.assign(this, { x, y, width, height, left: x, top: y, right: x + width, bottom: y + height });
+    }
+  };
+}
 const root = process.env.FRONTEND_TEST_BUILD_DIR;
 if (!root) throw new Error('Run through scripts/test-frontend.mjs --reader');
 // Store tests deliberately stub reflow. Compile the actual engine separately;
@@ -22,7 +30,7 @@ const { captureReflowAnchor, rememberReflowAnchor, preserveAndReflow, settleInit
 
 // Fixed character geometry isolates anchoring from browser layout. The original
 // PC/Android scenarios still verify real CFI and WebView column behavior.
-function inScene({ chars, frameX = 0, caretOffset, paddingTop = 48 }, run) {
+function inScene({ chars, frameX = 0, caretOffset, paddingTop = 48, column = { left: 0, width: 100 } }, run) {
   const saved = Object.fromEntries(['document', 'HTMLElement', 'Node', 'NodeFilter'].map(k => [k, global[k]]));
   const rect = (x, y, width = 10) => ({ x, y, left: x, right: x + width, top: y, bottom: y + 20, width, height: 20 });
   const text = { nodeType: 3, data: 'ABCD', textContent: 'ABCD', length: 4 };
@@ -37,7 +45,11 @@ function inScene({ chars, frameX = 0, caretOffset, paddingTop = 48 }, run) {
   });
   global.HTMLElement = Frame; global.Node = { TEXT_NODE: 3 };
   global.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
-  global.document = { getElementById: () => ({ getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 200 }) }) };
+  // 分页模式只把列窗口（.epub-container）内的文字当作可见，视口两侧是灰边
+  const viewportRect = { left: 0, right: 100, top: 0, bottom: 200, width: 100, height: 200 };
+  const columnRect = { left: column.left, right: column.left + column.width, top: 0, bottom: 200, width: column.width, height: 200 };
+  const scroller = { getBoundingClientRect: () => columnRect, clientLeft: 0, clientWidth: column.width };
+  global.document = { getElementById: () => ({ getBoundingClientRect: () => viewportRect, querySelector: () => scroller }) };
   const doc = {
     body: {}, createRange: makeRange,
     createTreeWalker() { let available = true; return { nextNode() { if (!available) return null; available = false; return text; } }; },
@@ -45,7 +57,7 @@ function inScene({ chars, frameX = 0, caretOffset, paddingTop = 48 }, run) {
   if (caretOffset !== undefined) doc.caretRangeFromPoint = () => { const r = makeRange(); r.setStart(text, caretOffset); r.collapse(); return r; };
   const content = { document: doc, window: { frameElement: new Frame(), getComputedStyle: () => ({ paddingTop: String(paddingTop) }) },
     cfiFromRange: range => `${range.startOffset}:${range.endOffset}` };
-  try { run({ getContents: () => [content] }); } finally { Object.assign(global, saved); }
+  try { run({ getContents: () => [content], settings: { flow: 'paginated' } }); } finally { Object.assign(global, saved); }
 }
 
 test('a reflow anchor identifies a character instead of an ambiguous collapsed line boundary', () => {
@@ -68,11 +80,97 @@ test('without caret hit testing a later column must not select an earlier column
   });
 });
 
+test('in paginated mode a line in the side gutter outside the page column is not the anchor', () => {
+  inScene({ chars: [[10,48],[30,48]], column: { left: 20, width: 60 } }, rendition => {
+    assert.equal(captureFirstVisibleLine(rendition).cfi, '1:2');
+  });
+});
+
+// 分页恢复场景：视口里的首行是锚点。设置变化后内容变宽，锚点移到第 3 页，但 scrollWidth 仍是旧值。
+// EPUB.js 的 moveTo 会把目标钳制在 display 时的 scrollWidth 之内（managers/default/index.js:340-350），
+// 所以首次 display 会落到第 2 页；布局扩展之后再定位，才应当落到第 3 页。
+async function inRestoreScene(run) {
+  const saved = Object.fromEntries(['document', 'window', 'HTMLElement', 'Node', 'NodeFilter'].map(k => [k, global[k]]));
+  const text = { nodeType: 3, data: 'ABCD', textContent: 'ABCD', length: 4 };
+  const chars = [[10, 48]];
+  const rect = (x, y, width = 10) => ({ x, y, left: x, right: x + width, top: y, bottom: y + 20, width, height: 20 });
+  class Frame { getBoundingClientRect() { return { left: 0, top: 0 }; } }
+  const makeRange = () => ({
+    startContainer: text, endContainer: text, startOffset: 0, endOffset: 0,
+    setStart(node, offset) { this.startContainer = node; this.startOffset = offset; if (this.endOffset < offset) this.endOffset = offset; },
+    setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; },
+    selectNodeContents() { this.startOffset = 0; this.endOffset = chars.length; },
+    collapse() { this.endOffset = this.startOffset; },
+    getClientRects() { return this.endOffset > this.startOffset ? chars.slice(this.startOffset, this.endOffset).map(([x, y]) => rect(x, y)) : []; },
+  });
+  global.HTMLElement = Frame; global.Node = { TEXT_NODE: 3 };
+  global.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
+  global.window = { requestAnimationFrame: callback => queueMicrotask(callback), setTimeout, clearTimeout };
+
+  const scroller = new EventTarget();
+  scroller.scrollLeft = 1440; scroller.scrollTop = 0; scroller.scrollWidth = 2160;
+  scroller.clientLeft = 0; scroller.clientWidth = 720;
+  scroller.getBoundingClientRect = () => ({ left: 0, right: 720, top: 0, bottom: 200, width: 720, height: 200 });
+  scroller.style = { removeProperty() {} };
+  const viewport = {
+    querySelector: () => scroller,
+    getBoundingClientRect: () => ({ left: 0, right: 1280, top: 0, bottom: 200, width: 1280, height: 200 }),
+  };
+  global.document = { getElementById: () => viewport };
+  const doc = {
+    body: {}, createRange: makeRange,
+    documentElement: { dataset: {}, style: { removeProperty() {} } },
+    createTreeWalker() { let available = true; return { nextNode() { if (!available) return null; available = false; return text; } }; },
+  };
+  // 设置变化后，锚点字符的文档坐标变为 2265.6（第 3 页）
+  const content = {
+    document: doc,
+    window: { frameElement: new Frame() },
+    cfiFromRange: range => `${range.startOffset}:${range.endOffset}`,
+    locationOf: async () => ({ left: 2265.6, top: 52 }),
+  };
+  const layout = { delta: 720 };
+  const handlers = new Map();
+  let currentCfi = 'page-A';
+  const relocate = cfi => {
+    currentCfi = cfi;
+    for (const handler of handlers.get('relocated') ?? []) handler({ start: { cfi } });
+  };
+  const rendition = {
+    settings: { flow: 'paginated' },
+    manager: { layout },
+    currentLocation: () => ({ start: { cfi: currentCfi } }),
+    getContents: () => [content],
+    on(name, handler) { if (!handlers.has(name)) handlers.set(name, new Set()); handlers.get(name).add(handler); },
+    off(name, handler) { handlers.get(name)?.delete(handler); },
+    display: async cfi => {
+      // 与 EPUB.js moveTo 相同的钳制：目标页不能超过 display 时的 scrollWidth
+      const { left } = await content.locationOf(cfi);
+      const target = Math.floor(left / layout.delta) * layout.delta;
+      scroller.scrollLeft = target + layout.delta > scroller.scrollWidth ? scroller.scrollWidth - layout.delta : target;
+      // 内容宽度在 display 之后才扩展到新布局
+      queueMicrotask(() => { scroller.scrollWidth = 2880; });
+      relocate(cfi);
+    },
+  };
+  const action = async () => relocate('page-after-settings');
+  try { await run({ rendition, scroller, action }); } finally { Object.assign(global, saved); }
+}
+
+test('a settings reflow restores the anchor page after the stale scroll width grows', async () => {
+  await inRestoreScene(async ({ rendition, scroller, action }) => {
+    await preserveAndReflow(rendition, action, { restoreTheme: false, preserveTextAnchor: true });
+    assert.equal(scroller.scrollLeft, 2160);
+  });
+});
+
 async function inReflowSession(run) {
   const saved = { document: global.document, window: global.window };
   const scroller = new EventTarget();
   scroller.scrollLeft = 0; scroller.scrollTop = 0;
   scroller.style = { removeProperty() {} };
+  scroller.getBoundingClientRect = () => ({ left: 0, right: 100, top: 0, bottom: 200, width: 100, height: 200 });
+  scroller.clientLeft = 0; scroller.clientWidth = 100;
   const viewport = {
     querySelector: () => scroller,
     getBoundingClientRect: () => ({ left: 0, right: 100, top: 0, bottom: 200, width: 100, height: 200 }),

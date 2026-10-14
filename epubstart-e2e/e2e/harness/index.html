@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>EPUB.js 基线 harness</title>
+<!--
+  纯 EPUB.js 基线页：没有 EpubStart 的任何补丁（没有 reflow.ts 的锚定、没有尾页补丁、没有视口几何计算）。
+  用途是做归因——同一套不变量在这里和在应用里各跑一遍：
+    基线能复现  -> 问题出在 EPUB.js 本身
+    只有应用出现 -> 问题出在项目自己的代码（reflow.ts / pagination.ts 等）
+
+  配置对齐 lifecycle.ts:122-133 的分页模式：manager: 'default', flow: 'paginated'。
+  依赖从 /node_modules/ 取（由 scripts/serve.mjs 暴露）；epubjs 要和应用用同一个版本（0.3.93）。
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; }
+  #viewer { width: 100vw; height: 100vh; }
+</style>
+<script src="/node_modules/jszip/dist/jszip.min.js"></script>
+<script src="/node_modules/epubjs/dist/epub.min.js"></script>
+</head>
+<body>
+<div id="viewer"></div>
+<script>
+(function () {
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var raf2 = function () { return new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); }); };
+
+  window.__harness = {
+    version: window.EPUBJS_VERSION || "unknown",
+
+    // 打开一本书并显示第一页；挂出 walker.js 要的钩子
+    open: async function (url) {
+      var buf = await (await fetch(url)).arrayBuffer();
+      var book = ePub(buf);
+      var rendition = book.renderTo("viewer", {
+        manager: "default",
+        flow: "paginated",
+        width: "100%",
+        height: "100%",
+        spread: "none",
+      });
+      await book.ready;
+      await rendition.display();
+      window.__EPUBSTART_E2E__ = { rendition: rendition, book: book };
+      await raf2();
+    },
+
+    // 刻意用“朴素做法”：改主题 + 改 spread，然后等布局稳定。不做任何锚定。
+    applySettings: async function (s) {
+      var r = window.__EPUBSTART_E2E__.rendition;
+      r.themes.fontSize(s.fontSizePx + "px");
+      // 第二个参数是 minSpreadWidth；窄视口下也要强制双页，所以给 1
+      r.spread(s.spread === "double" ? "always" : "none", 1);
+      await raf2();
+      await sleep(150);
+    },
+  };
+})();
+</script>
+</body>
+</html>

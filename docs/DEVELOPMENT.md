@@ -24,13 +24,14 @@ npm run tauri dev
 
 | 触发条件 | 命令 |
 | --- | --- |
-| 前端生产代码/样式变化 | `npm run build` |
+| 前端生产代码/样式变化 | `npm run build`（仅快速类型与架构静态门禁可用 `npm run typecheck`、`npm run check:arch`） |
 | libraryStore 并发/加载行为变化 | `npm run test:frontend -- --library library` |
-| readerStore 开关书会话隔离变化 | `npm run test:frontend -- --reader`；实际 Reader 受影响路径按验证策略执行 |
+| readerStore / 阅读器重排与翻页变化 | `npm run test:frontend -- --reader`、`npm run check:arch`；E2E 不变量与走书器见 `epubstart-e2e/`，实际 Reader 受影响路径按验证策略执行 |
 | Rust 源码变化 | `cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo check --manifest-path src-tauri/Cargo.toml`，以及 `cargo test --manifest-path src-tauri/Cargo.toml <相关测试过滤器>` |
 | Rust 跨模块影响或后端阶段回归 | `cargo test --manifest-path src-tauri/Cargo.toml` |
 | Rust 源码或当前统计登记变化 | `npm run audit:unwrap`，核对并同步登记后 `npm run audit:check` |
 | 只修改测试运行器/测试 | 执行对应测试；新增/改变行为时自证红绿，不因此构建未变化的产品或设备制品 |
+| 一键快速确定性门禁（无浏览器/无打包） | `npm run check:fast`（或启用提交前门禁：`npm run hooks:install`） |
 
 过滤测试时确认实际命中了预期测试；零个测试不是通过证据。不要把字典整段复制执行。
 
@@ -53,6 +54,10 @@ npm run test:frontend -- --library library --red-green
 ```
 
 自证只改变 `target/` 下隔离副本，执行目标缺陷失败及干净源码恢复；生产源文件不注入缺陷。临时构建位于已忽略的 `target/frontend-tests/`，不得提交。此入口不验证 React 页面、真实 IPC/SQLite、CFI 或 SAF；对应机械步骤与阶段分配见 [验证策略](VERIFICATION.md#前端机械执行路径)。未来仅在相关功能变更时加入高价值回归。
+
+架构静态约束与阅读器走书器套件位于 [epubstart-e2e/README.md](../epubstart-e2e/README.md)：
+- 无浏览器确定性门禁：`npm run check:arch`（扫描 `src/` 拦截直接调用 `rendition.resize()` 与文档根元素 `top/transform`）及 `npm run test:e2e:unit`。
+- 本地 Git 提交前门禁：运行 `npm run hooks:install` 将 `core.hooksPath` 指向 `scripts/git-hooks`，提交时由 `scripts/run-staged-gate.mjs` 按暂存区影响面触发快速检查（仅改文档自动跳过）。
 
 ### 平台构建
 

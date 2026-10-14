@@ -6,12 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
+    "check:arch": "node epubstart-e2e/scripts/check-architecture.mjs --root src",
     "test:frontend": "node scripts/test-frontend.mjs",
+    "test:e2e:unit": "npm --prefix epubstart-e2e test",
     "audit:android-release": "node scripts/audit-android-release.mjs",
     "audit:unwrap": "node scripts/audit-unwrap.mjs",
-    "audit:check": "node scripts/audit-unwrap.mjs --check"
+    "audit:check": "node scripts/audit-unwrap.mjs --check",
+    "check:fast": "npm run typecheck && npm run check:arch && npm run test:frontend && npm run audit:check && npm run test:e2e:unit",
+    "gate:staged": "node scripts/run-staged-gate.mjs",
+    "hooks:install": "git config core.hooksPath scripts/git-hooks"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
