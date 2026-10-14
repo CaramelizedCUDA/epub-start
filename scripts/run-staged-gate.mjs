@@ -8,7 +8,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const NPM_CMD = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -66,6 +66,10 @@ export function planGateSteps(files) {
           f === "scripts/frontend-tests/libraryStore.test.cjs",
       );
   const touchesE2eSuite = norm.some((f) => f.startsWith("epubstart-e2e/"));
+  // 依赖变化可能改变 EPUB.js 版本，harness 基线直接受影响；app 目标不进提交前门禁（耗时长，见 docs/verification/e2e-gate-handover-2026-10-14.md）
+  const touchesDependencyManifest = norm.some(
+    (f) => f === "package.json" || f === "package-lock.json",
+  );
   const touchesRust = norm.some((f) => f.startsWith("src-tauri/"));
   const touchesUnwrapRegistry =
     touchesRust ||
@@ -112,6 +116,14 @@ export function planGateSteps(files) {
     });
   }
 
+  if (touchesE2eSuite || touchesDependencyManifest) {
+    steps.push({
+      label: "Chromium E2E：harness 基线 (test:e2e:harness)",
+      cmd: NPM_CMD,
+      args: ["run", "test:e2e:harness"],
+    });
+  }
+
   if (touchesUnwrapRegistry) {
     steps.push({
       label: "Rust unwrap 统计登记一致性 (audit:check)",
@@ -136,36 +148,43 @@ export function planGateSteps(files) {
   return steps;
 }
 
-const { dryRun, explicitFiles } = parseArgs(process.argv.slice(2));
-const files = explicitFiles ?? getStagedFiles();
+function main() {
+  const { dryRun, explicitFiles } = parseArgs(process.argv.slice(2));
+  const files = explicitFiles ?? getStagedFiles();
 
-if (files.length === 0) {
-  console.log("[gate] 无暂存文件，跳过门禁。");
-  process.exit(0);
-}
+  if (files.length === 0) {
+    console.log("[gate] 无暂存文件，跳过门禁。");
+    process.exit(0);
+  }
 
-const steps = planGateSteps(files);
-if (steps.length === 0) {
-  console.log(`[gate] 暂存变更仅涉及文档或非代码资产（${files.length} 个文件），按验证策略不触发构建/测试。`);
-  process.exit(0);
-}
+  const steps = planGateSteps(files);
+  if (steps.length === 0) {
+    console.log(`[gate] 暂存变更仅涉及文档或非代码资产（${files.length} 个文件），按验证策略不触发构建/测试。`);
+    process.exit(0);
+  }
 
-console.log(`[gate] 检测到 ${files.length} 个变更文件，匹配 ${steps.length} 项快速确定性门禁：`);
-for (const step of steps) {
-  const display = `${step.cmd} ${step.args.join(" ")}`;
-  console.log(`  -> ${step.label}: ${display}`);
-  if (dryRun) continue;
-  const res = spawnSync(step.cmd, step.args, {
-    cwd: REPO_ROOT,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
-  if (res.status !== 0) {
-    console.error(`\n[gate] 门禁失败：${step.label}`);
-    process.exit(res.status ?? 1);
+  console.log(`[gate] 检测到 ${files.length} 个变更文件，匹配 ${steps.length} 项快速确定性门禁：`);
+  for (const step of steps) {
+    const display = `${step.cmd} ${step.args.join(" ")}`;
+    console.log(`  -> ${step.label}: ${display}`);
+    if (dryRun) continue;
+    const res = spawnSync(step.cmd, step.args, {
+      cwd: REPO_ROOT,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    });
+    if (res.status !== 0) {
+      console.error(`\n[gate] 门禁失败：${step.label}`);
+      process.exit(res.status ?? 1);
+    }
+  }
+
+  if (!dryRun) {
+    console.log("[gate] 全部受影响快速确定性门禁通过。");
   }
 }
 
-if (!dryRun) {
-  console.log("[gate] 全部受影响快速确定性门禁通过。");
+// 被测试 import 时不执行暂存检查
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main();
 }

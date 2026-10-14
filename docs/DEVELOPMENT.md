@@ -57,7 +57,7 @@ npm run test:frontend -- --library library --red-green
 
 架构静态约束与阅读器走书器套件位于 [epubstart-e2e/README.md](../epubstart-e2e/README.md)：
 - 无浏览器确定性门禁：`npm run check:arch`（扫描 `src/` 拦截直接调用 `rendition.resize()` 与文档根元素 `top/transform`）及 `npm run test:e2e:unit`。
-- 本地 Git 提交前门禁：运行 `npm run hooks:install` 将 `core.hooksPath` 指向 `scripts/git-hooks`，提交时由 `scripts/run-staged-gate.mjs` 按暂存区影响面触发快速检查（仅改文档自动跳过）。
+- 本地 Git 提交前门禁：运行 `npm run hooks:install` 将 `core.hooksPath` 指向 `scripts/git-hooks`，提交时由 `scripts/run-staged-gate.mjs` 按暂存区影响面触发快速检查（仅改文档自动跳过）。改动 `epubstart-e2e/` 或 `package.json`/`package-lock.json` 时追加 Chromium harness 基线（`npm run test:e2e:harness`）；`app` 目标不进提交前门禁，需手动运行。
 
 ### 平台构建
 

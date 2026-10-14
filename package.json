@@ -17,7 +17,8 @@
     "audit:android-release": "node scripts/audit-android-release.mjs",
     "audit:unwrap": "node scripts/audit-unwrap.mjs",
     "audit:check": "node scripts/audit-unwrap.mjs --check",
-    "check:fast": "npm run typecheck && npm run check:arch && npm run test:frontend && npm run audit:check && npm run test:e2e:unit",
+    "check:fast": "npm run typecheck && npm run check:arch && npm run test:frontend && npm run audit:check && npm run test:e2e:unit && npm run test:gate",
+    "test:gate": "node --test scripts/run-staged-gate.test.mjs",
     "gate:staged": "node scripts/run-staged-gate.mjs",
     "hooks:install": "git config core.hooksPath scripts/git-hooks"
   },

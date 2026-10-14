@@ -39,6 +39,7 @@ src-tauri/gen/schemas/mobile-schema.json
 *.temp
 *.bak
 *.backup
+test-results/
 
 # Local environment and secrets
 .env
