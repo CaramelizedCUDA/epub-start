@@ -35,3 +35,13 @@ TODO 分别记录实现与阶段验收。编译、mock、截图不替代真实�
 Rust 源码或当前统计登记变更时执行 unwrap 统计与一致性核对；其他任务不重复统计，历史数字不回写。检查日志集中于同阶段 verification 记录，不为每个按钮或无变化复跑创建长报告。
 
 收尾简述改动用途、实际检查、复用证据和未覆盖范围。用户明确批准的规范调整按授权执行；需要超出既有契约、依赖或权限时，说明具体规则和实际影响，申请必要的一次调整。
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues（`origin` 指向 GitHub，用 `gh` CLI）。创建或修改远程 issue 需要当前任务的明确授权。见 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)。
+
+### Domain docs
+
+单上下文：词汇文件为根目录 `CONTEXT.md`，ADR 位于 `docs/adr/`。见 [docs/agents/domain.md](docs/agents/domain.md)。
